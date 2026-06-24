@@ -1,16 +1,19 @@
 # Policy in Action Library Backend
 
-This is the initial backend skeleton for the Policy in Action Library project.
+FastAPI backend for policy data ingestion. The current branch implements the data-source and crawling foundation used to collect, clean, version, and persist policy documents before later RAG work.
 
-The goal of this folder is to provide a clean `master` baseline for modular team development. Most endpoints are placeholders returning `501 Not Implemented`; each teammate can implement one module in their own feature branch.
+## Current Scope
 
-## MVP Modules
+- Configurable trusted policy sources.
+- Crawl job creation and status tracking.
+- HTTP-first crawling with Playwright and Firecrawl fallback hooks.
+- Configurable pagination and structured field extraction.
+- HTML cleaning into markdown-like content.
+- Incremental document sync with versions, assets, and missing-document tracking.
+- OECD.AI policy initiatives adapter and config-only example.
+- Supabase/PostgreSQL schema and migrations.
 
-- Admin document management: upload, metadata editing, processing status.
-- Ingestion pipeline: file validation, PDF/text extraction, chunking, indexing.
-- RAG pipeline: embeddings, retrieval, answer generation, citations.
-- Crawler pipeline: trusted source registration, crawl jobs, future external data collection.
-- Document library: list, filter, detail, chunks.
+RAG chat, admin upload, and frontend UI are still separate future modules.
 
 ## Quick Start
 
@@ -18,7 +21,7 @@ The goal of this folder is to provide a clean `master` baseline for modular team
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -e ".[dev,database,crawlers]"
 Copy-Item .env.example .env
 uvicorn app.main:app --reload
 ```
@@ -37,13 +40,25 @@ pytest
 ruff check app tests
 ```
 
-## Suggested Branches
+## Main Endpoints
 
-- `feature/admin-upload`
-- `feature/ingestion-pipeline`
-- `feature/rag-chat`
-- `feature/crawler-sources`
-- `feature/document-library`
-- `feature/database-schema`
+- `GET /api/v1/health`
+- `GET /api/v1/sources`
+- `POST /api/v1/sources`
+- `GET /api/v1/crawl-jobs`
+- `POST /api/v1/crawl-jobs`
+- `GET /api/v1/documents`
+- `GET /api/v1/documents/{document_id}`
+- `GET /api/v1/documents/{document_id}/versions`
+- `GET /api/v1/documents/{document_id}/assets`
 
-Keep `master` stable. Implement features in branches and merge back regularly after tests pass.
+## Safety Defaults
+
+Real network crawling is disabled by default:
+
+```dotenv
+CRAWLING_ENABLED=false
+DATABASE_ENABLED=false
+```
+
+To run real crawls, explicitly enable crawling and submit a job with `dry_run=false`.
