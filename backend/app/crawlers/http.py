@@ -194,8 +194,12 @@ class HttpCrawler(BaseCrawler):
         await validate_public_url(url)
         response = await client.get(url)
         response.raise_for_status()
-        if "text/html" not in response.headers.get("content-type", ""):
-            raise ValueError("Response is not HTML")
+        content_type = response.headers.get("content-type", "")
+        if "text/html" not in content_type:
+            raise ValueError(
+                f"Response is not HTML: content-type={content_type or '<missing>'}, "
+                f"bytes={len(response.content)}"
+            )
         return response
 
     def _detail_links(

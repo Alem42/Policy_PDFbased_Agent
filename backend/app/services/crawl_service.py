@@ -159,7 +159,11 @@ class CrawlService:
                 message=f"Crawl in progress. Persisted {total_documents} documents.",
             )
 
-        if latest_result is None or total_documents == 0:
+        if latest_result is None:
+            return False
+        if total_documents == 0:
+            if latest_result.errors:
+                raise RuntimeError(" | ".join(latest_result.errors))
             return False
 
         is_complete = self._is_complete(
