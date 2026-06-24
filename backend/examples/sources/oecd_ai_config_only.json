@@ -1,0 +1,67 @@
+{
+  "name": "OECD.AI Policy Initiatives",
+  "start_url": "https://oecd.ai/en/dashboards/policy-initiatives",
+  "allowed_domains": ["oecd.ai"],
+  "include_patterns": [
+    "^/en/dashboards/policy-initiatives(?:/.*)?$"
+  ],
+  "exclude_patterns": [],
+  "crawler_preference": "http",
+  "max_pages": 3000,
+  "max_documents": 3000,
+  "max_depth": 3,
+  "enabled": true,
+  "config": {
+    "adapter": "none",
+    "detail_link_selector": "a[href*=\"/en/dashboards/policy-initiatives/\"]",
+    "detail_url_patterns": [
+      "/en/dashboards/policy-initiatives/[^/?]+$"
+    ],
+    "content_selector": "main",
+    "pagination": {
+      "type": "numbered",
+      "page_parameter": "page",
+      "start_page": 1,
+      "page_size": 20,
+      "total_selector": "h1:-soup-contains(\"List of policy initiatives\")",
+      "total_regex": "\\(([\\d,]+)\\)",
+      "query": {
+        "orderBy": "startYearDesc"
+      }
+    },
+    "field_extraction": {
+      "title": "main h2.title.is-2",
+      "country": ".taxonomy-relation-list .flags span.content",
+      "policy_status": {
+        "selector": "p.is-bold:-soup-contains(\"Status:\") + ul li"
+      },
+      "start_year": {
+        "selector": "p.is-bold:-soup-contains(\"Start Year:\") + ul li",
+        "transform": "year"
+      },
+      "end_year": {
+        "selector": "p.is-bold:-soup-contains(\"End Year:\") + ul li",
+        "transform": "year"
+      },
+      "metadata": {
+        "category": {
+          "selector": "p.is-bold:-soup-contains(\"Category:\") + ul li",
+          "multiple": true
+        },
+        "initiative_type": {
+          "selector": "p.is-bold:-soup-contains(\"Initiative type:\") + ul li",
+          "multiple": true
+        },
+        "target_sectors": {
+          "selector": "p.is-bold:-soup-contains(\"Target Sectors:\") + ul li",
+          "multiple": true
+        },
+        "oecd_ai_principles": {
+          "selector": "p.is-bold:-soup-contains(\"OECD AI Principles:\") + ul li",
+          "multiple": true
+        }
+      }
+    },
+    "mark_missing_on_full_crawl": false
+  }
+}
