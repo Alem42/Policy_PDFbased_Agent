@@ -1,0 +1,3 @@
+-- Initial schema placeholder.
+-- The database module should replace this with MVP tables:
+-- documents, document_chunks, embeddings, trusted_sources, crawl_jobs.
