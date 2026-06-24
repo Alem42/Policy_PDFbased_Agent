@@ -62,3 +62,13 @@ DATABASE_ENABLED=false
 ```
 
 To run real crawls, explicitly enable crawling and submit a job with `dry_run=false`.
+
+On Windows, use this command when a source explicitly needs Playwright:
+
+```powershell
+python -m uvicorn app.main:app
+```
+
+`--reload` can run Playwright under an event loop that cannot launch browser subprocesses.
+For normal OECD/configured HTTP crawling, prefer `crawler_preference="http"` or `auto` without
+`allow_playwright_fallback`.

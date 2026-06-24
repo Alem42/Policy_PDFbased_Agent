@@ -1,3 +1,6 @@
+import asyncio
+import sys
+
 from bs4 import BeautifulSoup
 
 from app.cleaning.html import HtmlCleaner
@@ -13,6 +16,7 @@ class PlaywrightCrawler(BaseCrawler):
         self.cleaner = HtmlCleaner()
 
     async def crawl(self, source: SourceRead) -> CrawlResult:
+        self._ensure_subprocess_event_loop()
         try:
             from playwright.async_api import async_playwright  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -65,3 +69,14 @@ class PlaywrightCrawler(BaseCrawler):
             pages_visited=1,
             detail_urls_discovered=1,
         )
+
+    @staticmethod
+    def _ensure_subprocess_event_loop() -> None:
+        if sys.platform != "win32":
+            return
+        loop = asyncio.get_running_loop()
+        if loop.__class__.__name__ == "_WindowsSelectorEventLoop":
+            raise RuntimeError(
+                "Playwright requires a Windows Proactor event loop to launch Chromium. "
+                "Run uvicorn without --reload, or use crawler_preference='http' for this source."
+            )

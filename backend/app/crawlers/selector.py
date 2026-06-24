@@ -35,7 +35,9 @@ class CrawlerSelector:
     def fallbacks(self, source: SourceRead) -> list[BaseCrawler]:
         if source.crawler_preference != CrawlerPreference.AUTO:
             return []
-        fallbacks: list[BaseCrawler] = [PlaywrightCrawler()]
+        fallbacks: list[BaseCrawler] = []
+        if source.config.get("allow_playwright_fallback", False):
+            fallbacks.append(PlaywrightCrawler())
         if get_settings().firecrawl_api_key:
             fallbacks.append(FirecrawlCrawler())
         return fallbacks
