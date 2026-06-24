@@ -13,18 +13,24 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    app_name: str = "Policy in Action Library Backend"
+    app_name: str = "AI Policy Research Platform"
     app_env: str = "development"
     app_debug: bool = True
     api_v1_prefix: str = "/api/v1"
 
-    database_enabled: bool = False
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/policy_library"
-
     crawling_enabled: bool = False
-    document_storage_dir: Path = Path("data/documents")
-    vector_index_dir: Path = Path("data/vector_index")
-    default_top_k: int = Field(default=6, ge=1, le=20)
+    default_request_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    default_max_pages: int = Field(default=100, gt=0, le=10000)
+    default_concurrency: int = Field(default=3, gt=0, le=20)
+    user_agent: str = "AI-Policy-Research-Bot/0.1"
+
+    database_enabled: bool = False
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy"
+    persistence_backend: str = "database"
+    document_store_path: Path = Path("data/state/documents.json")
+    attachment_download_dir: Path = Path("data/attachments")
+
+    firecrawl_api_key: str | None = None
 
 
 @lru_cache
