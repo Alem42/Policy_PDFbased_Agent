@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.database import database
-from app.models import DocumentModel
+from app.models import CrawledDocumentModel
 from app.schemas.document import (
     DocumentAssetRead,
     DocumentRead,
@@ -16,7 +16,7 @@ from app.schemas.document import (
 )
 
 
-def document_model_to_schema(model: DocumentModel) -> DocumentRead:
+def document_model_to_schema(model: CrawledDocumentModel) -> DocumentRead:
     return DocumentRead(
         id=model.id,
         source_id=model.source_id,
@@ -58,9 +58,7 @@ class DocumentRepository:
             with self._lock:
                 documents = list(self._documents.values())
                 if source_id is not None:
-                    documents = [
-                        item for item in documents if item.source_id == source_id
-                    ]
+                    documents = [item for item in documents if item.source_id == source_id]
                 return sorted(
                     documents,
                     key=lambda item: item.last_seen_at,
@@ -69,9 +67,11 @@ class DocumentRepository:
 
         factory = self.session_factory()
         async with factory() as session:
-            statement = select(DocumentModel).order_by(DocumentModel.last_seen_at.desc())
+            statement = select(CrawledDocumentModel).order_by(
+                CrawledDocumentModel.last_seen_at.desc()
+            )
             if source_id is not None:
-                statement = statement.where(DocumentModel.source_id == source_id)
+                statement = statement.where(CrawledDocumentModel.source_id == source_id)
             models = (await session.scalars(statement)).all()
             return [document_model_to_schema(model) for model in models]
 
@@ -81,7 +81,7 @@ class DocumentRepository:
                 return self._documents.get(document_id)
         factory = self.session_factory()
         async with factory() as session:
-            model = await session.get(DocumentModel, document_id)
+            model = await session.get(CrawledDocumentModel, document_id)
             return document_model_to_schema(model) if model else None
 
     async def versions(self, document_id: UUID) -> list[DocumentVersionRead]:
@@ -91,9 +91,9 @@ class DocumentRepository:
         factory = self.session_factory()
         async with factory() as session:
             statement = (
-                select(DocumentModel)
-                .options(selectinload(DocumentModel.versions))
-                .where(DocumentModel.id == document_id)
+                select(CrawledDocumentModel)
+                .options(selectinload(CrawledDocumentModel.versions))
+                .where(CrawledDocumentModel.id == document_id)
             )
             model = await session.scalar(statement)
             if model is None:
@@ -119,9 +119,9 @@ class DocumentRepository:
         factory = self.session_factory()
         async with factory() as session:
             statement = (
-                select(DocumentModel)
-                .options(selectinload(DocumentModel.assets))
-                .where(DocumentModel.id == document_id)
+                select(CrawledDocumentModel)
+                .options(selectinload(CrawledDocumentModel.assets))
+                .where(CrawledDocumentModel.id == document_id)
             )
             model = await session.scalar(statement)
             if model is None:
@@ -157,8 +157,7 @@ class DocumentRepository:
                 self._versions.setdefault(document.id, []).append(version)
             if assets:
                 existing = {
-                    asset.original_url: asset
-                    for asset in self._assets.get(document.id, [])
+                    asset.original_url: asset for asset in self._assets.get(document.id, [])
                 }
                 existing.update({asset.original_url: asset for asset in assets})
                 self._assets[document.id] = list(existing.values())
@@ -192,9 +191,7 @@ class DocumentRepository:
             for document_id, versions in payload.get("versions", {}).items()
         }
         self._assets = {
-            UUID(document_id): [
-                DocumentAssetRead.model_validate(raw) for raw in assets
-            ]
+            UUID(document_id): [DocumentAssetRead.model_validate(raw) for raw in assets]
             for document_id, assets in payload.get("assets", {}).items()
         }
 
@@ -203,13 +200,10 @@ class DocumentRepository:
         temporary_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
         payload = {
             "documents": [
-                document.model_dump(mode="json")
-                for document in self._documents.values()
+                document.model_dump(mode="json") for document in self._documents.values()
             ],
             "versions": {
-                str(document_id): [
-                    version.model_dump(mode="json") for version in versions
-                ]
+                str(document_id): [version.model_dump(mode="json") for version in versions]
                 for document_id, versions in self._versions.items()
             },
             "assets": {

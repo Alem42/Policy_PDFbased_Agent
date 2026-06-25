@@ -11,7 +11,7 @@ FastAPI backend for policy data ingestion. The current branch implements the dat
 - HTML cleaning into markdown-like content.
 - Incremental document sync with versions, assets, and missing-document tracking.
 - OECD.AI policy initiatives adapter and config-only example.
-- Supabase/PostgreSQL schema and migrations.
+- PostgreSQL initialization schema.
 
 RAG chat, admin upload, and frontend UI are still separate future modules.
 

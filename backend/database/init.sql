@@ -1,7 +1,9 @@
--- AI Policy Research Platform - Supabase ingestion schema
--- Run this file once in Supabase Dashboard -> SQL Editor.
+-- AI Policy Research Platform - PostgreSQL initialization schema.
+-- Run once against a fresh PostgreSQL database before enabling DATABASE_ENABLED.
 
 begin;
+
+create extension if not exists pgcrypto;
 
 do $$
 begin
@@ -86,7 +88,7 @@ create table if not exists public.crawl_jobs (
   finished_at timestamptz
 );
 
-create table if not exists public.documents (
+create table if not exists public.crawled_documents (
   id uuid primary key default gen_random_uuid(),
   source_id uuid not null references public.sources(id) on delete cascade,
   canonical_url text not null,
@@ -107,12 +109,12 @@ create table if not exists public.documents (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint documents_source_url_unique unique (source_id, canonical_url)
+  constraint crawled_documents_source_url_unique unique (source_id, canonical_url)
 );
 
-create table if not exists public.document_versions (
+create table if not exists public.crawled_document_versions (
   id uuid primary key default gen_random_uuid(),
-  document_id uuid not null references public.documents(id) on delete cascade,
+  document_id uuid not null references public.crawled_documents(id) on delete cascade,
   crawl_job_id uuid references public.crawl_jobs(id) on delete set null,
   version integer not null check (version >= 1),
   content_hash text not null check (char_length(content_hash) = 64),
@@ -120,12 +122,12 @@ create table if not exists public.document_versions (
   clean_markdown text not null,
   metadata jsonb not null default '{}'::jsonb,
   fetched_at timestamptz not null default now(),
-  constraint document_versions_number_unique unique (document_id, version)
+  constraint crawled_document_versions_number_unique unique (document_id, version)
 );
 
-create table if not exists public.document_assets (
+create table if not exists public.crawled_document_assets (
   id uuid primary key default gen_random_uuid(),
-  document_id uuid not null references public.documents(id) on delete cascade,
+  document_id uuid not null references public.crawled_documents(id) on delete cascade,
   asset_type text not null default 'link',
   original_url text not null,
   title text,
@@ -136,7 +138,7 @@ create table if not exists public.document_assets (
   discovered_at timestamptz not null default now(),
   last_checked_at timestamptz,
   metadata jsonb not null default '{}'::jsonb,
-  constraint document_assets_document_url_unique
+  constraint crawled_document_assets_document_url_unique
     unique (document_id, original_url)
 );
 
@@ -158,17 +160,17 @@ create index if not exists crawl_jobs_source_created_idx
 create index if not exists crawl_jobs_status_idx
   on public.crawl_jobs (status);
 
-create index if not exists documents_source_status_idx
-  on public.documents (source_id, status);
+create index if not exists crawled_documents_source_status_idx
+  on public.crawled_documents (source_id, status);
 
-create index if not exists documents_last_seen_idx
-  on public.documents (last_seen_at desc);
+create index if not exists crawled_documents_last_seen_idx
+  on public.crawled_documents (last_seen_at desc);
 
-create index if not exists document_versions_document_fetched_idx
-  on public.document_versions (document_id, fetched_at desc);
+create index if not exists crawled_document_versions_document_fetched_idx
+  on public.crawled_document_versions (document_id, fetched_at desc);
 
-create index if not exists document_assets_document_idx
-  on public.document_assets (document_id);
+create index if not exists crawled_document_assets_document_idx
+  on public.crawled_document_assets (document_id);
 
 create index if not exists crawl_errors_job_idx
   on public.crawl_errors (crawl_job_id, created_at);
@@ -189,40 +191,9 @@ create trigger sources_set_updated_at
 before update on public.sources
 for each row execute function public.set_updated_at();
 
-drop trigger if exists documents_set_updated_at on public.documents;
-create trigger documents_set_updated_at
-before update on public.documents
+drop trigger if exists crawled_documents_set_updated_at on public.crawled_documents;
+create trigger crawled_documents_set_updated_at
+before update on public.crawled_documents
 for each row execute function public.set_updated_at();
-
--- Tables in Supabase's public schema are API-exposed, so enable RLS.
-alter table public.sources enable row level security;
-alter table public.crawl_jobs enable row level security;
-alter table public.documents enable row level security;
-alter table public.document_versions enable row level security;
-alter table public.document_assets enable row level security;
-alter table public.crawl_errors enable row level security;
-
--- The backend service role can operate on all ingestion tables. No anon or
--- authenticated policies are created, so browser clients cannot access them.
-grant usage on schema public to service_role;
-grant select, insert, update, delete on table
-  public.sources,
-  public.crawl_jobs,
-  public.documents,
-  public.document_versions,
-  public.document_assets,
-  public.crawl_errors
-to service_role;
-
-grant usage, select on all sequences in schema public to service_role;
-
-revoke all on table
-  public.sources,
-  public.crawl_jobs,
-  public.documents,
-  public.document_versions,
-  public.document_assets,
-  public.crawl_errors
-from anon, authenticated;
 
 commit;

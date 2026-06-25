@@ -1,19 +1,19 @@
 """SQLAlchemy persistence models."""
 
 from app.models.entities import (
+    CrawledDocumentAssetModel,
+    CrawledDocumentModel,
+    CrawledDocumentVersionModel,
     CrawlErrorModel,
     CrawlJobModel,
-    DocumentAssetModel,
-    DocumentModel,
-    DocumentVersionModel,
     SourceModel,
 )
 
 __all__ = [
+    "CrawledDocumentAssetModel",
+    "CrawledDocumentModel",
+    "CrawledDocumentVersionModel",
     "CrawlErrorModel",
     "CrawlJobModel",
-    "DocumentAssetModel",
-    "DocumentModel",
-    "DocumentVersionModel",
     "SourceModel",
 ]

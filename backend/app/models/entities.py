@@ -48,7 +48,7 @@ class SourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="source")
-    documents: Mapped[list["DocumentModel"]] = relationship(back_populates="source")
+    documents: Mapped[list["CrawledDocumentModel"]] = relationship(back_populates="source")
 
 
 class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
@@ -95,12 +95,16 @@ class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
     source: Mapped[SourceModel] = relationship(back_populates="jobs")
 
 
-class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "documents"
+class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "crawled_documents"
     __table_args__ = (
-        UniqueConstraint("source_id", "canonical_url", name="documents_source_url_unique"),
-        Index("documents_source_status_idx", "source_id", "status"),
-        Index("documents_last_seen_idx", "last_seen_at"),
+        UniqueConstraint(
+            "source_id",
+            "canonical_url",
+            name="crawled_documents_source_url_unique",
+        ),
+        Index("crawled_documents_source_status_idx", "source_id", "status"),
+        Index("crawled_documents_last_seen_idx", "last_seen_at"),
     )
 
     source_id: Mapped[UUID] = mapped_column(
@@ -133,23 +137,23 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
     source: Mapped[SourceModel] = relationship(back_populates="documents")
-    versions: Mapped[list["DocumentVersionModel"]] = relationship(back_populates="document")
-    assets: Mapped[list["DocumentAssetModel"]] = relationship(back_populates="document")
+    versions: Mapped[list["CrawledDocumentVersionModel"]] = relationship(back_populates="document")
+    assets: Mapped[list["CrawledDocumentAssetModel"]] = relationship(back_populates="document")
 
 
-class DocumentVersionModel(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "document_versions"
+class CrawledDocumentVersionModel(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "crawled_document_versions"
     __table_args__ = (
         UniqueConstraint(
             "document_id",
             "version",
-            name="document_versions_number_unique",
+            name="crawled_document_versions_number_unique",
         ),
-        Index("document_versions_document_fetched_idx", "document_id", "fetched_at"),
+        Index("crawled_document_versions_document_fetched_idx", "document_id", "fetched_at"),
     )
 
     document_id: Mapped[UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"),
+        ForeignKey("crawled_documents.id", ondelete="CASCADE"),
         nullable=False,
     )
     crawl_job_id: Mapped[UUID | None] = mapped_column(
@@ -165,22 +169,22 @@ class DocumentVersionModel(UUIDPrimaryKeyMixin, Base):
         server_default=func.now(),
     )
 
-    document: Mapped[DocumentModel] = relationship(back_populates="versions")
+    document: Mapped[CrawledDocumentModel] = relationship(back_populates="versions")
 
 
-class DocumentAssetModel(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "document_assets"
+class CrawledDocumentAssetModel(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "crawled_document_assets"
     __table_args__ = (
         UniqueConstraint(
             "document_id",
             "original_url",
-            name="document_assets_document_url_unique",
+            name="crawled_document_assets_document_url_unique",
         ),
-        Index("document_assets_document_idx", "document_id"),
+        Index("crawled_document_assets_document_idx", "document_id"),
     )
 
     document_id: Mapped[UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"),
+        ForeignKey("crawled_documents.id", ondelete="CASCADE"),
         nullable=False,
     )
     asset_type: Mapped[str] = mapped_column(Text, default="link")
@@ -196,7 +200,7 @@ class DocumentAssetModel(UUIDPrimaryKeyMixin, Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
-    document: Mapped[DocumentModel] = relationship(back_populates="assets")
+    document: Mapped[CrawledDocumentModel] = relationship(back_populates="assets")
 
 
 class CrawlErrorModel(Base):

@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.crawlers.base import CrawledDocument
-from app.models import DocumentAssetModel, DocumentModel, DocumentVersionModel
+from app.models import (
+    CrawledDocumentAssetModel,
+    CrawledDocumentModel,
+    CrawledDocumentVersionModel,
+)
 from app.schemas.document import (
     DocumentAssetRead,
     DocumentRead,
@@ -59,14 +63,12 @@ class IncrementalSyncService:
 
         async with factory() as session:
             statement = (
-                select(DocumentModel)
-                .options(selectinload(DocumentModel.assets))
-                .where(DocumentModel.source_id == source_id)
+                select(CrawledDocumentModel)
+                .options(selectinload(CrawledDocumentModel.assets))
+                .where(CrawledDocumentModel.source_id == source_id)
             )
             existing_models = (await session.scalars(statement)).all()
-            existing_by_url = {
-                model.canonical_url: model for model in existing_models
-            }
+            existing_by_url = {model.canonical_url: model for model in existing_models}
             asset_urls_by_document = {
                 model.id: {asset.original_url for asset in model.assets}
                 for model in existing_models
@@ -83,7 +85,7 @@ class IncrementalSyncService:
                 structured = crawled.metadata.get("structured", {})
 
                 if existing is None:
-                    existing = DocumentModel(
+                    existing = CrawledDocumentModel(
                         source_id=source_id,
                         canonical_url=canonical_url,
                         title=crawled.title,
@@ -101,9 +103,7 @@ class IncrementalSyncService:
                     )
                     session.add(existing)
                     await session.flush()
-                    session.add(
-                        self._database_version(existing, crawled, crawl_job_id)
-                    )
+                    session.add(self._database_version(existing, crawled, crawl_job_id))
                     existing_by_url[canonical_url] = existing
                     asset_urls_by_document[existing.id] = set()
                     stats.added += 1
@@ -125,9 +125,7 @@ class IncrementalSyncService:
                     existing.last_seen_at = now
                     existing.missing_since = None
                     existing.metadata_ = crawled.metadata
-                    session.add(
-                        self._database_version(existing, crawled, crawl_job_id)
-                    )
+                    session.add(self._database_version(existing, crawled, crawl_job_id))
                     stats.updated += 1
 
                 self._merge_database_assets(
@@ -265,11 +263,11 @@ class IncrementalSyncService:
 
     @staticmethod
     def _database_version(
-        document: DocumentModel,
+        document: CrawledDocumentModel,
         crawled: CrawledDocument,
         crawl_job_id: UUID | None,
-    ) -> DocumentVersionModel:
-        return DocumentVersionModel(
+    ) -> CrawledDocumentVersionModel:
+        return CrawledDocumentVersionModel(
             document_id=document.id,
             crawl_job_id=crawl_job_id,
             version=document.current_version,
@@ -282,7 +280,7 @@ class IncrementalSyncService:
     @staticmethod
     def _merge_database_assets(
         session: AsyncSession,
-        document: DocumentModel,
+        document: CrawledDocumentModel,
         crawled: CrawledDocument,
         existing: set[str],
     ) -> None:
@@ -291,7 +289,7 @@ class IncrementalSyncService:
             if not url or url in existing:
                 continue
             session.add(
-                DocumentAssetModel(
+                CrawledDocumentAssetModel(
                     document_id=document.id,
                     asset_type=raw.get("asset_type", "link"),
                     original_url=url,
