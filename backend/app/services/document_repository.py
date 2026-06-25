@@ -3,7 +3,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
@@ -11,7 +11,11 @@ from app.core.database import database
 from app.models import CrawledDocumentModel
 from app.schemas.document import (
     DocumentAssetRead,
+    DocumentDetailRead,
+    DocumentMetadataRead,
     DocumentRead,
+    DocumentSnippetRead,
+    DocumentSourceInfoRead,
     DocumentVersionRead,
 )
 
@@ -35,6 +39,13 @@ def document_model_to_schema(model: CrawledDocumentModel) -> DocumentRead:
         missing_since=model.missing_since,
         metadata=model.metadata_,
     )
+
+
+def _preview(text_value: str, max_length: int = 500) -> str:
+    normalized = " ".join(text_value.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 3].rstrip()}..."
 
 
 class DocumentRepository:
@@ -83,6 +94,100 @@ class DocumentRepository:
         async with factory() as session:
             model = await session.get(CrawledDocumentModel, document_id)
             return document_model_to_schema(model) if model else None
+
+    async def get_detail(
+        self,
+        document_id: UUID,
+        *,
+        snippet_limit: int = 8,
+    ) -> DocumentDetailRead | None:
+        if not self.uses_database:
+            return await self._get_local_detail(document_id, snippet_limit=snippet_limit)
+
+        factory = self.session_factory()
+        async with factory() as session:
+            processed = (
+                await session.execute(
+                    text(
+                        """
+                        select
+                          d.id,
+                          d.original_filename,
+                          d.file_size,
+                          d.mime_type,
+                          d.status,
+                          d.approved,
+                          d.access_level,
+                          d.uploaded_at,
+                          d.processed_at,
+                          m.title,
+                          m.summary,
+                          m.source_type,
+                          m.source_organisation,
+                          m.country_region,
+                          m.language,
+                          m.year,
+                          m.publication_date,
+                          m.policy_areas,
+                          m.keywords,
+                          m.stakeholders,
+                          m.implementation_risks,
+                          m.metadata_json
+                        from public.documents d
+                        left join public.document_metadata m on m.document_id = d.id
+                        where d.id = :document_id
+                        """
+                    ),
+                    {"document_id": document_id},
+                )
+            ).mappings().first()
+            if processed is not None:
+                snippet_rows = (
+                    await session.execute(
+                        text(
+                            """
+                            select
+                              id,
+                              chunk_index,
+                              page_start,
+                              page_end,
+                              section_title,
+                              language,
+                              text,
+                              token_count,
+                              keywords,
+                              metadata_json
+                            from public.document_chunks
+                            where document_id = :document_id
+                            order by chunk_index
+                            limit :snippet_limit
+                            """
+                        ),
+                        {"document_id": document_id, "snippet_limit": snippet_limit},
+                    )
+                ).mappings().all()
+                snippet_count = (
+                    await session.execute(
+                        text(
+                            """
+                            select count(*)
+                            from public.document_chunks
+                            where document_id = :document_id
+                            """
+                        ),
+                        {"document_id": document_id},
+                    )
+                ).scalar_one()
+                return self._processed_detail_from_rows(
+                    processed,
+                    snippet_rows,
+                    snippet_count,
+                )
+
+        document = await self.get(document_id)
+        if document is None:
+            return None
+        return await self._crawled_detail(document, snippet_limit=snippet_limit)
 
     async def versions(self, document_id: UUID) -> list[DocumentVersionRead]:
         if not self.uses_database:
@@ -142,6 +247,124 @@ class DocumentRepository:
                 )
                 for asset in model.assets
             ]
+
+    async def _get_local_detail(
+        self,
+        document_id: UUID,
+        *,
+        snippet_limit: int,
+    ) -> DocumentDetailRead | None:
+        with self._lock:
+            document = self._documents.get(document_id)
+        if document is None:
+            return None
+        return await self._crawled_detail(document, snippet_limit=snippet_limit)
+
+    async def _crawled_detail(
+        self,
+        document: DocumentRead,
+        *,
+        snippet_limit: int,
+    ) -> DocumentDetailRead:
+        versions = await self.versions(document.id)
+        assets = await self.assets(document.id)
+        latest_version = max(versions, key=lambda item: item.version, default=None)
+        snippets: list[DocumentSnippetRead] = []
+        if latest_version is not None:
+            paragraphs = [
+                paragraph.strip()
+                for paragraph in latest_version.clean_markdown.split("\n\n")
+                if paragraph.strip()
+            ]
+            snippets = [
+                DocumentSnippetRead(
+                    chunk_id=latest_version.id,
+                    chunk_index=index,
+                    text_preview=_preview(paragraph),
+                    metadata=latest_version.metadata,
+                )
+                for index, paragraph in enumerate(paragraphs[:snippet_limit])
+            ]
+        source_url = assets[0].original_url if assets else document.canonical_url
+        return DocumentDetailRead(
+            document_id=document.id,
+            status=document.status.value,
+            approved=None,
+            uploaded_at=document.first_seen_at,
+            processed_at=document.last_seen_at,
+            summary=document.summary,
+            metadata=DocumentMetadataRead(
+                title=document.title,
+                summary=document.summary,
+                country_region=document.country,
+                year=document.start_year,
+                metadata=document.metadata,
+            ),
+            source=DocumentSourceInfoRead(
+                source_type="crawled_document",
+                source_url=source_url,
+            ),
+            snippets=snippets,
+            snippet_count=len(snippets),
+        )
+
+    @staticmethod
+    def _processed_detail_from_rows(
+        document_row,
+        snippet_rows,
+        snippet_count: int,
+    ) -> DocumentDetailRead:
+        metadata_json = document_row["metadata_json"] or {}
+        source_url = metadata_json.get("source_url") or metadata_json.get("url")
+        metadata = DocumentMetadataRead(
+            title=document_row["title"],
+            summary=document_row["summary"],
+            source_type=document_row["source_type"],
+            source_organisation=document_row["source_organisation"],
+            country_region=document_row["country_region"],
+            language=document_row["language"],
+            year=document_row["year"],
+            publication_date=document_row["publication_date"],
+            policy_areas=list(document_row["policy_areas"] or []),
+            keywords=list(document_row["keywords"] or []),
+            stakeholders=list(document_row["stakeholders"] or []),
+            implementation_risks=list(document_row["implementation_risks"] or []),
+            metadata=metadata_json,
+        )
+        return DocumentDetailRead(
+            document_id=document_row["id"],
+            status=document_row["status"],
+            approved=document_row["approved"],
+            uploaded_at=document_row["uploaded_at"],
+            processed_at=document_row["processed_at"],
+            summary=document_row["summary"],
+            metadata=metadata,
+            source=DocumentSourceInfoRead(
+                source_type=document_row["source_type"],
+                source_organisation=document_row["source_organisation"],
+                source_url=source_url,
+                original_filename=document_row["original_filename"],
+                mime_type=document_row["mime_type"],
+                file_size=document_row["file_size"],
+                access_level=document_row["access_level"],
+            ),
+            snippets=[
+                DocumentSnippetRead(
+                    chunk_id=row["id"],
+                    chunk_index=row["chunk_index"],
+                    page_start=row["page_start"],
+                    page_end=row["page_end"],
+                    section_title=row["section_title"],
+                    language=row["language"],
+                    text_preview=_preview(row["text"]),
+                    token_count=row["token_count"],
+                    keywords=list(row["keywords"] or []),
+                    metadata=row["metadata_json"] or {},
+                )
+                for row in snippet_rows
+            ],
+            snippet_count=snippet_count,
+        )
 
     def save_local(
         self,

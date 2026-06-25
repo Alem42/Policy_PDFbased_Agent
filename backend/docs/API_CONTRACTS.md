@@ -4,8 +4,9 @@ Current skeleton endpoints:
 
 - `GET /api/v1/health`
 - `GET /api/v1/documents`
-- `GET /api/v1/documents/{document_id}`
-- `GET /api/v1/documents/{document_id}/chunks`
+- `GET /api/v1/documents/{document_id}` returns a document detail payload with
+  metadata, summary, source information, snippet previews, and total snippet count.
+- `GET /api/v1/documents/{document_id}/chunks` returns available snippet previews.
 - `POST /api/v1/admin/documents`
 - `PATCH /api/v1/admin/documents/{document_id}`
 - `DELETE /api/v1/admin/documents/{document_id}`

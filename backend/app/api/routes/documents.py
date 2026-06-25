@@ -1,8 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas.document import DocumentAssetRead, DocumentRead, DocumentVersionRead
+from app.schemas.document import (
+    DocumentAssetRead,
+    DocumentDetailRead,
+    DocumentRead,
+    DocumentSnippetRead,
+    DocumentVersionRead,
+)
 from app.services.document_repository import document_repository
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -15,12 +21,29 @@ async def list_documents(
     return await document_repository.list_documents(source_id)
 
 
-@router.get("/{document_id}", response_model=DocumentRead)
-async def get_document(document_id: UUID) -> DocumentRead:
-    document = await document_repository.get(document_id)
+@router.get("/{document_id}", response_model=DocumentDetailRead)
+async def get_document(
+    document_id: UUID,
+    snippet_limit: int = Query(default=8, ge=0, le=50),
+) -> DocumentDetailRead:
+    document = await document_repository.get_detail(
+        document_id,
+        snippet_limit=snippet_limit,
+    )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
+
+
+@router.get("/{document_id}/chunks", response_model=list[DocumentSnippetRead])
+async def list_document_chunks(
+    document_id: UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[DocumentSnippetRead]:
+    document = await document_repository.get_detail(document_id, snippet_limit=limit)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document.snippets
 
 
 @router.get("/{document_id}/versions", response_model=list[DocumentVersionRead])
