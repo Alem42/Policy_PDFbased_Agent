@@ -6,6 +6,9 @@ from app.models.entities import (
     CrawledDocumentVersionModel,
     CrawlErrorModel,
     CrawlJobModel,
+    DocumentChunkModel,
+    DocumentMetadataModel,
+    DocumentModel,
     SourceModel,
 )
 
@@ -15,5 +18,8 @@ __all__ = [
     "CrawledDocumentVersionModel",
     "CrawlErrorModel",
     "CrawlJobModel",
+    "DocumentChunkModel",
+    "DocumentMetadataModel",
+    "DocumentModel",
     "SourceModel",
 ]

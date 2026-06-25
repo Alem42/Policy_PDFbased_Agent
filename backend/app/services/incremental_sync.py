@@ -21,11 +21,14 @@ from app.schemas.document import (
     DocumentVersionRead,
     IncrementalSyncStats,
 )
-from app.services.document_repository import DocumentRepository, document_repository
+from app.services.crawled_document_repository import (
+    CrawledDocumentRepository,
+    crawled_document_repository,
+)
 
 
 class IncrementalSyncService:
-    def __init__(self, repository: DocumentRepository) -> None:
+    def __init__(self, repository: CrawledDocumentRepository) -> None:
         self.repository = repository
 
     async def sync(
@@ -363,4 +366,4 @@ def calculate_content_hash(document: CrawledDocument) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-incremental_sync_service = IncrementalSyncService(document_repository)
+incremental_sync_service = IncrementalSyncService(crawled_document_repository)

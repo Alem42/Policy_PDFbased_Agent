@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query
 from app.schemas.document import (
     DocumentAssetRead,
     DocumentDetailRead,
-    DocumentRead,
     DocumentSearchResultRead,
     DocumentSnippetRead,
     DocumentVersionRead,
@@ -15,11 +14,11 @@ from app.services.document_repository import document_repository
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.get("", response_model=list[DocumentRead])
+@router.get("", response_model=list[DocumentSearchResultRead])
 async def list_documents(
-    source_id: UUID | None = None,
-) -> list[DocumentRead]:
-    return await document_repository.list_documents(source_id)
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[DocumentSearchResultRead]:
+    return await document_repository.list_documents(limit=limit)
 
 
 @router.get("/search", response_model=list[DocumentSearchResultRead])
@@ -49,21 +48,23 @@ async def list_document_chunks(
     document_id: UUID,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[DocumentSnippetRead]:
-    document = await document_repository.get_detail(document_id, snippet_limit=limit)
-    if document is None:
+    chunks = await document_repository.chunks(document_id, limit=limit)
+    if chunks is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return document.snippets
+    return chunks
 
 
 @router.get("/{document_id}/versions", response_model=list[DocumentVersionRead])
 async def list_document_versions(document_id: UUID) -> list[DocumentVersionRead]:
-    if await document_repository.get(document_id) is None:
+    versions = await document_repository.versions(document_id)
+    if versions is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return await document_repository.versions(document_id)
+    return versions
 
 
 @router.get("/{document_id}/assets", response_model=list[DocumentAssetRead])
 async def list_document_assets(document_id: UUID) -> list[DocumentAssetRead]:
-    if await document_repository.get(document_id) is None:
+    assets = await document_repository.assets(document_id)
+    if assets is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return await document_repository.assets(document_id)
+    return assets

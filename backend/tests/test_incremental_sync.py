@@ -3,12 +3,12 @@ from uuid import uuid4
 
 from app.crawlers.base import CrawledDocument
 from app.schemas.document import DocumentStatus
-from app.services.document_repository import DocumentRepository
+from app.services.crawled_document_repository import CrawledDocumentRepository
 from app.services.incremental_sync import IncrementalSyncService
 
 
 async def test_incremental_add_unchanged_update_and_missing(tmp_path: Path) -> None:
-    repository = DocumentRepository(tmp_path / "documents.json")
+    repository = CrawledDocumentRepository(tmp_path / "documents.json")
     service = IncrementalSyncService(repository)
     source_id = uuid4()
 
@@ -41,12 +41,12 @@ async def test_incremental_add_unchanged_update_and_missing(tmp_path: Path) -> N
 async def test_repository_survives_restart(tmp_path: Path) -> None:
     path = tmp_path / "documents.json"
     source_id = uuid4()
-    first_repository = DocumentRepository(path)
+    first_repository = CrawledDocumentRepository(path)
     await IncrementalSyncService(first_repository).sync(
         source_id,
         [CrawledDocument(url="https://example.com/policy/1", markdown="content")],
     )
 
-    reloaded_repository = DocumentRepository(path)
+    reloaded_repository = CrawledDocumentRepository(path)
 
     assert len(await reloaded_repository.list_documents(source_id)) == 1

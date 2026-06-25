@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     ARRAY,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -201,6 +202,77 @@ class CrawledDocumentAssetModel(UUIDPrimaryKeyMixin, Base):
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
     document: Mapped[CrawledDocumentModel] = relationship(back_populates="assets")
+
+
+class DocumentModel(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "documents"
+
+    original_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    stored_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    approved: Mapped[bool | None] = mapped_column(Boolean)
+    access_level: Mapped[str | None] = mapped_column(Text)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    metadata_record: Mapped["DocumentMetadataModel | None"] = relationship(
+        back_populates="document",
+        uselist=False,
+    )
+    chunks: Mapped[list["DocumentChunkModel"]] = relationship(back_populates="document")
+
+
+class DocumentMetadataModel(Base):
+    __tablename__ = "document_metadata"
+
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    title: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[str | None] = mapped_column(Text)
+    source_organisation: Mapped[str | None] = mapped_column(Text)
+    country_region: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[str | None] = mapped_column(Text)
+    year: Mapped[int | None] = mapped_column(Integer)
+    publication_date: Mapped[date | None] = mapped_column(Date)
+    policy_areas: Mapped[str | None] = mapped_column(Text)
+    keywords: Mapped[str | None] = mapped_column(Text)
+    stakeholders: Mapped[str | None] = mapped_column(Text)
+    implementation_risks: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    generated_by_model: Mapped[str | None] = mapped_column(Text)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    document: Mapped[DocumentModel] = relationship(back_populates="metadata_record")
+
+
+class DocumentChunkModel(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "document_chunks"
+    __table_args__ = (Index("document_chunks_document_idx", "document_id", "chunk_index"),)
+
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
+    section_title: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[int | None] = mapped_column(Integer)
+    keywords: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    document: Mapped[DocumentModel] = relationship(back_populates="chunks")
 
 
 class CrawlErrorModel(Base):
