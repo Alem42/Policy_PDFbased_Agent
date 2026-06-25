@@ -15,8 +15,10 @@ class ChatFilters(BaseModel):
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1)
     document_ids: list[UUID] = Field(default_factory=list)
+    filenames: list[str] = Field(default_factory=list)
     filters: ChatFilters = Field(default_factory=ChatFilters)
     top_k: int = Field(default=6, ge=1, le=20)
+    model: str | None = None
 
 
 class Citation(BaseModel):
@@ -31,6 +33,7 @@ class Citation(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
+    truncated: bool = False
 
 
 class DocumentChunkRead(BaseModel):
