@@ -6,6 +6,7 @@ from app.schemas.document import (
     DocumentAssetRead,
     DocumentDetailRead,
     DocumentRead,
+    DocumentSearchResultRead,
     DocumentSnippetRead,
     DocumentVersionRead,
 )
@@ -19,6 +20,14 @@ async def list_documents(
     source_id: UUID | None = None,
 ) -> list[DocumentRead]:
     return await document_repository.list_documents(source_id)
+
+
+@router.get("/search", response_model=list[DocumentSearchResultRead])
+async def search_documents(
+    q: str = Query(min_length=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[DocumentSearchResultRead]:
+    return await document_repository.search_documents(q, limit=limit)
 
 
 @router.get("/{document_id}", response_model=DocumentDetailRead)

@@ -107,6 +107,22 @@ class DocumentDetailRead(BaseModel):
     snippet_count: int = 0
 
 
+class DocumentSearchResultRead(BaseModel):
+    document_id: UUID
+    original_filename: str
+    title: str | None = None
+    summary: str | None = None
+    source_organisation: str | None = None
+    country_region: str | None = None
+    year: int | None = None
+    keywords: list[str] = Field(default_factory=list)
+    status: str
+    approved: bool | None = None
+    uploaded_at: datetime | None = None
+    processed_at: datetime | None = None
+    match_fields: list[str] = Field(default_factory=list)
+
+
 class IncrementalSyncStats(BaseModel):
     added: int = 0
     updated: int = 0

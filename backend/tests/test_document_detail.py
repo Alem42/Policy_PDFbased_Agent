@@ -65,3 +65,44 @@ def test_document_chunks_returns_available_snippets() -> None:
         "Excerpt one.",
         "Excerpt two.",
     ]
+
+
+def test_search_documents_matches_filename() -> None:
+    source_id = uuid4()
+    document = DocumentRead(
+        source_id=source_id,
+        canonical_url="https://example.org/files/unique-filename-strategy.pdf",
+        title="Filename Search Policy",
+        content_hash="c" * 64,
+    )
+    document_repository.save_local(document, persist=False)
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/documents/search?q=unique-filename")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["document_id"] == str(document.id)
+    assert payload[0]["original_filename"] == "unique-filename-strategy.pdf"
+    assert "filename" in payload[0]["match_fields"]
+
+
+def test_search_documents_matches_keywords() -> None:
+    source_id = uuid4()
+    document = DocumentRead(
+        source_id=source_id,
+        canonical_url="https://example.org/files/keyword-policy.pdf",
+        title="Keyword Search Policy",
+        content_hash="d" * 64,
+        metadata={"keywords": ["frontier governance marker"]},
+    )
+    document_repository.save_local(document, persist=False)
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/documents/search?q=frontier%20governance")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["document_id"] == str(document.id)
+    assert payload[0]["keywords"] == ["frontier governance marker"]
+    assert "keywords" in payload[0]["match_fields"]

@@ -14,6 +14,7 @@ from app.schemas.document import (
     DocumentDetailRead,
     DocumentMetadataRead,
     DocumentRead,
+    DocumentSearchResultRead,
     DocumentSnippetRead,
     DocumentSourceInfoRead,
     DocumentVersionRead,
@@ -46,6 +47,27 @@ def _preview(text_value: str, max_length: int = 500) -> str:
     if len(normalized) <= max_length:
         return normalized
     return f"{normalized[: max_length - 3].rstrip()}..."
+
+
+def _matches_query(value: object, query: str) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, list):
+        return any(_matches_query(item, query) for item in value)
+    if isinstance(value, dict):
+        return any(
+            _matches_query(key, query) or _matches_query(item, query)
+            for key, item in value.items()
+        )
+    return query in str(value).lower()
+
+
+def _string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
 
 
 class DocumentRepository:
@@ -85,6 +107,88 @@ class DocumentRepository:
                 statement = statement.where(CrawledDocumentModel.source_id == source_id)
             models = (await session.scalars(statement)).all()
             return [document_model_to_schema(model) for model in models]
+
+    async def search_documents(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+    ) -> list[DocumentSearchResultRead]:
+        normalized_query = query.strip().lower()
+        if not normalized_query:
+            return []
+        if not self.uses_database:
+            return self._search_local_documents(normalized_query, limit=limit)
+
+        factory = self.session_factory()
+        async with factory() as session:
+            pattern = f"%{normalized_query}%"
+            rows = (
+                await session.execute(
+                    text(
+                        """
+                        select
+                          d.id,
+                          d.original_filename,
+                          d.status,
+                          d.approved,
+                          d.uploaded_at,
+                          d.processed_at,
+                          m.title,
+                          m.summary,
+                          m.source_organisation,
+                          m.country_region,
+                          m.year,
+                          m.keywords,
+                          array_remove(array[
+                            case when lower(d.original_filename) like :pattern
+                              then 'filename' end,
+                            case when lower(coalesce(m.title, '')) like :pattern
+                              then 'title' end,
+                            case when lower(coalesce(m.summary, '')) like :pattern
+                              then 'summary' end,
+                            case when exists (
+                              select 1
+                              from unnest(coalesce(m.keywords, array[]::text[])) keyword
+                              where lower(keyword) like :pattern
+                            ) then 'keywords' end
+                          ], null) as match_fields
+                        from public.documents d
+                        left join public.document_metadata m on m.document_id = d.id
+                        where
+                          lower(d.original_filename) like :pattern
+                          or lower(coalesce(m.title, '')) like :pattern
+                          or lower(coalesce(m.summary, '')) like :pattern
+                          or exists (
+                            select 1
+                            from unnest(coalesce(m.keywords, array[]::text[])) keyword
+                            where lower(keyword) like :pattern
+                          )
+                        order by d.uploaded_at desc
+                        limit :limit
+                        """
+                    ),
+                    {"pattern": pattern, "limit": limit},
+                )
+            ).mappings().all()
+        return [
+            DocumentSearchResultRead(
+                document_id=row["id"],
+                original_filename=row["original_filename"],
+                title=row["title"],
+                summary=row["summary"],
+                source_organisation=row["source_organisation"],
+                country_region=row["country_region"],
+                year=row["year"],
+                keywords=list(row["keywords"] or []),
+                status=row["status"],
+                approved=row["approved"],
+                uploaded_at=row["uploaded_at"],
+                processed_at=row["processed_at"],
+                match_fields=list(row["match_fields"] or []),
+            )
+            for row in rows
+        ]
 
     async def get(self, document_id: UUID) -> DocumentRead | None:
         if not self.uses_database:
@@ -365,6 +469,54 @@ class DocumentRepository:
             ],
             snippet_count=snippet_count,
         )
+
+    def _search_local_documents(
+        self,
+        query: str,
+        *,
+        limit: int,
+    ) -> list[DocumentSearchResultRead]:
+        with self._lock:
+            documents = sorted(
+                self._documents.values(),
+                key=lambda item: item.last_seen_at,
+                reverse=True,
+            )
+        results: list[DocumentSearchResultRead] = []
+        for document in documents:
+            match_fields = []
+            if _matches_query(document.canonical_url, query):
+                match_fields.append("filename")
+            if _matches_query(document.title, query):
+                match_fields.append("title")
+            if _matches_query(document.summary, query):
+                match_fields.append("summary")
+            if _matches_query(document.metadata.get("keywords"), query) or _matches_query(
+                document.metadata,
+                query,
+            ):
+                match_fields.append("keywords")
+            if not match_fields:
+                continue
+            results.append(
+                DocumentSearchResultRead(
+                    document_id=document.id,
+                    original_filename=document.canonical_url.rsplit("/", 1)[-1],
+                    title=document.title,
+                    summary=document.summary,
+                    country_region=document.country,
+                    year=document.start_year,
+                    keywords=_string_list(document.metadata.get("keywords")),
+                    status=document.status.value,
+                    approved=None,
+                    uploaded_at=document.first_seen_at,
+                    processed_at=document.last_seen_at,
+                    match_fields=match_fields,
+                )
+            )
+            if len(results) >= limit:
+                break
+        return results
 
     def save_local(
         self,
