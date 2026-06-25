@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Backend local configuration and runtime data
+backend/.env
+backend/data/
+
+# Node/Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Logs and local editor state
+*.log
+.DS_Store
+.vscode/
+.idea/
