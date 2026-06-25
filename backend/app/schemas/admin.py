@@ -36,6 +36,8 @@ class AdminDocumentMetadataUpdate(BaseModel):
     published_year: int | None = None
     tags: list[str] | None = None
     credibility_level: CredibilityLevel | None = None
+    approved: bool | None = None
+    access_level: str | None = None
 
 
 class DocumentProcessingStatus(BaseModel):
