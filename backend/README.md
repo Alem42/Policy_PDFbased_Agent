@@ -1,8 +1,11 @@
 # Policy in Action Library Backend
 
-This is the initial backend skeleton for the Policy in Action Library project.
+This is the backend skeleton for the Policy in Action Library project.
 
-The goal of this folder is to provide a clean `master` baseline for modular team development. Most endpoints are placeholders returning `501 Not Implemented`; each teammate can implement one module in their own feature branch.
+The Demo1 PDF/RAG backend has been migrated into this modular structure. Auth,
+document management, ingestion, local pgvector retrieval, LangGraph chat, and
+LLM settings now live under `app/` routes and services. Crawler endpoints remain
+as placeholders for a future feature branch.
 
 ## MVP Modules
 
@@ -36,6 +39,28 @@ cd backend
 pytest
 ruff check app tests
 ```
+
+## Local Database
+
+The migrated backend uses local PostgreSQL with pgvector by default:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/policy_library
+DATABASE_ENABLED=true
+LLM_API_KEY=your_llm_api_key_here
+LLM_CHAT_MODEL=deepseek-v4-flash
+LLM_BASE_URL=https://api.deepseek.com
+APP_SECRET=replace-for-local-development
+```
+
+The local schema is maintained in:
+
+```text
+supabase/local_schema.sql
+```
+
+If `DATABASE_ENABLED=false`, the app can still start for health checks and
+contract tests; database-backed endpoints initialise the schema when used.
 
 ## Suggested Branches
 
