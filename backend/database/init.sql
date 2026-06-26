@@ -34,7 +34,7 @@ $$;
 
 do $$
 begin
-  create type public.document_status as enum (
+  create type public.crawled_document_status as enum (
     'active',
     'missing'
   );
@@ -100,7 +100,7 @@ create table if not exists public.crawled_documents (
   end_year integer check (end_year is null or end_year between 1800 and 2200),
   content_hash text not null check (char_length(content_hash) = 64),
   current_version integer not null default 1 check (current_version >= 1),
-  status public.document_status not null default 'active',
+  status public.crawled_document_status not null default 'active',
   first_seen_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
   missing_since timestamptz,

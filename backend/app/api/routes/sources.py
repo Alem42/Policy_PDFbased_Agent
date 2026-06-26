@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.schemas.source import SourceCreate, SourceRead, SourceUpdate
 from app.repositories.source_repository import source_repository
+from app.schemas.source import SourceCreate, SourceRead, SourceUpdate
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 

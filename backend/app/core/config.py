@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     database_enabled: bool = False
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy"
     persistence_backend: str = "database"
-    document_store_path: Path = Path("data/state/documents.json")
+    crawled_document_store_path: Path = Path("data/state/crawled_documents.json")
     attachment_download_dir: Path = Path("data/attachments")
 
     firecrawl_api_key: str | None = None

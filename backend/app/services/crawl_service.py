@@ -3,12 +3,12 @@ from uuid import UUID
 
 from app.core.config import get_settings
 from app.crawlers.selector import crawler_selector
-from app.schemas.document import IncrementalSyncStats
+from app.repositories.job_repository import job_repository
+from app.repositories.source_repository import source_repository
+from app.schemas.crawled_document import IncrementalSyncStats
 from app.schemas.job import CrawlJobStatus
 from app.services.attachment_downloader import attachment_downloader
 from app.services.incremental_sync import incremental_sync_service
-from app.repositories.job_repository import job_repository
-from app.repositories.source_repository import source_repository
 
 
 class CrawlService:

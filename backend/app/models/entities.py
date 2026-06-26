@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.schemas.document import DocumentStatus
+from app.schemas.crawled_document import CrawledDocumentStatus
 from app.schemas.job import CrawlJobStatus
 from app.schemas.source import CrawlerPreference
 
@@ -49,7 +49,9 @@ class SourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="source")
-    documents: Mapped[list["CrawledDocumentModel"]] = relationship(back_populates="source")
+    crawled_documents: Mapped[list["CrawledDocumentModel"]] = relationship(
+        back_populates="source"
+    )
 
 
 class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
@@ -121,14 +123,14 @@ class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     end_year: Mapped[int | None] = mapped_column(Integer)
     content_hash: Mapped[str] = mapped_column(Text, nullable=False)
     current_version: Mapped[int] = mapped_column(Integer, default=1)
-    status: Mapped[DocumentStatus] = mapped_column(
+    status: Mapped[CrawledDocumentStatus] = mapped_column(
         Enum(
-            DocumentStatus,
-            name="document_status",
+            CrawledDocumentStatus,
+            name="crawled_document_status",
             values_callable=lambda enum: [item.value for item in enum],
             create_constraint=False,
         ),
-        default=DocumentStatus.ACTIVE,
+        default=CrawledDocumentStatus.ACTIVE,
     )
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -137,9 +139,13 @@ class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
-    source: Mapped[SourceModel] = relationship(back_populates="documents")
-    versions: Mapped[list["CrawledDocumentVersionModel"]] = relationship(back_populates="document")
-    assets: Mapped[list["CrawledDocumentAssetModel"]] = relationship(back_populates="document")
+    source: Mapped[SourceModel] = relationship(back_populates="crawled_documents")
+    versions: Mapped[list["CrawledDocumentVersionModel"]] = relationship(
+        back_populates="crawled_document"
+    )
+    assets: Mapped[list["CrawledDocumentAssetModel"]] = relationship(
+        back_populates="crawled_document"
+    )
 
 
 class CrawledDocumentVersionModel(UUIDPrimaryKeyMixin, Base):
@@ -170,7 +176,7 @@ class CrawledDocumentVersionModel(UUIDPrimaryKeyMixin, Base):
         server_default=func.now(),
     )
 
-    document: Mapped[CrawledDocumentModel] = relationship(back_populates="versions")
+    crawled_document: Mapped[CrawledDocumentModel] = relationship(back_populates="versions")
 
 
 class CrawledDocumentAssetModel(UUIDPrimaryKeyMixin, Base):
@@ -201,7 +207,7 @@ class CrawledDocumentAssetModel(UUIDPrimaryKeyMixin, Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
-    document: Mapped[CrawledDocumentModel] = relationship(back_populates="assets")
+    crawled_document: Mapped[CrawledDocumentModel] = relationship(back_populates="assets")
 
 
 class DocumentModel(UUIDPrimaryKeyMixin, Base):

@@ -111,7 +111,7 @@ class DocumentRepository:
                               then 'title' end,
                             case when lower(coalesce(m.summary, '')) like :pattern
                               then 'summary' end,
-                            case when lower(coalesce(m.keywords, '')) like :pattern
+                            case when lower(coalesce(m.keywords::text, '')) like :pattern
                               then 'keywords' end
                           ], null) as match_fields
                         from public.documents d
@@ -120,7 +120,7 @@ class DocumentRepository:
                           lower(d.original_filename) like :pattern
                           or lower(coalesce(m.title, '')) like :pattern
                           or lower(coalesce(m.summary, '')) like :pattern
-                          or lower(coalesce(m.keywords, '')) like :pattern
+                          or lower(coalesce(m.keywords::text, '')) like :pattern
                         order by d.uploaded_at desc
                         limit :limit
                         """

@@ -14,16 +14,16 @@ from app.models import (
     CrawledDocumentModel,
     CrawledDocumentVersionModel,
 )
-from app.schemas.document import (
-    DocumentAssetRead,
-    DocumentRead,
-    DocumentStatus,
-    DocumentVersionRead,
-    IncrementalSyncStats,
-)
 from app.repositories.crawled_document_repository import (
     CrawledDocumentRepository,
     crawled_document_repository,
+)
+from app.schemas.crawled_document import (
+    CrawledDocumentAssetRead,
+    CrawledDocumentRead,
+    CrawledDocumentStatus,
+    CrawledDocumentVersionRead,
+    IncrementalSyncStats,
 )
 
 
@@ -99,7 +99,7 @@ class IncrementalSyncService:
                         end_year=structured.get("end_year"),
                         content_hash=content_hash,
                         current_version=1,
-                        status=DocumentStatus.ACTIVE,
+                        status=CrawledDocumentStatus.ACTIVE,
                         first_seen_at=now,
                         last_seen_at=now,
                         metadata_=crawled.metadata,
@@ -112,7 +112,7 @@ class IncrementalSyncService:
                     stats.added += 1
                 elif existing.content_hash == content_hash:
                     existing.last_seen_at = now
-                    existing.status = DocumentStatus.ACTIVE
+                    existing.status = CrawledDocumentStatus.ACTIVE
                     existing.missing_since = None
                     stats.unchanged += 1
                 else:
@@ -124,7 +124,7 @@ class IncrementalSyncService:
                     existing.end_year = structured.get("end_year")
                     existing.content_hash = content_hash
                     existing.current_version += 1
-                    existing.status = DocumentStatus.ACTIVE
+                    existing.status = CrawledDocumentStatus.ACTIVE
                     existing.last_seen_at = now
                     existing.missing_since = None
                     existing.metadata_ = crawled.metadata
@@ -140,14 +140,14 @@ class IncrementalSyncService:
 
             if mark_missing:
                 now = datetime.now(UTC)
-                for document in existing_models:
-                    if (
-                        document.canonical_url not in seen_urls
-                        and document.status == DocumentStatus.ACTIVE
-                    ):
-                        document.status = DocumentStatus.MISSING
-                        document.missing_since = now
-                        stats.missing += 1
+            for crawled_document in existing_models:
+                if (
+                    crawled_document.canonical_url not in seen_urls
+                    and crawled_document.status == CrawledDocumentStatus.ACTIVE
+                ):
+                    crawled_document.status = CrawledDocumentStatus.MISSING
+                    crawled_document.missing_since = now
+                    stats.missing += 1
 
             await session.commit()
         return stats
@@ -161,9 +161,9 @@ class IncrementalSyncService:
     ) -> IncrementalSyncStats:
         stats = IncrementalSyncStats()
         seen_urls: set[str] = set()
-        existing_documents = {
+        existing_crawled_documents = {
             item.canonical_url: item
-            for item in self.repository._documents.values()
+            for item in self.repository._crawled_documents.values()
             if item.source_id == source_id
         }
 
@@ -173,12 +173,12 @@ class IncrementalSyncService:
                 continue
             seen_urls.add(canonical_url)
             content_hash = calculate_content_hash(crawled)
-            existing = existing_documents.get(canonical_url)
+            existing = existing_crawled_documents.get(canonical_url)
             now = datetime.now(UTC)
             structured = crawled.metadata.get("structured", {})
 
             if existing is None:
-                document = DocumentRead(
+                crawled_document_record = CrawledDocumentRead(
                     source_id=source_id,
                     canonical_url=canonical_url,
                     title=crawled.title,
@@ -192,35 +192,35 @@ class IncrementalSyncService:
                     first_seen_at=now,
                     last_seen_at=now,
                 )
-                version = self._local_version(document, crawled)
-                assets = self._local_assets(document.id, crawled)
+                version = self._local_version(crawled_document_record, crawled)
+                assets = self._local_assets(crawled_document_record.id, crawled)
                 self.repository.save_local(
-                    document,
+                    crawled_document_record,
                     version,
                     assets,
                     persist=False,
                 )
-                existing_documents[canonical_url] = document
+                existing_crawled_documents[canonical_url] = crawled_document_record
                 stats.added += 1
                 continue
 
             if existing.content_hash == content_hash:
-                document = existing.model_copy(
+                crawled_document_record = existing.model_copy(
                     update={
                         "last_seen_at": now,
-                        "status": DocumentStatus.ACTIVE,
+                        "status": CrawledDocumentStatus.ACTIVE,
                         "missing_since": None,
                     }
                 )
                 self.repository.save_local(
-                    document,
-                    assets=self._local_assets(document.id, crawled),
+                    crawled_document_record,
+                    assets=self._local_assets(crawled_document_record.id, crawled),
                     persist=False,
                 )
                 stats.unchanged += 1
                 continue
 
-            document = existing.model_copy(
+            crawled_document_record = existing.model_copy(
                 update={
                     "title": crawled.title,
                     "summary": structured.get("summary"),
@@ -230,30 +230,30 @@ class IncrementalSyncService:
                     "end_year": structured.get("end_year"),
                     "content_hash": content_hash,
                     "current_version": existing.current_version + 1,
-                    "status": DocumentStatus.ACTIVE,
+                    "status": CrawledDocumentStatus.ACTIVE,
                     "last_seen_at": now,
                     "missing_since": None,
                     "metadata": crawled.metadata,
                 }
             )
             self.repository.save_local(
-                document,
-                self._local_version(document, crawled),
-                self._local_assets(document.id, crawled),
+                crawled_document_record,
+                self._local_version(crawled_document_record, crawled),
+                self._local_assets(crawled_document_record.id, crawled),
                 persist=False,
             )
             stats.updated += 1
 
         if mark_missing:
-            for document in list(existing_documents.values()):
+            for crawled_document_record in list(existing_crawled_documents.values()):
                 if (
-                    document.canonical_url not in seen_urls
-                    and document.status == DocumentStatus.ACTIVE
+                    crawled_document_record.canonical_url not in seen_urls
+                    and crawled_document_record.status == CrawledDocumentStatus.ACTIVE
                 ):
                     self.repository.save_local(
-                        document.model_copy(
+                        crawled_document_record.model_copy(
                             update={
-                                "status": DocumentStatus.MISSING,
+                                "status": CrawledDocumentStatus.MISSING,
                                 "missing_since": datetime.now(UTC),
                             }
                         ),
@@ -266,15 +266,15 @@ class IncrementalSyncService:
 
     @staticmethod
     def _database_version(
-        document: CrawledDocumentModel,
+        crawled_document_record: CrawledDocumentModel,
         crawled: CrawledDocument,
         crawl_job_id: UUID | None,
     ) -> CrawledDocumentVersionModel:
         return CrawledDocumentVersionModel(
-            document_id=document.id,
+            document_id=crawled_document_record.id,
             crawl_job_id=crawl_job_id,
-            version=document.current_version,
-            content_hash=document.content_hash,
+            version=crawled_document_record.current_version,
+            content_hash=crawled_document_record.content_hash,
             title=crawled.title,
             clean_markdown=crawled.markdown or "",
             metadata_=crawled.metadata,
@@ -283,7 +283,7 @@ class IncrementalSyncService:
     @staticmethod
     def _merge_database_assets(
         session: AsyncSession,
-        document: CrawledDocumentModel,
+        crawled_document_record: CrawledDocumentModel,
         crawled: CrawledDocument,
         existing: set[str],
     ) -> None:
@@ -293,7 +293,7 @@ class IncrementalSyncService:
                 continue
             session.add(
                 CrawledDocumentAssetModel(
-                    document_id=document.id,
+                    document_id=crawled_document_record.id,
                     asset_type=raw.get("asset_type", "link"),
                     original_url=url,
                     title=raw.get("title"),
@@ -305,13 +305,13 @@ class IncrementalSyncService:
 
     @staticmethod
     def _local_version(
-        document: DocumentRead,
+        crawled_document_record: CrawledDocumentRead,
         crawled: CrawledDocument,
-    ) -> DocumentVersionRead:
-        return DocumentVersionRead(
-            document_id=document.id,
-            version=document.current_version,
-            content_hash=document.content_hash,
+    ) -> CrawledDocumentVersionRead:
+        return CrawledDocumentVersionRead(
+            crawled_document_id=crawled_document_record.id,
+            version=crawled_document_record.current_version,
+            content_hash=crawled_document_record.content_hash,
             title=crawled.title,
             clean_markdown=crawled.markdown or "",
             metadata=crawled.metadata,
@@ -319,12 +319,12 @@ class IncrementalSyncService:
 
     @staticmethod
     def _local_assets(
-        document_id: UUID,
+        crawled_document_id: UUID,
         crawled: CrawledDocument,
-    ) -> list[DocumentAssetRead]:
+    ) -> list[CrawledDocumentAssetRead]:
         return [
-            DocumentAssetRead(
-                document_id=document_id,
+            CrawledDocumentAssetRead(
+                crawled_document_id=crawled_document_id,
                 asset_type=raw.get("asset_type", "link"),
                 original_url=raw["url"],
                 title=raw.get("title"),

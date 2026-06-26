@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.repositories.document_repository import document_repository
 from app.schemas.document import (
     DocumentAssetRead,
     DocumentDetailRead,
@@ -9,7 +10,6 @@ from app.schemas.document import (
     DocumentSnippetRead,
     DocumentVersionRead,
 )
-from app.repositories.document_repository import document_repository
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
