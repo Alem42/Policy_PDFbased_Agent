@@ -4,8 +4,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.schemas.job import CrawlJobCreate, CrawlJobRead
 from app.services.crawl_service import crawl_service
-from app.services.job_repository import job_repository
-from app.services.source_repository import source_repository
+from app.repositories.job_repository import job_repository
+from app.repositories.source_repository import source_repository
 
 router = APIRouter(prefix="/crawl-jobs", tags=["crawl jobs"])
 

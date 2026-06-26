@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import database
-from app.services.job_repository import job_repository
+from app.repositories.job_repository import job_repository
 
 
 @asynccontextmanager

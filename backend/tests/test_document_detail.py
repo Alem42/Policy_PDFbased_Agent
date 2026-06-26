@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.document import DocumentRead, DocumentVersionRead
-from app.services.document_repository import document_repository
+from app.repositories.document_repository import document_repository
 
 
 def test_document_detail_includes_metadata_source_and_snippets() -> None:

@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.source import SourceCreate, SourceRead, SourceUpdate
-from app.services.source_repository import source_repository
+from app.repositories.source_repository import source_repository
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 

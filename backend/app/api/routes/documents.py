@@ -9,7 +9,7 @@ from app.schemas.document import (
     DocumentSnippetRead,
     DocumentVersionRead,
 )
-from app.services.document_repository import document_repository
+from app.repositories.document_repository import document_repository
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 

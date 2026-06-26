@@ -21,7 +21,7 @@ from app.schemas.document import (
     DocumentVersionRead,
     IncrementalSyncStats,
 )
-from app.services.crawled_document_repository import (
+from app.repositories.crawled_document_repository import (
     CrawledDocumentRepository,
     crawled_document_repository,
 )

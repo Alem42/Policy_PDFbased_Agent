@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from app.crawlers.base import CrawledDocument
 from app.schemas.document import DocumentStatus
-from app.services.crawled_document_repository import CrawledDocumentRepository
+from app.repositories.crawled_document_repository import CrawledDocumentRepository
 from app.services.incremental_sync import IncrementalSyncService
 
 
