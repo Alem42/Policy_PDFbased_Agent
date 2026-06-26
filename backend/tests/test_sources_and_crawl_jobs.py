@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_create_source_and_dry_run_job() -> None:
+def test_create_source_and_dry_run_crawl_job() -> None:
     with TestClient(app) as client:
         source_response = client.post(
             "/api/v1/sources",
@@ -21,10 +21,10 @@ def test_create_source_and_dry_run_job() -> None:
         )
         assert source_response.status_code == 201
 
-        job_response = client.post(
+        crawl_job_response = client.post(
             "/api/v1/crawl-jobs",
             json={"source_id": source_response.json()["id"], "dry_run": True},
         )
 
-    assert job_response.status_code == 202
-    assert job_response.json()["source_id"] == source_response.json()["id"]
+    assert crawl_job_response.status_code == 202
+    assert crawl_job_response.json()["source_id"] == source_response.json()["id"]

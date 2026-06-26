@@ -19,8 +19,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.schemas.crawl_job import CrawlJobStatus
 from app.schemas.crawled_document import CrawledDocumentStatus
-from app.schemas.job import CrawlJobStatus
 from app.schemas.source import CrawlerPreference
 
 
@@ -48,7 +48,7 @@ class SourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schedule: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="source")
+    crawl_jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="source")
     crawled_documents: Mapped[list["CrawledDocumentModel"]] = relationship(
         back_populates="source"
     )
@@ -95,7 +95,7 @@ class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    source: Mapped[SourceModel] = relationship(back_populates="jobs")
+    source: Mapped[SourceModel] = relationship(back_populates="crawl_jobs")
 
 
 class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
