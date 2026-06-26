@@ -28,7 +28,10 @@ class Database:
         if not settings.database_enabled:
             self.status = "disabled"
             return
-        self.engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        self.engine = create_async_engine(
+            settings.database_url,
+            pool_pre_ping=settings.database_pool_pre_ping,
+        )
         self.session_factory = async_sessionmaker(
             self.engine,
             expire_on_commit=False,

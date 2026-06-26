@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     database_enabled: bool = False
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy"
+    database_pool_pre_ping: bool = False
     persistence_backend: str = "database"
     crawled_document_store_path: Path = Path("data/state/crawled_documents.json")
     attachment_download_dir: Path = Path("data/attachments")

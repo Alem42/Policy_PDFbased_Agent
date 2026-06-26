@@ -219,7 +219,12 @@ class DocumentRepository:
                           m.keywords,
                           m.stakeholders,
                           m.implementation_risks,
-                          m.metadata_json
+                          m.metadata_json,
+                          (
+                            select count(*)
+                            from public.document_chunks c
+                            where c.document_id = d.id
+                          ) as snippet_count
                         from public.documents d
                         left join public.document_metadata m on m.document_id = d.id
                         where d.id = :document_id
@@ -234,11 +239,13 @@ class DocumentRepository:
             if document_row is None:
                 return None
 
-            snippet_rows = (
-                (
-                    await session.execute(
-                        text(
-                            """
+            snippet_rows = []
+            if snippet_limit > 0:
+                snippet_rows = (
+                    (
+                        await session.execute(
+                            text(
+                                """
                         select
                           id,
                           chunk_index,
@@ -246,7 +253,11 @@ class DocumentRepository:
                           page_end,
                           section_title,
                           language,
-                          text,
+                          case
+                            when char_length(text) <= 500
+                              then regexp_replace(text, '\\s+', ' ', 'g')
+                            else rtrim(regexp_replace(left(text, 497), '\\s+', ' ', 'g')) || '...'
+                          end as text_preview,
                           token_count,
                           keywords,
                           metadata_json
@@ -255,26 +266,14 @@ class DocumentRepository:
                         order by chunk_index
                         limit :snippet_limit
                         """
-                        ),
-                        {"document_id": document_id, "snippet_limit": snippet_limit},
+                            ),
+                            {"document_id": document_id, "snippet_limit": snippet_limit},
+                        )
                     )
+                    .mappings()
+                    .all()
                 )
-                .mappings()
-                .all()
-            )
-            snippet_count = (
-                await session.execute(
-                    text(
-                        """
-                        select count(*)
-                        from public.document_chunks
-                        where document_id = :document_id
-                        """
-                    ),
-                    {"document_id": document_id},
-                )
-            ).scalar_one()
-        return self._detail_from_rows(document_row, snippet_rows, snippet_count)
+        return self._detail_from_rows(document_row, snippet_rows, document_row["snippet_count"])
 
     async def chunks(
         self,
@@ -363,7 +362,7 @@ class DocumentRepository:
                     page_end=row["page_end"],
                     section_title=row["section_title"],
                     language=row["language"],
-                    text_preview=_preview(row["text"]),
+                    text_preview=row["text_preview"],
                     token_count=row["token_count"],
                     keywords=_string_list(row["keywords"]),
                     metadata=row["metadata_json"] or {},
