@@ -14,7 +14,7 @@ from app.schemas.crawl_job import CrawlJobCreate, CrawlJobRead, CrawlJobStatus
 def crawl_job_model_to_schema(model: CrawlJobModel) -> CrawlJobRead:
     return CrawlJobRead(
         id=model.id,
-        source_id=model.source_id,
+        crawl_source_id=model.crawl_source_id,
         dry_run=model.dry_run,
         status=model.status,
         selected_crawler=model.selected_crawler,

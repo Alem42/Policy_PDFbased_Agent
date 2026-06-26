@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from app.cleaning.html import HtmlCleaner
 from app.crawlers.base import BaseCrawler, CrawledDocument, CrawlResult
 from app.extraction.fields import field_extractor
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 class PlaywrightCrawler(BaseCrawler):
@@ -15,7 +15,7 @@ class PlaywrightCrawler(BaseCrawler):
     def __init__(self) -> None:
         self.cleaner = HtmlCleaner()
 
-    async def crawl(self, source: SourceRead) -> CrawlResult:
+    async def crawl(self, crawl_source: CrawlSourceRead) -> CrawlResult:
         self._ensure_subprocess_event_loop()
         try:
             from playwright.async_api import async_playwright  # type: ignore[import-not-found]
@@ -25,11 +25,11 @@ class PlaywrightCrawler(BaseCrawler):
             ) from exc
 
         # This adapter deliberately captures one rendered page first. Link discovery
-        # can be extended per source once its JavaScript navigation is understood.
+        # can be extended per crawl source once its JavaScript navigation is understood.
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
             page = await browser.new_page()
-            await page.goto(str(source.start_url), wait_until="networkidle")
+            await page.goto(str(crawl_source.start_url), wait_until="networkidle")
             html = await page.content()
             title = await page.title()
             final_url = page.url
@@ -38,16 +38,14 @@ class PlaywrightCrawler(BaseCrawler):
         extracted = field_extractor.extract(
             BeautifulSoup(html, "html.parser"),
             page_url=final_url,
-            config=source.config.get("field_extraction"),
+            config=crawl_source.config.get("field_extraction"),
         )
         cleaned = self.cleaner.clean(
             html,
             page_url=final_url,
-            content_selector=source.config.get("content_selector"),
-            exclude_selectors=source.config.get("exclude_selectors"),
-            asset_link_selector=str(
-                source.config.get("asset_link_selector", "a[href]")
-            ),
+            content_selector=crawl_source.config.get("content_selector"),
+            exclude_selectors=crawl_source.config.get("exclude_selectors"),
+            asset_link_selector=str(crawl_source.config.get("asset_link_selector", "a[href]")),
         )
         return CrawlResult(
             crawler=self.name,
@@ -78,5 +76,6 @@ class PlaywrightCrawler(BaseCrawler):
         if loop.__class__.__name__ == "_WindowsSelectorEventLoop":
             raise RuntimeError(
                 "Playwright requires a Windows Proactor event loop to launch Chromium. "
-                "Run uvicorn without --reload, or use crawler_preference='http' for this source."
+                "Run uvicorn without --reload, or use crawler_preference='http' "
+                "for this crawl source."
             )

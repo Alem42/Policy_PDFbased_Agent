@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from app.crawlers.adapters.oecd_ai import OecdAiCrawler
 from app.crawlers.http import HttpCrawler
 from app.crawlers.selector import CrawlerSelector
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 def test_oecd_adapter_generates_next_page_and_extracts_fields() -> None:
@@ -14,7 +14,7 @@ def test_oecd_adapter_generates_next_page_and_extracts_fields() -> None:
         """,
         "html.parser",
     )
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="OECD",
         start_url="https://oecd.ai/en/dashboards/policy-initiatives",
         allowed_domains=["oecd.ai"],
@@ -25,9 +25,7 @@ def test_oecd_adapter_generates_next_page_and_extracts_fields() -> None:
         listing,
         "https://oecd.ai/en/dashboards/policy-initiatives?page=1",
         source,
-    ) == [
-        "https://oecd.ai/en/dashboards/policy-initiatives?orderBy=startYearDesc&page=2"
-    ]
+    ) == ["https://oecd.ai/en/dashboards/policy-initiatives?orderBy=startYearDesc&page=2"]
 
     html = """
     <html><head><title>Fallback</title></head><body><main>
@@ -64,7 +62,7 @@ def test_oecd_adapter_generates_next_page_and_extracts_fields() -> None:
 
 
 def test_oecd_adapter_can_be_disabled_for_config_only_crawling() -> None:
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="OECD configured",
         start_url="https://oecd.ai/en/dashboards/policy-initiatives",
         allowed_domains=["oecd.ai"],

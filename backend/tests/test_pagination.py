@@ -26,9 +26,7 @@ def test_numbered_pagination_extracts_total_and_generates_next_url() -> None:
 
     assert result is not None
     assert result.expected_documents == 2348
-    assert result.urls == [
-        "https://example.com/policies?page=2&orderBy=startYearDesc"
-    ]
+    assert result.urls == ["https://example.com/policies?page=2&orderBy=startYearDesc"]
 
 
 def test_template_pagination_can_use_fixed_end_page() -> None:

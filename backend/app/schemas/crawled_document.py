@@ -24,7 +24,7 @@ class CrawledDocumentVersionRead(BaseModel):
 
 class CrawledDocumentRead(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    source_id: UUID
+    crawl_source_id: UUID
     canonical_url: str
     title: str | None = None
     summary: str | None = None

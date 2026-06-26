@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.repositories.crawl_job_repository import crawl_job_repository
-from app.repositories.source_repository import source_repository
+from app.repositories.crawl_source_repository import crawl_source_repository
 from app.schemas.crawl_job import CrawlJobCreate, CrawlJobRead
 from app.services.crawl_service import crawl_service
 
@@ -28,11 +28,11 @@ async def create_crawl_job(
     payload: CrawlJobCreate,
     background_tasks: BackgroundTasks,
 ) -> CrawlJobRead:
-    source = await source_repository.get(payload.source_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="Source not found")
-    if not source.enabled:
-        raise HTTPException(status_code=409, detail="Source is disabled")
+    crawl_source = await crawl_source_repository.get(payload.crawl_source_id)
+    if crawl_source is None:
+        raise HTTPException(status_code=404, detail="Crawl source not found")
+    if not crawl_source.enabled:
+        raise HTTPException(status_code=409, detail="Crawl source is disabled")
 
     crawl_job = await crawl_job_repository.create(payload)
     background_tasks.add_task(crawl_service.run, crawl_job.id)

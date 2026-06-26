@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from app.crawlers.http import HttpCrawler
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 @pytest.mark.asyncio
@@ -35,7 +35,7 @@ async def test_two_phase_crawler_does_not_persist_listing_pages(
         )
 
     monkeypatch.setattr(HttpCrawler, "_get_html", fake_get_html)
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="Example",
         start_url="https://example.com/policies",
         allowed_domains=["example.com"],
@@ -88,7 +88,7 @@ async def test_pagination_is_not_limited_by_max_depth(
         )
 
     monkeypatch.setattr(HttpCrawler, "_get_html", fake_get_html)
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="Example",
         start_url="https://example.com/policies",
         allowed_domains=["example.com"],

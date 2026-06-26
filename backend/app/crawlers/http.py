@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.crawlers.base import BaseCrawler, CrawledDocument, CrawlResult
 from app.crawlers.pagination import pagination_strategy
 from app.extraction.fields import field_extractor
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 from app.security.urls import is_url_allowed, validate_public_url
 
 
@@ -24,10 +24,10 @@ class HttpCrawler(BaseCrawler):
     def __init__(self) -> None:
         self.cleaner = HtmlCleaner()
 
-    async def crawl(self, source: SourceRead) -> CrawlResult:
+    async def crawl(self, crawl_source: CrawlSourceRead) -> CrawlResult:
         documents: list[CrawledDocument] = []
         final_result: CrawlResult | None = None
-        async for batch in self.crawl_batches(source):
+        async for batch in self.crawl_batches(crawl_source):
             documents.extend(batch.documents)
             final_result = batch
 
@@ -46,12 +46,12 @@ class HttpCrawler(BaseCrawler):
 
     async def crawl_batches(
         self,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> AsyncIterator[CrawlResult]:
         settings = get_settings()
-        page_limit = source.max_pages or settings.default_max_pages
-        document_limit = source.max_documents or page_limit
-        batch_size = int(source.config.get("sync_batch_size", 5))
+        page_limit = crawl_source.max_pages or settings.default_max_pages
+        document_limit = crawl_source.max_documents or page_limit
+        batch_size = int(crawl_source.config.get("sync_batch_size", 5))
         batch_size = max(batch_size, 1)
         errors: list[str] = []
         pages_visited = 0
@@ -69,7 +69,7 @@ class HttpCrawler(BaseCrawler):
                 discovery_exhausted,
             ) = await self._discover(
                 client,
-                source,
+                crawl_source,
                 page_limit=page_limit,
                 document_limit=document_limit,
             )
@@ -84,7 +84,7 @@ class HttpCrawler(BaseCrawler):
                 try:
                     response = await self._get_html(client, url)
                     pages_visited += 1
-                    batch.append(self._parse_document(response, source))
+                    batch.append(self._parse_document(response, crawl_source))
                 except Exception as exc:
                     pages_visited += 1
                     errors.append(f"{url}: {exc}")
@@ -116,12 +116,12 @@ class HttpCrawler(BaseCrawler):
     async def _discover(
         self,
         client: httpx.AsyncClient,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
         *,
         page_limit: int,
         document_limit: int,
     ) -> tuple[list[str], int, list[str], int | None, bool]:
-        queue: deque[tuple[str, int]] = deque([(str(source.start_url), 0)])
+        queue: deque[tuple[str, int]] = deque([(str(crawl_source.start_url), 0)])
         visited: set[str] = set()
         detail_urls: list[str] = []
         detail_seen: set[str] = set()
@@ -140,7 +140,7 @@ class HttpCrawler(BaseCrawler):
                 response = await self._get_html(client, url)
                 pages_visited += 1
                 soup = BeautifulSoup(response.text, "html.parser")
-                for target in self._detail_links(soup, str(response.url), source):
+                for target in self._detail_links(soup, str(response.url), crawl_source):
                     if target not in detail_seen:
                         detail_seen.add(target)
                         detail_urls.append(target)
@@ -149,12 +149,9 @@ class HttpCrawler(BaseCrawler):
                 pagination_page = pagination_strategy.next_pages(
                     soup,
                     current_url=str(response.url),
-                    config=source.config.get("pagination"),
+                    config=crawl_source.config.get("pagination"),
                 )
-                if (
-                    pagination_page is not None
-                    and pagination_page.expected_documents is not None
-                ):
+                if pagination_page is not None and pagination_page.expected_documents is not None:
                     expected_documents = pagination_page.expected_documents
                 pagination_links = (
                     pagination_page.urls
@@ -162,13 +159,13 @@ class HttpCrawler(BaseCrawler):
                     else self._pagination_links(
                         soup,
                         str(response.url),
-                        source,
+                        crawl_source,
                     )
                 )
                 next_depth = depth if pagination_links else depth + 1
-                if depth < source.max_depth or pagination_links:
+                if depth < crawl_source.max_depth or pagination_links:
                     for target in pagination_links:
-                        if not is_url_allowed(target, source):
+                        if not is_url_allowed(target, crawl_source):
                             continue
                         if target not in visited:
                             queue.append((target, next_depth))
@@ -206,16 +203,16 @@ class HttpCrawler(BaseCrawler):
         self,
         soup: BeautifulSoup,
         base_url: str,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> list[str]:
-        selector = str(source.config.get("detail_link_selector", "a[href]"))
-        patterns = source.config.get("detail_url_patterns", [])
-        start_path = urlparse(str(source.start_url)).path.rstrip("/")
+        selector = str(crawl_source.config.get("detail_link_selector", "a[href]"))
+        patterns = crawl_source.config.get("detail_url_patterns", [])
+        start_path = urlparse(str(crawl_source.start_url)).path.rstrip("/")
         links: list[str] = []
 
         for anchor in soup.select(selector):
             target = self._anchor_target(anchor, base_url)
-            if not target or not is_url_allowed(target, source):
+            if not target or not is_url_allowed(target, crawl_source):
                 continue
             path = urlparse(target).path.rstrip("/")
             if patterns:
@@ -230,20 +227,20 @@ class HttpCrawler(BaseCrawler):
         self,
         soup: BeautifulSoup,
         base_url: str,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> list[str]:
-        selector = source.config.get("pagination_link_selector")
-        patterns = source.config.get("pagination_url_patterns", [])
+        selector = crawl_source.config.get("pagination_link_selector")
+        patterns = crawl_source.config.get("pagination_url_patterns", [])
         if selector:
             anchors = soup.select(str(selector))
         else:
             anchors = soup.select('a[href][rel~="next"], a[href]')
 
-        start_path = urlparse(str(source.start_url)).path.rstrip("/")
+        start_path = urlparse(str(crawl_source.start_url)).path.rstrip("/")
         links: list[str] = []
         for anchor in anchors:
             target = self._anchor_target(anchor, base_url)
-            if not target or not is_url_allowed(target, source):
+            if not target or not is_url_allowed(target, crawl_source):
                 continue
             parsed = urlparse(target)
             if patterns:
@@ -261,22 +258,20 @@ class HttpCrawler(BaseCrawler):
     def _parse_document(
         self,
         response: httpx.Response,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> CrawledDocument:
         soup = BeautifulSoup(response.text, "html.parser")
         extracted = field_extractor.extract(
             soup,
             page_url=str(response.url),
-            config=source.config.get("field_extraction"),
+            config=crawl_source.config.get("field_extraction"),
         )
         cleaned = self.cleaner.clean(
             response.text,
             page_url=str(response.url),
-            content_selector=source.config.get("content_selector"),
-            exclude_selectors=source.config.get("exclude_selectors"),
-            asset_link_selector=str(
-                source.config.get("asset_link_selector", "a[href]")
-            ),
+            content_selector=crawl_source.config.get("content_selector"),
+            exclude_selectors=crawl_source.config.get("exclude_selectors"),
+            asset_link_selector=str(crawl_source.config.get("asset_link_selector", "a[href]")),
         )
         return CrawledDocument(
             url=str(response.url),

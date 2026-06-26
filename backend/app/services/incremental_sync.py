@@ -33,7 +33,7 @@ class IncrementalSyncService:
 
     async def sync(
         self,
-        source_id: UUID,
+        crawl_source_id: UUID,
         crawled_documents: list[CrawledDocument],
         *,
         crawl_job_id: UUID | None = None,
@@ -41,20 +41,20 @@ class IncrementalSyncService:
     ) -> IncrementalSyncStats:
         if self.repository.uses_database:
             return await self._sync_database(
-                source_id,
+                crawl_source_id,
                 crawled_documents,
                 crawl_job_id=crawl_job_id,
                 mark_missing=mark_missing,
             )
         return self._sync_local(
-            source_id,
+            crawl_source_id,
             crawled_documents,
             mark_missing=mark_missing,
         )
 
     async def _sync_database(
         self,
-        source_id: UUID,
+        crawl_source_id: UUID,
         crawled_documents: list[CrawledDocument],
         *,
         crawl_job_id: UUID | None,
@@ -68,7 +68,7 @@ class IncrementalSyncService:
             statement = (
                 select(CrawledDocumentModel)
                 .options(selectinload(CrawledDocumentModel.assets))
-                .where(CrawledDocumentModel.source_id == source_id)
+                .where(CrawledDocumentModel.crawl_source_id == crawl_source_id)
             )
             existing_models = (await session.scalars(statement)).all()
             existing_by_url = {model.canonical_url: model for model in existing_models}
@@ -89,7 +89,7 @@ class IncrementalSyncService:
 
                 if existing is None:
                     existing = CrawledDocumentModel(
-                        source_id=source_id,
+                        crawl_source_id=crawl_source_id,
                         canonical_url=canonical_url,
                         title=crawled.title,
                         summary=structured.get("summary"),
@@ -140,21 +140,21 @@ class IncrementalSyncService:
 
             if mark_missing:
                 now = datetime.now(UTC)
-            for crawled_document in existing_models:
-                if (
-                    crawled_document.canonical_url not in seen_urls
-                    and crawled_document.status == CrawledDocumentStatus.ACTIVE
-                ):
-                    crawled_document.status = CrawledDocumentStatus.MISSING
-                    crawled_document.missing_since = now
-                    stats.missing += 1
+                for crawled_document in existing_models:
+                    if (
+                        crawled_document.canonical_url not in seen_urls
+                        and crawled_document.status == CrawledDocumentStatus.ACTIVE
+                    ):
+                        crawled_document.status = CrawledDocumentStatus.MISSING
+                        crawled_document.missing_since = now
+                        stats.missing += 1
 
             await session.commit()
         return stats
 
     def _sync_local(
         self,
-        source_id: UUID,
+        crawl_source_id: UUID,
         crawled_documents: list[CrawledDocument],
         *,
         mark_missing: bool,
@@ -164,7 +164,7 @@ class IncrementalSyncService:
         existing_crawled_documents = {
             item.canonical_url: item
             for item in self.repository._crawled_documents.values()
-            if item.source_id == source_id
+            if item.crawl_source_id == crawl_source_id
         }
 
         for crawled in crawled_documents:
@@ -179,7 +179,7 @@ class IncrementalSyncService:
 
             if existing is None:
                 crawled_document_record = CrawledDocumentRead(
-                    source_id=source_id,
+                    crawl_source_id=crawl_source_id,
                     canonical_url=canonical_url,
                     title=crawled.title,
                     summary=structured.get("summary"),

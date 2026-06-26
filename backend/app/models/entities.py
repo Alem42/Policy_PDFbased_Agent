@@ -20,12 +20,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.schemas.crawl_job import CrawlJobStatus
+from app.schemas.crawl_source import CrawlerPreference
 from app.schemas.crawled_document import CrawledDocumentStatus
-from app.schemas.source import CrawlerPreference
 
 
-class SourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "sources"
+class CrawlSourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "crawl_sources"
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
     start_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
@@ -48,21 +48,21 @@ class SourceModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schedule: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    crawl_jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="source")
+    crawl_jobs: Mapped[list["CrawlJobModel"]] = relationship(back_populates="crawl_source")
     crawled_documents: Mapped[list["CrawledDocumentModel"]] = relationship(
-        back_populates="source"
+        back_populates="crawl_source"
     )
 
 
 class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "crawl_jobs"
     __table_args__ = (
-        Index("crawl_jobs_source_created_idx", "source_id", "created_at"),
+        Index("crawl_jobs_crawl_source_created_idx", "crawl_source_id", "created_at"),
         Index("crawl_jobs_status_idx", "status"),
     )
 
-    source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"),
+    crawl_source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("crawl_sources.id", ondelete="CASCADE"),
         nullable=False,
     )
     dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -95,23 +95,23 @@ class CrawlJobModel(UUIDPrimaryKeyMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    source: Mapped[SourceModel] = relationship(back_populates="crawl_jobs")
+    crawl_source: Mapped[CrawlSourceModel] = relationship(back_populates="crawl_jobs")
 
 
 class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "crawled_documents"
     __table_args__ = (
         UniqueConstraint(
-            "source_id",
+            "crawl_source_id",
             "canonical_url",
-            name="crawled_documents_source_url_unique",
+            name="crawled_documents_crawl_source_url_unique",
         ),
-        Index("crawled_documents_source_status_idx", "source_id", "status"),
+        Index("crawled_documents_crawl_source_status_idx", "crawl_source_id", "status"),
         Index("crawled_documents_last_seen_idx", "last_seen_at"),
     )
 
-    source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"),
+    crawl_source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("crawl_sources.id", ondelete="CASCADE"),
         nullable=False,
     )
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -139,7 +139,7 @@ class CrawledDocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
 
-    source: Mapped[SourceModel] = relationship(back_populates="crawled_documents")
+    crawl_source: Mapped[CrawlSourceModel] = relationship(back_populates="crawled_documents")
     versions: Mapped[list["CrawledDocumentVersionModel"]] = relationship(
         back_populates="crawled_document"
     )
@@ -290,8 +290,8 @@ class CrawlErrorModel(Base):
         ForeignKey("crawl_jobs.id", ondelete="CASCADE"),
         nullable=False,
     )
-    source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"),
+    crawl_source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("crawl_sources.id", ondelete="CASCADE"),
         nullable=False,
     )
     url: Mapped[str | None] = mapped_column(Text)

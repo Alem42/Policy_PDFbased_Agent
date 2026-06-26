@@ -16,9 +16,9 @@ router = APIRouter(prefix="/crawled-documents", tags=["crawled documents"])
 
 @router.get("", response_model=list[CrawledDocumentRead])
 async def list_crawled_documents(
-    source_id: UUID | None = None,
+    crawl_source_id: UUID | None = None,
 ) -> list[CrawledDocumentRead]:
-    return await crawled_document_repository.list_crawled_documents(source_id=source_id)
+    return await crawled_document_repository.list_crawled_documents(crawl_source_id=crawl_source_id)
 
 
 @router.get("/search", response_model=list[CrawledDocumentSearchResultRead])

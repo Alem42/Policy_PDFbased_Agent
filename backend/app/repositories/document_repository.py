@@ -47,9 +47,10 @@ class DocumentRepository:
         factory = self.session_factory()
         async with factory() as session:
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           d.id,
                           d.original_filename,
@@ -68,10 +69,13 @@ class DocumentRepository:
                         order by d.uploaded_at desc
                         limit :limit
                         """
-                    ),
-                    {"limit": limit},
+                        ),
+                        {"limit": limit},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return [self._search_result_from_row(row, match_fields=[]) for row in rows]
 
     async def search_documents(
@@ -88,9 +92,10 @@ class DocumentRepository:
         async with factory() as session:
             pattern = f"%{normalized_query}%"
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           d.id,
                           d.original_filename,
@@ -124,10 +129,13 @@ class DocumentRepository:
                         order by d.uploaded_at desc
                         limit :limit
                         """
-                    ),
-                    {"pattern": pattern, "limit": limit},
+                        ),
+                        {"pattern": pattern, "limit": limit},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return [
             self._search_result_from_row(
                 row,
@@ -140,9 +148,10 @@ class DocumentRepository:
         factory = self.session_factory()
         async with factory() as session:
             row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           d.id,
                           d.original_filename,
@@ -160,10 +169,13 @@ class DocumentRepository:
                         left join public.document_metadata m on m.document_id = d.id
                         where d.id = :document_id
                         """
-                    ),
-                    {"document_id": document_id},
+                        ),
+                        {"document_id": document_id},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
         if row is None:
             return None
         return self._search_result_from_row(row, match_fields=[])
@@ -177,9 +189,10 @@ class DocumentRepository:
         factory = self.session_factory()
         async with factory() as session:
             document_row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           d.id,
                           d.original_filename,
@@ -211,17 +224,21 @@ class DocumentRepository:
                         left join public.document_metadata m on m.document_id = d.id
                         where d.id = :document_id
                         """
-                    ),
-                    {"document_id": document_id},
+                        ),
+                        {"document_id": document_id},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             if document_row is None:
                 return None
 
             snippet_rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           id,
                           chunk_index,
@@ -238,10 +255,13 @@ class DocumentRepository:
                         order by chunk_index
                         limit :snippet_limit
                         """
-                    ),
-                    {"document_id": document_id, "snippet_limit": snippet_limit},
+                        ),
+                        {"document_id": document_id, "snippet_limit": snippet_limit},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             snippet_count = (
                 await session.execute(
                     text(

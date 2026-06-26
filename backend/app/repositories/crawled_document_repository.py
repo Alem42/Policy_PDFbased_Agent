@@ -24,7 +24,7 @@ from app.schemas.crawled_document import (
 def crawled_document_model_to_schema(model: CrawledDocumentModel) -> CrawledDocumentRead:
     return CrawledDocumentRead(
         id=model.id,
-        source_id=model.source_id,
+        crawl_source_id=model.crawl_source_id,
         canonical_url=model.canonical_url,
         title=model.title,
         summary=model.summary,
@@ -56,8 +56,7 @@ def _matches_query(value: object, query: str) -> bool:
         return any(_matches_query(item, query) for item in value)
     if isinstance(value, dict):
         return any(
-            _matches_query(key, query) or _matches_query(item, query)
-            for key, item in value.items()
+            _matches_query(key, query) or _matches_query(item, query) for key, item in value.items()
         )
     return query in str(value).lower()
 
@@ -88,14 +87,16 @@ class CrawledDocumentRepository:
 
     async def list_crawled_documents(
         self,
-        source_id: UUID | None = None,
+        crawl_source_id: UUID | None = None,
     ) -> list[CrawledDocumentRead]:
         if not self.uses_database:
             with self._lock:
                 crawled_documents = list(self._crawled_documents.values())
-                if source_id is not None:
+                if crawl_source_id is not None:
                     crawled_documents = [
-                        item for item in crawled_documents if item.source_id == source_id
+                        item
+                        for item in crawled_documents
+                        if item.crawl_source_id == crawl_source_id
                     ]
                 return sorted(
                     crawled_documents,
@@ -108,8 +109,10 @@ class CrawledDocumentRepository:
             statement = select(CrawledDocumentModel).order_by(
                 CrawledDocumentModel.last_seen_at.desc()
             )
-            if source_id is not None:
-                statement = statement.where(CrawledDocumentModel.source_id == source_id)
+            if crawl_source_id is not None:
+                statement = statement.where(
+                    CrawledDocumentModel.crawl_source_id == crawl_source_id
+                )
             models = (await session.scalars(statement)).all()
             return [crawled_document_model_to_schema(model) for model in models]
 
@@ -129,9 +132,10 @@ class CrawledDocumentRepository:
         async with factory() as session:
             pattern = f"%{normalized_query}%"
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
                           id,
                           canonical_url,
@@ -165,10 +169,13 @@ class CrawledDocumentRepository:
                         order by last_seen_at desc
                         limit :limit
                         """
-                    ),
-                    {"pattern": pattern, "limit": limit},
+                        ),
+                        {"pattern": pattern, "limit": limit},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return [
             self._search_result_from_row(
                 row,
@@ -389,8 +396,7 @@ class CrawledDocumentRepository:
                 self._versions.setdefault(crawled_document.id, []).append(version)
             if assets:
                 existing = {
-                    asset.original_url: asset
-                    for asset in self._assets.get(crawled_document.id, [])
+                    asset.original_url: asset for asset in self._assets.get(crawled_document.id, [])
                 }
                 existing.update({asset.original_url: asset for asset in assets})
                 self._assets[crawled_document.id] = list(existing.values())
@@ -449,19 +455,14 @@ class CrawledDocumentRepository:
         temporary_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
         payload = {
             "crawled_documents": [
-                document.model_dump(mode="json")
-                for document in self._crawled_documents.values()
+                document.model_dump(mode="json") for document in self._crawled_documents.values()
             ],
             "versions": {
-                str(crawled_document_id): [
-                    version.model_dump(mode="json") for version in versions
-                ]
+                str(crawled_document_id): [version.model_dump(mode="json") for version in versions]
                 for crawled_document_id, versions in self._versions.items()
             },
             "assets": {
-                str(crawled_document_id): [
-                    asset.model_dump(mode="json") for asset in assets
-                ]
+                str(crawled_document_id): [asset.model_dump(mode="json") for asset in assets]
                 for crawled_document_id, assets in self._assets.items()
             },
         }

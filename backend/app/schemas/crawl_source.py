@@ -13,7 +13,7 @@ class CrawlerPreference(StrEnum):
     FIRECRAWL = "firecrawl"
 
 
-class SourceBase(BaseModel):
+class CrawlSourceBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     start_url: HttpUrl
     allowed_domains: list[str] = Field(default_factory=list)
@@ -31,11 +31,11 @@ class SourceBase(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
-class SourceCreate(SourceBase):
+class CrawlSourceCreate(CrawlSourceBase):
     pass
 
 
-class SourceUpdate(BaseModel):
+class CrawlSourceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     start_url: HttpUrl | None = None
     allowed_domains: list[str] | None = None
@@ -50,7 +50,7 @@ class SourceUpdate(BaseModel):
     config: dict[str, Any] | None = None
 
 
-class SourceRead(SourceBase):
+class CrawlSourceRead(CrawlSourceBase):
     id: UUID = Field(default_factory=uuid4)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -14,7 +14,7 @@ class CrawlJobStatus(StrEnum):
 
 
 class CrawlJobCreate(BaseModel):
-    source_id: UUID
+    crawl_source_id: UUID
     dry_run: bool = Field(
         default=True,
         description="Plan the crawl without contacting the target website.",
@@ -23,7 +23,7 @@ class CrawlJobCreate(BaseModel):
 
 class CrawlJobRead(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    source_id: UUID
+    crawl_source_id: UUID
     dry_run: bool = True
     status: CrawlJobStatus = CrawlJobStatus.PENDING
     selected_crawler: str | None = None

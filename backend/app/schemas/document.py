@@ -96,5 +96,3 @@ class DocumentSearchResultRead(BaseModel):
     uploaded_at: datetime | None = None
     processed_at: datetime | None = None
     match_fields: list[str] = Field(default_factory=list)
-
-

@@ -17,9 +17,9 @@ async def test_crawled_document_detail_includes_metadata_source_and_snippets(
     tmp_path,
 ) -> None:
     repository = CrawledDocumentRepository(tmp_path / "crawled_documents.json")
-    source_id = uuid4()
+    crawl_source_id = uuid4()
     document = CrawledDocumentRead(
-        source_id=source_id,
+        crawl_source_id=crawl_source_id,
         canonical_url="https://example.org/policy.pdf",
         title="AI Policy Strategy",
         summary="A short policy summary.",
@@ -50,9 +50,9 @@ async def test_crawled_document_detail_includes_metadata_source_and_snippets(
 
 async def test_crawled_document_detail_respects_snippet_limit(tmp_path) -> None:
     repository = CrawledDocumentRepository(tmp_path / "crawled_documents.json")
-    source_id = uuid4()
+    crawl_source_id = uuid4()
     document = CrawledDocumentRead(
-        source_id=source_id,
+        crawl_source_id=crawl_source_id,
         canonical_url="https://example.org/another-policy.pdf",
         title="Another AI Policy",
         content_hash="b" * 64,
@@ -76,9 +76,9 @@ async def test_crawled_document_detail_respects_snippet_limit(tmp_path) -> None:
 
 async def test_search_crawled_documents_matches_canonical_url(tmp_path) -> None:
     repository = CrawledDocumentRepository(tmp_path / "crawled_documents.json")
-    source_id = uuid4()
+    crawl_source_id = uuid4()
     document = CrawledDocumentRead(
-        source_id=source_id,
+        crawl_source_id=crawl_source_id,
         canonical_url="https://example.org/files/unique-filename-strategy.pdf",
         title="Filename Search Policy",
         content_hash="c" * 64,
@@ -94,9 +94,9 @@ async def test_search_crawled_documents_matches_canonical_url(tmp_path) -> None:
 
 async def test_search_crawled_documents_matches_metadata_keywords(tmp_path) -> None:
     repository = CrawledDocumentRepository(tmp_path / "crawled_documents.json")
-    source_id = uuid4()
+    crawl_source_id = uuid4()
     document = CrawledDocumentRead(
-        source_id=source_id,
+        crawl_source_id=crawl_source_id,
         canonical_url="https://example.org/files/keyword-policy.pdf",
         title="Keyword Search Policy",
         content_hash="d" * 64,
@@ -112,9 +112,9 @@ async def test_search_crawled_documents_matches_metadata_keywords(tmp_path) -> N
 
 
 def test_crawled_document_detail_api_returns_saved_document() -> None:
-    source_id = uuid4()
+    crawl_source_id = uuid4()
     document = CrawledDocumentRead(
-        source_id=source_id,
+        crawl_source_id=crawl_source_id,
         canonical_url="https://example.org/api-policy.pdf",
         title="API Policy",
         content_hash="e" * 64,

@@ -61,11 +61,7 @@ class ConfigFieldExtractor:
         page_url: str,
         raw_rule: object,
     ) -> Any:
-        rule = (
-            {"selector": raw_rule}
-            if isinstance(raw_rule, str)
-            else raw_rule
-        )
+        rule = {"selector": raw_rule} if isinstance(raw_rule, str) else raw_rule
         if not isinstance(rule, dict):
             return None
         selector = rule.get("selector")
@@ -74,9 +70,7 @@ class ConfigFieldExtractor:
 
         nodes = soup.select(selector)
         values = [
-            value
-            for node in nodes
-            if (value := self._node_value(node, page_url, rule)) is not None
+            value for node in nodes if (value := self._node_value(node, page_url, rule)) is not None
         ]
         multiple = bool(rule.get("multiple", False))
         if multiple:
@@ -101,9 +95,7 @@ class ConfigFieldExtractor:
             if not isinstance(raw_value, str):
                 return None
             value = (
-                urljoin(page_url, raw_value)
-                if attribute in {"href", "src"}
-                else raw_value.strip()
+                urljoin(page_url, raw_value) if attribute in {"href", "src"} else raw_value.strip()
             )
 
         regex = rule.get("regex")

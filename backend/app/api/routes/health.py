@@ -15,4 +15,3 @@ async def health() -> dict[str, object]:
         "crawling_enabled": settings.crawling_enabled,
         "database": database.status,
     }
-
