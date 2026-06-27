@@ -61,7 +61,7 @@ function normaliseDocument(document) {
 function normaliseChunk(chunk) {
   return {
     ...chunk,
-    id: chunk.id || chunk.chunk_id,
+    id: chunk.id,
     text: chunk.text || chunk.text_preview || "",
   };
 }

@@ -15,7 +15,7 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
     setError("");
     try {
       const uploads = await uploadDocuments(files);
-      const documentIds = uploads.map((u) => u.document_id);
+      const documentIds = uploads.map((u) => u.id);
       setFiles([]);
       form.reset();
       await onUploaded(documentIds);
