@@ -1,23 +1,42 @@
-from uuid import UUID
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.schemas.chat import ChatRequest, ChatResponse, DocumentChunkRead
+from app.rag.graph.workflow import run_pdf_qa
+from app.schemas.chat import ChatRequest, ChatResponse, Citation
+from app.services.auth_service import get_current_user
 
 router = APIRouter(tags=["rag"])
+CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest) -> ChatResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="RAG chat placeholder. Implement in feature/rag-chat.",
-    )
+async def chat(
+    payload: ChatRequest,
+    user: CurrentUser,
+) -> ChatResponse:
+    identifiers = [str(document_id) for document_id in payload.document_ids]
+    if not identifiers and payload.filenames:
+        identifiers = payload.filenames
+    if not identifiers:
+        raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
-
-@router.get("/documents/{document_id}/chunks", response_model=list[DocumentChunkRead])
-async def list_document_chunks(document_id: UUID) -> list[DocumentChunkRead]:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Chunk listing placeholder. Implement in feature/ingestion-pipeline.",
-    )
+    try:
+        result = run_pdf_qa(
+            question=payload.question,
+            document_ids=identifiers,
+            model=payload.model,
+            top_k=payload.top_k,
+            include_restricted=user["role"] == "admin",
+        )
+        return ChatResponse(
+            answer=result["answer"],
+            citations=[Citation(**citation) for citation in result.get("citations", [])],
+            truncated=result.get("truncated", False),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc

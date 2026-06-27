@@ -21,5 +21,5 @@ Admin uploads trusted policy documents
 - RAG chat: `app/rag`, `app/api/routes/chat.py`
 - Crawler skeleton: `app/crawlers`, `app/api/routes/crawlers.py`
 - Document library: `app/api/routes/documents.py`
-- Database schema: `supabase`
+- Database schema: `database/init.sql`
 - QA: `tests`
