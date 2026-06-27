@@ -2,9 +2,9 @@ import anyio
 import httpx
 import pytest
 
-from app.crawlers.base import CrawledDocument
-from app.schemas.crawl_source import CrawlSourceRead
-from app.services.attachment_downloader import AttachmentDownloader
+from app.modules.crawling.attachment_downloader import AttachmentDownloader
+from app.modules.crawling.crawlers.base import CrawledDocument
+from app.modules.crawling.schemas.source import CrawlSourceRead
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_attachment_downloader_saves_pdf_and_updates_metadata(
         return None
 
     monkeypatch.setattr(
-        "app.services.attachment_downloader.validate_public_url",
+        "app.modules.crawling.attachment_downloader.validate_public_url",
         validate_public_url_stub,
     )
 

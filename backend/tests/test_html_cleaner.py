@@ -1,4 +1,4 @@
-from app.cleaning.html import HtmlCleaner
+from app.modules.crawling.cleaning.html import HtmlCleaner
 
 
 def test_cleaner_preserves_structure_and_discovers_assets() -> None:

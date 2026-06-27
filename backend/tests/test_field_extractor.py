@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from app.extraction.fields import ConfigFieldExtractor
+from app.modules.crawling.extraction.fields import ConfigFieldExtractor
 
 
 def test_config_field_extractor_supports_core_and_metadata_fields() -> None:

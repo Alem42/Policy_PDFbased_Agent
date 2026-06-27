@@ -83,11 +83,12 @@ These routes expose the unified PostgreSQL-backed document catalogue.
 | `GET` | `/api/v1/documents?limit=100` | Public | List documents; `limit` is between 1 and 500. |
 | `GET` | `/api/v1/documents/search?q={query}&limit=20` | Public | Search documents; `limit` is between 1 and 100. |
 | `GET` | `/api/v1/documents/{document_id}` | Public | Return document detail and metadata. |
+| `GET` | `/api/v1/documents/{document_id}/file` | Public | Download the original PDF. |
 | `GET` | `/api/v1/documents/{document_id}/chunks?limit=20` | Public | Return chunk previews; `limit` is between 1 and 100. |
 | `GET` | `/api/v1/documents/{document_id}/versions` | Public | Return version history. |
 | `GET` | `/api/v1/documents/{document_id}/assets` | Public | Return linked assets. |
 
-The former `/file` and `/pages` endpoints are not part of the current router.
+The former `/pages` endpoint is not part of the current router.
 
 ## Crawled documents
 
