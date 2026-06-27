@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.core.config import get_settings
+from app.core.database import database
 
 router = APIRouter(tags=["health"])
 
@@ -11,6 +12,7 @@ async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "environment": settings.app_env,
-        "database_enabled": settings.database_enabled,
         "crawling_enabled": settings.crawling_enabled,
+        "database": database.status,
     }
+

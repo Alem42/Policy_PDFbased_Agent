@@ -1,1 +1,2 @@
-"""Trusted source crawling skeleton."""
+"""Pluggable crawler implementations."""
+

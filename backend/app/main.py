@@ -6,16 +6,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
-from app.core.database import init_db
+from app.core.database import database, init_db
+from app.repositories.job_repository import job_repository
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await database.connect()
     if settings.database_enabled:
-        init_db()
+        await init_db()
+    await job_repository.fail_interrupted_running_jobs()
     yield
+    await database.disconnect()
 
 
 app = FastAPI(
