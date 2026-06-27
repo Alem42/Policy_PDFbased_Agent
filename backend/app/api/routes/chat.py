@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.dependencies.auth import get_current_user
 from app.rag.graph.workflow import run_pdf_qa
 from app.schemas.chat import ChatRequest, ChatResponse, Citation
-from app.services.auth_service import get_current_user
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]

@@ -3,15 +3,24 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
+from app.api.dependencies.auth import require_admin
 from app.schemas.admin import (
     AdminDocumentCreateResponse,
     AdminDocumentMetadataUpdate,
     DocumentProcessingStatus,
     ProcessingStatus,
 )
-from app.services.auth_service import require_admin
 from app.services.document_service import (
     delete_document as delete_document_record,
 )

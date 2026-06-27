@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Query
 from app.repositories.document_repository import document_repository
 from app.schemas.document import (
     DocumentAssetRead,
+    DocumentChunkRead,
     DocumentDetailRead,
     DocumentSearchResultRead,
-    DocumentSnippetRead,
     DocumentVersionRead,
 )
 
@@ -32,22 +32,18 @@ async def search_documents(
 @router.get("/{document_id}", response_model=DocumentDetailRead)
 async def get_document(
     document_id: UUID,
-    snippet_limit: int = Query(default=8, ge=0, le=50),
 ) -> DocumentDetailRead:
-    document = await document_repository.get_detail(
-        document_id,
-        snippet_limit=snippet_limit,
-    )
+    document = await document_repository.get_detail(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
 
 
-@router.get("/{document_id}/chunks", response_model=list[DocumentSnippetRead])
+@router.get("/{document_id}/chunks", response_model=list[DocumentChunkRead])
 async def list_document_chunks(
     document_id: UUID,
     limit: int = Query(default=20, ge=1, le=100),
-) -> list[DocumentSnippetRead]:
+) -> list[DocumentChunkRead]:
     chunks = await document_repository.chunks(document_id, limit=limit)
     if chunks is None:
         raise HTTPException(status_code=404, detail="Document not found")

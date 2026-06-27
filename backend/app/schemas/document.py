@@ -1,8 +1,28 @@
 from datetime import UTC, date, datetime
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+
+class DocumentStatus(StrEnum):
+    UPLOADED = "uploaded"
+    PARSED = "parsed"
+    ANNOTATED = "annotated"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class AccessLevel(StrEnum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class ProcessingJobStatus(StrEnum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class DocumentVersionRead(BaseModel):
@@ -53,33 +73,36 @@ class DocumentSourceInfoRead(BaseModel):
     original_filename: str | None = None
     mime_type: str | None = None
     file_size: int | None = None
-    access_level: str | None = None
+    access_level: AccessLevel | None = None
 
 
-class DocumentSnippetRead(BaseModel):
+class DocumentChunkRead(BaseModel):
     chunk_id: UUID
+    document_id: UUID
     chunk_index: int
     page_start: int | None = None
     page_end: int | None = None
     section_title: str | None = None
     language: str | None = None
-    text_preview: str
+    text: str
     token_count: int | None = None
     keywords: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    embedding_model: str | None = None
 
 
 class DocumentDetailRead(BaseModel):
     document_id: UUID
-    status: str
+    status: DocumentStatus
     approved: bool | None = None
     uploaded_at: datetime | None = None
     processed_at: datetime | None = None
     summary: str | None = None
     metadata: DocumentMetadataRead
     source: DocumentSourceInfoRead
-    snippets: list[DocumentSnippetRead] = Field(default_factory=list)
-    snippet_count: int = 0
+    page_count: int = 0
+    chunk_count: int = 0
 
 
 class DocumentSearchResultRead(BaseModel):
@@ -91,7 +114,7 @@ class DocumentSearchResultRead(BaseModel):
     country_region: str | None = None
     year: int | None = None
     keywords: list[str] = Field(default_factory=list)
-    status: str
+    status: DocumentStatus
     approved: bool | None = None
     uploaded_at: datetime | None = None
     processed_at: datetime | None = None

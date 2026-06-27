@@ -1,62 +1,28 @@
-from __future__ import annotations
-
-import json
-
-from app.core.config import SETTINGS_PATH, get_settings
-
-
-def load_settings() -> dict:
-    if not SETTINGS_PATH.is_file():
-        return {}
-
-    try:
-        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def save_settings(settings: dict) -> None:
-    SETTINGS_PATH.write_text(
-        json.dumps(settings, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-
-
-def _first_setting(settings: dict, *keys: str) -> tuple[str | None, str]:
-    for key in keys:
-        value = settings.get(key)
-        if value:
-            return value, "settings"
-    return None, "missing"
+from app.core.config import get_settings
+from app.repositories.settings_repository import settings_repository
 
 
 def get_llm_api_key() -> tuple[str | None, str]:
-    runtime_settings = load_settings()
-    api_key, source = _first_setting(runtime_settings, "llm_api_key", "deepseek_api_key")
-    if api_key:
-        return api_key, source
+    runtime = settings_repository.load()
+    runtime_key = runtime.llm_api_key or runtime.deepseek_api_key
+    if runtime_key:
+        return runtime_key, "settings"
 
     settings = get_settings()
-    if settings.llm_api_key:
-        return settings.llm_api_key, "env"
-    if settings.deepseek_api_key:
-        return settings.deepseek_api_key, "env"
-
-    return None, "missing"
+    environment_key = settings.llm_api_key or settings.deepseek_api_key
+    return (environment_key, "env") if environment_key else (None, "missing")
 
 
 def get_llm_chat_model() -> tuple[str, str]:
-    runtime_settings = load_settings()
-    model, source = _first_setting(runtime_settings, "llm_chat_model", "deepseek_chat_model")
-    if model:
-        return model, source
+    runtime = settings_repository.load()
+    runtime_model = runtime.llm_chat_model or runtime.deepseek_chat_model
+    if runtime_model:
+        return runtime_model, "settings"
 
     settings = get_settings()
-    if settings.llm_chat_model:
-        return settings.llm_chat_model, "env"
-    if settings.deepseek_chat_model:
-        return settings.deepseek_chat_model, "env"
-
+    environment_model = settings.llm_chat_model or settings.deepseek_chat_model
+    if environment_model:
+        return environment_model, "env"
     return settings.default_llm_chat_model, "default"
 
 
@@ -85,23 +51,12 @@ def update_public_settings(
     llm_api_key: str | None = None,
     llm_chat_model: str | None = None,
 ) -> dict:
-    runtime_settings = load_settings()
-
+    runtime = settings_repository.load()
     if llm_api_key is not None:
-        clean_api_key = llm_api_key.strip()
-        if clean_api_key:
-            runtime_settings["llm_api_key"] = clean_api_key
-        else:
-            runtime_settings.pop("llm_api_key", None)
-            runtime_settings.pop("deepseek_api_key", None)
-
+        runtime.llm_api_key = llm_api_key.strip() or None
+        runtime.deepseek_api_key = None
     if llm_chat_model is not None:
-        clean_model = llm_chat_model.strip()
-        if clean_model:
-            runtime_settings["llm_chat_model"] = clean_model
-        else:
-            runtime_settings.pop("llm_chat_model", None)
-            runtime_settings.pop("deepseek_chat_model", None)
-
-    save_settings(runtime_settings)
+        runtime.llm_chat_model = llm_chat_model.strip() or None
+        runtime.deepseek_chat_model = None
+    settings_repository.save(runtime)
     return get_public_settings()

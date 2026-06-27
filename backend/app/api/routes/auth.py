@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.dependencies.auth import get_current_user
 from app.schemas.auth import AuthRequest, AuthResponse, UserResponse
 from app.services.auth_service import (
     authenticate_user,
     create_access_token,
     create_user,
-    get_current_user,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
