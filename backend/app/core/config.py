@@ -21,12 +21,19 @@ class Settings(BaseSettings):
     app_debug: bool = True
     api_v1_prefix: str = "/api/v1"
 
-    # Database
-    database_enabled: bool = False
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/policy_library"
-    persistence_backend: str = "database"
+    crawling_enabled: bool = False
+    default_request_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    default_max_pages: int = Field(default=100, gt=0, le=10000)
+    default_concurrency: int = Field(default=3, gt=0, le=20)
+    user_agent: str = "AI-Policy-Research-Bot/0.1"
 
-    # Document storage (local PDF management)
+    database_enabled: bool = False
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy"
+    database_pool_pre_ping: bool = False
+    persistence_backend: str = "database"
+    crawled_document_store_path: Path = Path("data/state/crawled_documents.json")
+    attachment_download_dir: Path = Path("data/attachments")
+
     document_storage_dir: Path = Path("data/pdfs")
     legacy_document_storage_dir: Path = Path("data/pdf")
     vector_index_dir: Path = Path("data/vector_index")
@@ -34,7 +41,6 @@ class Settings(BaseSettings):
     default_embedding_dimensions: int = 384
     max_context_characters: int = 120_000
 
-    # LLM
     llm_base_url: str = "https://api.deepseek.com"
     default_llm_chat_model: str = "deepseek-v4-flash"
     llm_api_key: str | None = None
@@ -43,14 +49,6 @@ class Settings(BaseSettings):
     deepseek_chat_model: str | None = None
     app_secret: str = "development-only-change-me"
 
-    # Crawler
-    crawling_enabled: bool = False
-    default_request_timeout_seconds: float = Field(default=30, gt=0, le=300)
-    default_max_pages: int = Field(default=100, gt=0, le=10000)
-    default_concurrency: int = Field(default=3, gt=0, le=20)
-    user_agent: str = "AI-Policy-Research-Bot/0.1"
-    document_store_path: Path = Path("data/state/documents.json")
-    attachment_download_dir: Path = Path("data/attachments")
     firecrawl_api_key: str | None = None
 
 

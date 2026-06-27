@@ -8,13 +8,13 @@ from sqlalchemy import select, update
 from app.core.config import get_settings
 from app.core.database import database
 from app.models import CrawlJobModel
-from app.schemas.job import CrawlJobCreate, CrawlJobRead, CrawlJobStatus
+from app.schemas.crawl_job import CrawlJobCreate, CrawlJobRead, CrawlJobStatus
 
 
-def job_model_to_schema(model: CrawlJobModel) -> CrawlJobRead:
+def crawl_job_model_to_schema(model: CrawlJobModel) -> CrawlJobRead:
     return CrawlJobRead(
         id=model.id,
-        source_id=model.source_id,
+        crawl_source_id=model.crawl_source_id,
         dry_run=model.dry_run,
         status=model.status,
         selected_crawler=model.selected_crawler,
@@ -35,7 +35,7 @@ def job_model_to_schema(model: CrawlJobModel) -> CrawlJobRead:
     )
 
 
-class JobRepository:
+class CrawlJobRepository:
     def __init__(self) -> None:
         self._memory: dict[UUID, CrawlJobRead] = {}
         self._lock = RLock()
@@ -57,23 +57,23 @@ class JobRepository:
         async with factory() as session:
             statement = select(CrawlJobModel).order_by(CrawlJobModel.created_at.desc())
             models = (await session.scalars(statement)).all()
-            return [job_model_to_schema(model) for model in models]
+            return [crawl_job_model_to_schema(model) for model in models]
 
-    async def get(self, job_id: UUID) -> CrawlJobRead | None:
+    async def get(self, crawl_job_id: UUID) -> CrawlJobRead | None:
         if not self.uses_database:
             with self._lock:
-                return self._memory.get(job_id)
+                return self._memory.get(crawl_job_id)
         factory = self._session_factory()
         async with factory() as session:
-            model = await session.get(CrawlJobModel, job_id)
-            return job_model_to_schema(model) if model else None
+            model = await session.get(CrawlJobModel, crawl_job_id)
+            return crawl_job_model_to_schema(model) if model else None
 
     async def create(self, payload: CrawlJobCreate) -> CrawlJobRead:
         if not self.uses_database:
-            job = CrawlJobRead(**payload.model_dump())
+            crawl_job = CrawlJobRead(**payload.model_dump())
             with self._lock:
-                self._memory[job.id] = job
-            return job
+                self._memory[crawl_job.id] = crawl_job
+            return crawl_job
 
         model = CrawlJobModel(**payload.model_dump())
         factory = self._session_factory()
@@ -81,30 +81,30 @@ class JobRepository:
             session.add(model)
             await session.commit()
             await session.refresh(model)
-            return job_model_to_schema(model)
+            return crawl_job_model_to_schema(model)
 
-    async def update(self, job_id: UUID, **changes: Any) -> CrawlJobRead | None:
+    async def update(self, crawl_job_id: UUID, **changes: Any) -> CrawlJobRead | None:
         if changes.get("finished_at") is True:
             changes["finished_at"] = datetime.now(UTC)
         if not self.uses_database:
             with self._lock:
-                job = self._memory.get(job_id)
-                if job is None:
+                crawl_job = self._memory.get(crawl_job_id)
+                if crawl_job is None:
                     return None
-                updated = job.model_copy(update=changes)
-                self._memory[job_id] = updated
+                updated = crawl_job.model_copy(update=changes)
+                self._memory[crawl_job_id] = updated
                 return updated
 
         factory = self._session_factory()
         async with factory() as session:
-            model = await session.get(CrawlJobModel, job_id)
+            model = await session.get(CrawlJobModel, crawl_job_id)
             if model is None:
                 return None
             for field, value in changes.items():
                 setattr(model, field, value)
             await session.commit()
             await session.refresh(model)
-            return job_model_to_schema(model)
+            return crawl_job_model_to_schema(model)
 
     async def fail_interrupted_running_jobs(self) -> int:
         now = datetime.now(UTC)
@@ -112,10 +112,10 @@ class JobRepository:
         if not self.uses_database:
             with self._lock:
                 count = 0
-                for job_id, job in list(self._memory.items()):
-                    if job.status != CrawlJobStatus.RUNNING:
+                for crawl_job_id, crawl_job in list(self._memory.items()):
+                    if crawl_job.status != CrawlJobStatus.RUNNING:
                         continue
-                    self._memory[job_id] = job.model_copy(
+                    self._memory[crawl_job_id] = crawl_job.model_copy(
                         update={
                             "status": CrawlJobStatus.FAILED,
                             "message": message,
@@ -146,4 +146,4 @@ class JobRepository:
         return database.session_factory
 
 
-job_repository = JobRepository()
+crawl_job_repository = CrawlJobRepository()

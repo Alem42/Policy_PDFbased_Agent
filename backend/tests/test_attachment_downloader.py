@@ -3,7 +3,7 @@ import httpx
 import pytest
 
 from app.crawlers.base import CrawledDocument
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 from app.services.attachment_downloader import AttachmentDownloader
 
 
@@ -28,7 +28,7 @@ async def test_attachment_downloader_saves_pdf_and_updates_metadata(
             headers={"content-type": "application/pdf"},
         )
 
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="Example",
         start_url="https://example.com",
         allowed_domains=["example.com"],
@@ -62,7 +62,7 @@ async def test_attachment_downloader_saves_pdf_and_updates_metadata(
 
 @pytest.mark.asyncio
 async def test_attachment_downloader_skips_when_source_config_is_disabled(tmp_path) -> None:
-    source = SourceRead(
+    source = CrawlSourceRead(
         name="Example",
         start_url="https://example.com",
         allowed_domains=["example.com"],

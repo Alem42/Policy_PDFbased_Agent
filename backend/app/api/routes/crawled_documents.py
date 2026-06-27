@@ -2,69 +2,66 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.repositories.document_repository import document_repository
-from app.schemas.document import (
-    DocumentAssetRead,
-    DocumentDetailRead,
-    DocumentSearchResultRead,
-    DocumentSnippetRead,
-    DocumentVersionRead,
+from app.repositories.crawled_document_repository import crawled_document_repository
+from app.schemas.crawled_document import (
+    CrawledDocumentAssetRead,
+    CrawledDocumentDetailRead,
+    CrawledDocumentRead,
+    CrawledDocumentSearchResultRead,
+    CrawledDocumentVersionRead,
 )
 
 router = APIRouter(prefix="/crawled-documents", tags=["crawled documents"])
 
 
-@router.get("", response_model=list[DocumentSearchResultRead])
+@router.get("", response_model=list[CrawledDocumentRead])
 async def list_crawled_documents(
-    limit: int = Query(default=100, ge=1, le=500),
-) -> list[DocumentSearchResultRead]:
-    return await document_repository.list_documents(limit=limit)
+    crawl_source_id: UUID | None = None,
+) -> list[CrawledDocumentRead]:
+    return await crawled_document_repository.list_crawled_documents(crawl_source_id=crawl_source_id)
 
 
-@router.get("/search", response_model=list[DocumentSearchResultRead])
+@router.get("/search", response_model=list[CrawledDocumentSearchResultRead])
 async def search_crawled_documents(
     q: str = Query(min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
-) -> list[DocumentSearchResultRead]:
-    return await document_repository.search_documents(q, limit=limit)
+) -> list[CrawledDocumentSearchResultRead]:
+    return await crawled_document_repository.search_crawled_documents(q, limit=limit)
 
 
-@router.get("/{document_id}", response_model=DocumentDetailRead)
+@router.get("/{crawled_document_id}", response_model=CrawledDocumentDetailRead)
 async def get_crawled_document(
-    document_id: UUID,
+    crawled_document_id: UUID,
     snippet_limit: int = Query(default=8, ge=0, le=50),
-) -> DocumentDetailRead:
-    document = await document_repository.get_detail(
-        document_id,
+) -> CrawledDocumentDetailRead:
+    document = await crawled_document_repository.get_detail(
+        crawled_document_id,
         snippet_limit=snippet_limit,
     )
     if document is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="Crawled document not found")
     return document
 
 
-@router.get("/{document_id}/chunks", response_model=list[DocumentSnippetRead])
-async def list_crawled_document_chunks(
-    document_id: UUID,
-    limit: int = Query(default=20, ge=1, le=100),
-) -> list[DocumentSnippetRead]:
-    chunks = await document_repository.chunks(document_id, limit=limit)
-    if chunks is None:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return chunks
+@router.get(
+    "/{crawled_document_id}/versions",
+    response_model=list[CrawledDocumentVersionRead],
+)
+async def list_crawled_document_versions(
+    crawled_document_id: UUID,
+) -> list[CrawledDocumentVersionRead]:
+    if await crawled_document_repository.get(crawled_document_id) is None:
+        raise HTTPException(status_code=404, detail="Crawled document not found")
+    return await crawled_document_repository.versions(crawled_document_id)
 
 
-@router.get("/{document_id}/versions", response_model=list[DocumentVersionRead])
-async def list_crawled_document_versions(document_id: UUID) -> list[DocumentVersionRead]:
-    versions = await document_repository.versions(document_id)
-    if versions is None:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return versions
-
-
-@router.get("/{document_id}/assets", response_model=list[DocumentAssetRead])
-async def list_crawled_document_assets(document_id: UUID) -> list[DocumentAssetRead]:
-    assets = await document_repository.assets(document_id)
-    if assets is None:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return assets
+@router.get(
+    "/{crawled_document_id}/assets",
+    response_model=list[CrawledDocumentAssetRead],
+)
+async def list_crawled_document_assets(
+    crawled_document_id: UUID,
+) -> list[CrawledDocumentAssetRead]:
+    if await crawled_document_repository.get(crawled_document_id) is None:
+        raise HTTPException(status_code=404, detail="Crawled document not found")
+    return await crawled_document_repository.assets(crawled_document_id)

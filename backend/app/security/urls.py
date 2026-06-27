@@ -5,7 +5,7 @@ import re
 import socket
 from urllib.parse import urlparse
 
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 async def validate_public_url(url: str) -> None:
@@ -24,7 +24,7 @@ async def validate_public_url(url: str) -> None:
             raise ValueError(f"Blocked non-public target address: {ip}")
 
 
-def is_url_allowed(url: str, source: SourceRead) -> bool:
+def is_url_allowed(url: str, source: CrawlSourceRead) -> bool:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return False
@@ -40,7 +40,7 @@ def is_url_allowed(url: str, source: SourceRead) -> bool:
     return matches_source_patterns(url, source)
 
 
-def matches_source_patterns(url: str, source: SourceRead) -> bool:
+def matches_source_patterns(url: str, source: CrawlSourceRead) -> bool:
     path = urlparse(url).path
     included = not source.include_patterns or any(
         _matches(path, pattern) for pattern in source.include_patterns

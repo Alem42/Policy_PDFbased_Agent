@@ -2,10 +2,8 @@ import asyncio
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,6 +15,13 @@ from app.core.config import BACKEND_ROOT, get_settings
 
 
 class Database:
+    """Lazy database lifecycle placeholder.
+
+    No connection or schema creation occurs while DATABASE_ENABLED=false.
+    Repositories currently use memory and can later be replaced with SQLAlchemy
+    implementations without changing the API layer.
+    """
+
     def __init__(self) -> None:
         self.engine: AsyncEngine | None = None
         self.session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -27,8 +32,10 @@ class Database:
         if not settings.database_enabled:
             self.status = "disabled"
             return
-        url = _to_asyncpg_url(settings.database_url)
-        self.engine = create_async_engine(url, pool_pre_ping=True)
+        self.engine = create_async_engine(
+            settings.database_url,
+            pool_pre_ping=settings.database_pool_pre_ping,
+        )
         self.session_factory = async_sessionmaker(
             self.engine,
             expire_on_commit=False,
@@ -53,43 +60,26 @@ database = Database()
 
 
 async def init_db() -> None:
-    """Run the schema SQL once at startup using the sync psycopg connection.
-
-    asyncpg (used by SQLAlchemy async engine) cannot execute multiple SQL
-    statements in one call. psycopg3 has no such restriction, so we reuse
-    get_connection() and offload the blocking I/O to a thread.
-    """
     schema_path = BACKEND_ROOT / "supabase" / "local_schema.sql"
-    if not schema_path.exists():
-        return
-    await asyncio.to_thread(_init_db_sync, schema_path)
+    if schema_path.exists():
+        await asyncio.to_thread(_init_db_sync, schema_path)
 
 
 def _init_db_sync(schema_path: Path) -> None:
-    sql = _read_sql(schema_path)
-    with get_connection() as conn:
-        conn.execute(sql)
-        conn.commit()
-
-
-def _read_sql(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _to_asyncpg_url(database_url: str) -> str:
-    """Ensure the URL uses the asyncpg driver for SQLAlchemy async engine."""
-    if database_url.startswith("postgresql://") or database_url.startswith("postgres://"):
-        return database_url.replace("://", "+asyncpg://", 1)
-    return database_url
+    with get_connection() as connection:
+        connection.execute(schema_path.read_text(encoding="utf-8"))
+        connection.commit()
 
 
 def _normalise_database_url(database_url: str) -> str:
-    """Convert asyncpg URL back to plain postgresql:// for sync psycopg."""
     return database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 @contextmanager
-def get_connection() -> Iterator[psycopg.Connection]:
+def get_connection() -> Iterator[Any]:
+    import psycopg
+    from psycopg.rows import dict_row
+
     settings = get_settings()
     with psycopg.connect(
         _normalise_database_url(settings.database_url),

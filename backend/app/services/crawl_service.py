@@ -3,58 +3,57 @@ from uuid import UUID
 
 from app.core.config import get_settings
 from app.crawlers.selector import crawler_selector
-from app.schemas.document import IncrementalSyncStats
-from app.schemas.job import CrawlJobStatus
+from app.repositories.crawl_job_repository import crawl_job_repository
+from app.repositories.crawl_source_repository import crawl_source_repository
+from app.schemas.crawl_job import CrawlJobStatus
+from app.schemas.crawled_document import IncrementalSyncStats
 from app.services.attachment_downloader import attachment_downloader
 from app.services.incremental_sync import incremental_sync_service
-from app.repositories.job_repository import job_repository
-from app.repositories.source_repository import source_repository
 
 
 class CrawlService:
-    async def run(self, job_id: UUID) -> None:
-        job = await job_repository.get(job_id)
-        if job is None:
+    async def run(self, crawl_job_id: UUID) -> None:
+        crawl_job = await crawl_job_repository.get(crawl_job_id)
+        if crawl_job is None:
             return
-        source = await source_repository.get(job.source_id)
-        if source is None:
-            await job_repository.update(
-                job_id,
+        crawl_source = await crawl_source_repository.get(crawl_job.crawl_source_id)
+        if crawl_source is None:
+            await crawl_job_repository.update(
+                crawl_job_id,
                 status=CrawlJobStatus.FAILED,
-                message="Source was deleted before the job started",
+                message="Crawl source was deleted before the crawl job started",
                 finished_at=True,
             )
             return
 
-        primary = crawler_selector.primary(source)
-        await job_repository.update(
-            job_id,
+        primary = crawler_selector.primary(crawl_source)
+        await crawl_job_repository.update(
+            crawl_job_id,
             status=CrawlJobStatus.RUNNING,
             selected_crawler=primary.name,
             started_at=datetime.now(UTC),
         )
 
         settings = get_settings()
-        if job.dry_run or not settings.crawling_enabled:
-            reason = "dry-run requested" if job.dry_run else "CRAWLING_ENABLED=false"
-            await job_repository.update(
-                job_id,
+        if crawl_job.dry_run or not settings.crawling_enabled:
+            reason = "dry-run requested" if crawl_job.dry_run else "CRAWLING_ENABLED=false"
+            await crawl_job_repository.update(
+                crawl_job_id,
                 status=CrawlJobStatus.SKIPPED,
                 message=f"Crawl plan created with '{primary.name}'; network skipped: {reason}",
                 finished_at=True,
             )
             return
 
-        attempts = [primary, *crawler_selector.fallbacks(source)]
+        attempts = [primary, *crawler_selector.fallbacks(crawl_source)]
         errors: list[str] = []
         for crawler in attempts:
             try:
-                await job_repository.update(job_id, selected_crawler=crawler.name)
+                await crawl_job_repository.update(crawl_job_id, selected_crawler=crawler.name)
                 if hasattr(crawler, "crawl_batches"):
                     completed = await self._run_batched_crawl(
-                        job_id,
-                        job.id,
-                        source,
+                        crawl_job.id,
+                        crawl_source,
                         crawler,
                     )
                     if completed:
@@ -62,25 +61,25 @@ class CrawlService:
                     errors.append(f"{crawler.name}: no documents returned")
                     continue
 
-                result = await crawler.crawl(source)
+                result = await crawler.crawl(crawl_source)
                 if result.documents:
                     download_errors = await attachment_downloader.download(
-                        source,
+                        crawl_source,
                         result.documents,
                     )
-                    result.errors.extend(
-                        f"asset download: {error}" for error in download_errors
+                    result.errors.extend(f"asset download: {error}" for error in download_errors)
+                    is_complete = self._is_complete(crawl_source.max_documents, result)
+                    mark_missing = bool(
+                        crawl_source.config.get("mark_missing_on_full_crawl", False)
                     )
-                    is_complete = self._is_complete(source.max_documents, result)
-                    mark_missing = bool(source.config.get("mark_missing_on_full_crawl", False))
                     stats = await incremental_sync_service.sync(
-                        source.id,
+                        crawl_source.id,
                         result.documents,
-                        crawl_job_id=job.id,
+                        crawl_job_id=crawl_job.id,
                         mark_missing=mark_missing,
                     )
-                    await job_repository.update(
-                        job_id,
+                    await crawl_job_repository.update(
+                        crawl_job_id,
                         status=CrawlJobStatus.COMPLETED,
                         pages_visited=result.pages_visited,
                         expected_documents=result.expected_documents,
@@ -103,8 +102,8 @@ class CrawlService:
             except Exception as exc:
                 errors.append(f"{crawler.name}: {exc}")
 
-        await job_repository.update(
-            job_id,
+        await crawl_job_repository.update(
+            crawl_job_id,
             status=CrawlJobStatus.FAILED,
             pages_failed=len(errors),
             message=" | ".join(errors),
@@ -113,27 +112,24 @@ class CrawlService:
 
     async def _run_batched_crawl(
         self,
-        job_id: UUID,
         crawl_job_id: UUID,
-        source,
+        crawl_source,
         crawler,
     ) -> bool:
         stats_total = IncrementalSyncStats()
         total_documents = 0
         latest_result = None
 
-        async for result in crawler.crawl_batches(source):
+        async for result in crawler.crawl_batches(crawl_source):
             latest_result = result
             if result.documents:
                 download_errors = await attachment_downloader.download(
-                    source,
+                    crawl_source,
                     result.documents,
                 )
-                result.errors.extend(
-                    f"asset download: {error}" for error in download_errors
-                )
+                result.errors.extend(f"asset download: {error}" for error in download_errors)
                 stats = await incremental_sync_service.sync(
-                    source.id,
+                    crawl_source.id,
                     result.documents,
                     crawl_job_id=crawl_job_id,
                     mark_missing=False,
@@ -144,8 +140,8 @@ class CrawlService:
                 stats_total.missing += stats.missing
                 total_documents += len(result.documents)
 
-            await job_repository.update(
-                job_id,
+            await crawl_job_repository.update(
+                crawl_job_id,
                 status=CrawlJobStatus.RUNNING,
                 pages_visited=result.pages_visited,
                 expected_documents=result.expected_documents,
@@ -167,12 +163,12 @@ class CrawlService:
             return False
 
         is_complete = self._is_complete(
-            source.max_documents,
+            crawl_source.max_documents,
             latest_result,
             documents_count=total_documents,
         )
-        await job_repository.update(
-            job_id,
+        await crawl_job_repository.update(
+            crawl_job_id,
             status=CrawlJobStatus.COMPLETED,
             pages_visited=latest_result.pages_visited,
             expected_documents=latest_result.expected_documents,

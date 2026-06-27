@@ -1,199 +1,700 @@
--- AI Policy Research Platform - PostgreSQL initialization schema.
--- Run once against a fresh PostgreSQL database before enabling DATABASE_ENABLED.
+/*
+ Navicat Premium Dump SQL
 
-begin;
+ Source Server         : 9900Demo
+ Source Server Type    : PostgreSQL
+ Source Server Version : 160014 (160014)
+ Source Host           : 20.2.139.148:5432
+ Source Catalog        : testdb
+ Source Schema         : public
 
-create extension if not exists pgcrypto;
+ Target Server Type    : PostgreSQL
+ Target Server Version : 160014 (160014)
+ File Encoding         : 65001
 
-do $$
-begin
-  create type public.crawler_preference as enum (
-    'auto',
-    'http',
-    'playwright',
-    'firecrawl'
-  );
-exception
-  when duplicate_object then null;
-end
-$$;
+ Date: 27/06/2026 18:09:25
+*/
 
-do $$
-begin
-  create type public.crawl_job_status as enum (
-    'pending',
-    'running',
-    'completed',
-    'failed',
-    'skipped'
-  );
-exception
-  when duplicate_object then null;
-end
-$$;
+-- Required extensions managed by PostgreSQL, not by manual CREATE TYPE/FUNCTION blocks
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+SET search_path = public, pg_catalog;
 
-do $$
-begin
-  create type public.document_status as enum (
-    'active',
-    'missing'
-  );
-exception
-  when duplicate_object then null;
-end
-$$;
 
-create table if not exists public.sources (
-  id uuid primary key default gen_random_uuid(),
-  name text not null check (char_length(name) between 1 and 200),
-  start_url text not null,
-  allowed_domains text[] not null default '{}',
-  include_patterns text[] not null default '{}',
-  exclude_patterns text[] not null default '{}',
-  crawler_preference public.crawler_preference not null default 'auto',
-  max_pages integer check (max_pages is null or max_pages between 1 and 10000),
-  max_documents integer
-    check (max_documents is null or max_documents between 1 and 10000),
-  max_depth integer not null default 3 check (max_depth between 0 and 20),
-  enabled boolean not null default true,
-  schedule text,
-  config jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint sources_start_url_unique unique (start_url)
+
+
+-- ----------------------------
+-- Type structure for crawl_job_status
+-- ----------------------------
+DROP TYPE IF EXISTS "public"."crawl_job_status";
+CREATE TYPE "public"."crawl_job_status" AS ENUM (
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'skipped'
 );
 
-create table if not exists public.crawl_jobs (
-  id uuid primary key default gen_random_uuid(),
-  source_id uuid not null references public.sources(id) on delete cascade,
-  dry_run boolean not null default true,
-  status public.crawl_job_status not null default 'pending',
-  selected_crawler text,
-  pages_visited integer not null default 0 check (pages_visited >= 0),
-  expected_documents integer check (
-    expected_documents is null or expected_documents >= 0
-  ),
-  pages_discovered integer not null default 0 check (pages_discovered >= 0),
-  pages_succeeded integer not null default 0 check (pages_succeeded >= 0),
-  pages_failed integer not null default 0 check (pages_failed >= 0),
-  documents_added integer not null default 0 check (documents_added >= 0),
-  documents_updated integer not null default 0 check (documents_updated >= 0),
-  documents_unchanged integer not null default 0 check (documents_unchanged >= 0),
-  documents_missing integer not null default 0 check (documents_missing >= 0),
-  is_complete boolean,
-  message text,
-  error_details jsonb not null default '[]'::jsonb,
-  created_at timestamptz not null default now(),
-  started_at timestamptz,
-  finished_at timestamptz
+-- ----------------------------
+-- Type structure for crawler_preference
+-- ----------------------------
+DROP TYPE IF EXISTS "public"."crawler_preference";
+CREATE TYPE "public"."crawler_preference" AS ENUM (
+  'auto',
+  'http',
+  'playwright',
+  'firecrawl'
 );
 
-create table if not exists public.crawled_documents (
-  id uuid primary key default gen_random_uuid(),
-  source_id uuid not null references public.sources(id) on delete cascade,
-  canonical_url text not null,
-  title text,
-  summary text,
-  country text,
-  policy_status text,
-  start_year integer check (start_year is null or start_year between 1800 and 2200),
-  end_year integer check (end_year is null or end_year between 1800 and 2200),
-  content_hash text not null check (char_length(content_hash) = 64),
-  current_version integer not null default 1 check (current_version >= 1),
-  status public.document_status not null default 'active',
-  first_seen_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
-  missing_since timestamptz,
-  source_published_at timestamptz,
-  source_updated_at timestamptz,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint crawled_documents_source_url_unique unique (source_id, canonical_url)
+-- ----------------------------
+-- Type structure for document_status
+-- ----------------------------
+DROP TYPE IF EXISTS "public"."document_status";
+CREATE TYPE "public"."document_status" AS ENUM (
+  'active',
+  'missing'
 );
 
-create table if not exists public.crawled_document_versions (
-  id uuid primary key default gen_random_uuid(),
-  document_id uuid not null references public.crawled_documents(id) on delete cascade,
-  crawl_job_id uuid references public.crawl_jobs(id) on delete set null,
-  version integer not null check (version >= 1),
-  content_hash text not null check (char_length(content_hash) = 64),
-  title text,
-  clean_markdown text not null,
-  metadata jsonb not null default '{}'::jsonb,
-  fetched_at timestamptz not null default now(),
-  constraint crawled_document_versions_number_unique unique (document_id, version)
-);
+-- ----------------------------
+-- Sequence structure for crawl_errors_id_seq
+-- ----------------------------
+DROP SEQUENCE IF EXISTS "public"."crawl_errors_id_seq";
+CREATE SEQUENCE "public"."crawl_errors_id_seq" 
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 9223372036854775807
+START 1
+CACHE 1;
 
-create table if not exists public.crawled_document_assets (
-  id uuid primary key default gen_random_uuid(),
-  document_id uuid not null references public.crawled_documents(id) on delete cascade,
-  asset_type text not null default 'link',
-  original_url text not null,
-  title text,
-  mime_type text,
-  is_available boolean,
-  http_status integer
-    check (http_status is null or http_status between 100 and 599),
-  discovered_at timestamptz not null default now(),
-  last_checked_at timestamptz,
-  metadata jsonb not null default '{}'::jsonb,
-  constraint crawled_document_assets_document_url_unique
-    unique (document_id, original_url)
-);
+-- ----------------------------
+-- Sequence structure for test_table_id_seq
+-- ----------------------------
+DROP SEQUENCE IF EXISTS "public"."test_table_id_seq";
+CREATE SEQUENCE "public"."test_table_id_seq" 
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 2147483647
+START 1
+CACHE 1;
 
-create table if not exists public.crawl_errors (
-  id bigint generated by default as identity primary key,
-  crawl_job_id uuid not null references public.crawl_jobs(id) on delete cascade,
-  source_id uuid not null references public.sources(id) on delete cascade,
-  url text,
-  crawler text,
-  error_type text,
-  message text not null,
-  details jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
+-- ----------------------------
+-- Table structure for app_users
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."app_users";
+CREATE TABLE "public"."app_users" (
+  "id" uuid NOT NULL,
+  "uid" text COLLATE "pg_catalog"."default" NOT NULL,
+  "username" text COLLATE "pg_catalog"."default" NOT NULL,
+  "password_hash" text COLLATE "pg_catalog"."default" NOT NULL,
+  "role" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'user'::text,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create index if not exists crawl_jobs_source_created_idx
-  on public.crawl_jobs (source_id, created_at desc);
+-- ----------------------------
+-- Table structure for chunk_embeddings
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."chunk_embeddings";
+CREATE TABLE "public"."chunk_embeddings" (
+  "chunk_id" uuid NOT NULL,
+  "embedding" vector(384) NOT NULL,
+  "embedding_model" text COLLATE "pg_catalog"."default" NOT NULL,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create index if not exists crawl_jobs_status_idx
-  on public.crawl_jobs (status);
+-- ----------------------------
+-- Table structure for crawl_errors
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawl_errors";
+CREATE TABLE "public"."crawl_errors" (
+  "id" int8 NOT NULL GENERATED BY DEFAULT AS IDENTITY (
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 9223372036854775807
+START 1
+CACHE 1
+),
+  "crawl_job_id" uuid NOT NULL,
+  "crawl_source_id" uuid NOT NULL,
+  "url" text COLLATE "pg_catalog"."default",
+  "crawler" text COLLATE "pg_catalog"."default",
+  "error_type" text COLLATE "pg_catalog"."default",
+  "message" text COLLATE "pg_catalog"."default" NOT NULL,
+  "details" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create index if not exists crawled_documents_source_status_idx
-  on public.crawled_documents (source_id, status);
+-- ----------------------------
+-- Table structure for crawl_jobs
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawl_jobs";
+CREATE TABLE "public"."crawl_jobs" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "crawl_source_id" uuid NOT NULL,
+  "dry_run" bool NOT NULL DEFAULT true,
+  "status" "public"."crawl_job_status" NOT NULL DEFAULT 'pending'::crawl_job_status,
+  "selected_crawler" text COLLATE "pg_catalog"."default",
+  "pages_visited" int4 NOT NULL DEFAULT 0,
+  "expected_documents" int4,
+  "pages_discovered" int4 NOT NULL DEFAULT 0,
+  "pages_succeeded" int4 NOT NULL DEFAULT 0,
+  "pages_failed" int4 NOT NULL DEFAULT 0,
+  "documents_added" int4 NOT NULL DEFAULT 0,
+  "documents_updated" int4 NOT NULL DEFAULT 0,
+  "documents_unchanged" int4 NOT NULL DEFAULT 0,
+  "documents_missing" int4 NOT NULL DEFAULT 0,
+  "is_complete" bool,
+  "message" text COLLATE "pg_catalog"."default",
+  "error_details" jsonb NOT NULL DEFAULT '[]'::jsonb,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "started_at" timestamptz(6),
+  "finished_at" timestamptz(6)
+)
+;
 
-create index if not exists crawled_documents_last_seen_idx
-  on public.crawled_documents (last_seen_at desc);
+-- ----------------------------
+-- Table structure for crawl_sources
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawl_sources";
+CREATE TABLE "public"."crawl_sources" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "name" text COLLATE "pg_catalog"."default" NOT NULL,
+  "start_url" text COLLATE "pg_catalog"."default" NOT NULL,
+  "allowed_domains" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "include_patterns" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "exclude_patterns" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "crawler_preference" "public"."crawler_preference" NOT NULL DEFAULT 'auto'::crawler_preference,
+  "max_pages" int4,
+  "max_documents" int4,
+  "max_depth" int4 NOT NULL DEFAULT 3,
+  "enabled" bool NOT NULL DEFAULT true,
+  "schedule" text COLLATE "pg_catalog"."default",
+  "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create index if not exists crawled_document_versions_document_fetched_idx
-  on public.crawled_document_versions (document_id, fetched_at desc);
+-- ----------------------------
+-- Table structure for crawled_document_assets
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawled_document_assets";
+CREATE TABLE "public"."crawled_document_assets" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "document_id" uuid NOT NULL,
+  "asset_type" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'link'::text,
+  "original_url" text COLLATE "pg_catalog"."default" NOT NULL,
+  "title" text COLLATE "pg_catalog"."default",
+  "mime_type" text COLLATE "pg_catalog"."default",
+  "is_available" bool,
+  "http_status" int4,
+  "discovered_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "last_checked_at" timestamptz(6),
+  "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb
+)
+;
 
-create index if not exists crawled_document_assets_document_idx
-  on public.crawled_document_assets (document_id);
+-- ----------------------------
+-- Table structure for crawled_document_versions
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawled_document_versions";
+CREATE TABLE "public"."crawled_document_versions" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "document_id" uuid NOT NULL,
+  "crawl_job_id" uuid,
+  "version" int4 NOT NULL,
+  "content_hash" text COLLATE "pg_catalog"."default" NOT NULL,
+  "title" text COLLATE "pg_catalog"."default",
+  "clean_markdown" text COLLATE "pg_catalog"."default" NOT NULL,
+  "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "fetched_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create index if not exists crawl_errors_job_idx
-  on public.crawl_errors (crawl_job_id, created_at);
+-- ----------------------------
+-- Table structure for crawled_documents
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."crawled_documents";
+CREATE TABLE "public"."crawled_documents" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "crawl_source_id" uuid NOT NULL,
+  "canonical_url" text COLLATE "pg_catalog"."default" NOT NULL,
+  "title" text COLLATE "pg_catalog"."default",
+  "summary" text COLLATE "pg_catalog"."default",
+  "country" text COLLATE "pg_catalog"."default",
+  "policy_status" text COLLATE "pg_catalog"."default",
+  "start_year" int4,
+  "end_year" int4,
+  "content_hash" text COLLATE "pg_catalog"."default" NOT NULL,
+  "current_version" int4 NOT NULL DEFAULT 1,
+  "status" "public"."document_status" NOT NULL DEFAULT 'active'::document_status,
+  "first_seen_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "last_seen_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "missing_since" timestamptz(6),
+  "source_published_at" timestamptz(6),
+  "source_updated_at" timestamptz(6),
+  "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
 
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
+-- ----------------------------
+-- Table structure for document_chunks
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."document_chunks";
+CREATE TABLE "public"."document_chunks" (
+  "id" uuid NOT NULL,
+  "document_id" uuid NOT NULL,
+  "chunk_index" int4 NOT NULL,
+  "page_start" int4 NOT NULL,
+  "page_end" int4 NOT NULL,
+  "section_title" text COLLATE "pg_catalog"."default",
+  "language" text COLLATE "pg_catalog"."default",
+  "text" text COLLATE "pg_catalog"."default" NOT NULL,
+  "token_count" int4 NOT NULL DEFAULT 0,
+  "keywords" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "metadata_json" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
+
+-- ----------------------------
+-- Table structure for document_metadata
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."document_metadata";
+CREATE TABLE "public"."document_metadata" (
+  "document_id" uuid NOT NULL,
+  "title" text COLLATE "pg_catalog"."default",
+  "summary" text COLLATE "pg_catalog"."default",
+  "source_type" text COLLATE "pg_catalog"."default",
+  "source_organisation" text COLLATE "pg_catalog"."default",
+  "country_region" text COLLATE "pg_catalog"."default",
+  "language" text COLLATE "pg_catalog"."default",
+  "year" int4,
+  "publication_date" date,
+  "policy_areas" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "keywords" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "stakeholders" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "implementation_risks" text[] COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}'::text[],
+  "metadata_json" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "generated_by_model" text COLLATE "pg_catalog"."default",
+  "generated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "reviewed_at" timestamptz(6)
+)
+;
+
+-- ----------------------------
+-- Table structure for document_pages
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."document_pages";
+CREATE TABLE "public"."document_pages" (
+  "id" uuid NOT NULL,
+  "document_id" uuid NOT NULL,
+  "page_number" int4 NOT NULL,
+  "text" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT ''::text,
+  "char_count" int4 NOT NULL DEFAULT 0,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now()
+)
+;
+
+-- ----------------------------
+-- Table structure for documents
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."documents";
+CREATE TABLE "public"."documents" (
+  "id" uuid NOT NULL,
+  "original_filename" text COLLATE "pg_catalog"."default" NOT NULL,
+  "stored_filename" text COLLATE "pg_catalog"."default" NOT NULL,
+  "file_path" text COLLATE "pg_catalog"."default" NOT NULL,
+  "file_size" int8 NOT NULL,
+  "sha256" text COLLATE "pg_catalog"."default" NOT NULL,
+  "mime_type" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'application/pdf'::text,
+  "status" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'uploaded'::text,
+  "approved" bool NOT NULL DEFAULT true,
+  "access_level" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'public'::text,
+  "uploaded_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "processed_at" timestamptz(6),
+  "error_message" text COLLATE "pg_catalog"."default"
+)
+;
+
+-- ----------------------------
+-- Table structure for processing_jobs
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."processing_jobs";
+CREATE TABLE "public"."processing_jobs" (
+  "id" uuid NOT NULL,
+  "document_id" uuid NOT NULL,
+  "job_type" text COLLATE "pg_catalog"."default" NOT NULL,
+  "status" text COLLATE "pg_catalog"."default" NOT NULL,
+  "started_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "finished_at" timestamptz(6),
+  "error_message" text COLLATE "pg_catalog"."default",
+  "details_json" jsonb NOT NULL DEFAULT '{}'::jsonb
+)
+;
+
+-- ----------------------------
+-- Table structure for test_table
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."test_table";
+CREATE TABLE "public"."test_table" (
+  "id" int4 NOT NULL DEFAULT nextval('test_table_id_seq'::regclass),
+  "name" varchar(100) COLLATE "pg_catalog"."default" NOT NULL,
+  "email" varchar(150) COLLATE "pg_catalog"."default",
+  "age" int4,
+  "created_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP
+)
+;
+
+-- ----------------------------
+-- Function structure for set_updated_at
+-- ----------------------------
+DROP FUNCTION IF EXISTS "public"."set_updated_at"();
+CREATE FUNCTION "public"."set_updated_at"()
+  RETURNS "pg_catalog"."trigger" AS $BODY$
 begin
   new.updated_at = now();
   return new;
 end;
-$$;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+  COST 100
+  SET "search_path"="""";
 
-drop trigger if exists sources_set_updated_at on public.sources;
-create trigger sources_set_updated_at
-before update on public.sources
-for each row execute function public.set_updated_at();
+-- ----------------------------
+-- Alter sequences owned by
+-- ----------------------------
+ALTER SEQUENCE "public"."crawl_errors_id_seq"
+OWNED BY "public"."crawl_errors"."id";
+SELECT setval('"public"."crawl_errors_id_seq"', 1, false);
 
-drop trigger if exists crawled_documents_set_updated_at on public.crawled_documents;
-create trigger crawled_documents_set_updated_at
-before update on public.crawled_documents
-for each row execute function public.set_updated_at();
+-- ----------------------------
+-- Alter sequences owned by
+-- ----------------------------
+ALTER SEQUENCE "public"."test_table_id_seq"
+OWNED BY "public"."test_table"."id";
+SELECT setval('"public"."test_table_id_seq"', 1, false);
 
-commit;
+-- ----------------------------
+-- Indexes structure for table app_users
+-- ----------------------------
+CREATE INDEX "idx_app_users_uid" ON "public"."app_users" USING btree (
+  "uid" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "idx_app_users_username" ON "public"."app_users" USING btree (
+  "username" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Uniques structure for table app_users
+-- ----------------------------
+ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_uid_key" UNIQUE ("uid");
+ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_username_key" UNIQUE ("username");
+
+-- ----------------------------
+-- Checks structure for table app_users
+-- ----------------------------
+ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_role_check" CHECK (role = ANY (ARRAY['admin'::text, 'user'::text]));
+
+-- ----------------------------
+-- Primary Key structure for table app_users
+-- ----------------------------
+ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table chunk_embeddings
+-- ----------------------------
+CREATE INDEX "idx_chunk_embeddings_vector" ON "public"."chunk_embeddings" USING hnsw (
+  "embedding" "public"."vector_cosine_ops"
+);
+
+-- ----------------------------
+-- Primary Key structure for table chunk_embeddings
+-- ----------------------------
+ALTER TABLE "public"."chunk_embeddings" ADD CONSTRAINT "chunk_embeddings_pkey" PRIMARY KEY ("chunk_id");
+
+-- ----------------------------
+-- Indexes structure for table crawl_errors
+-- ----------------------------
+CREATE INDEX "crawl_errors_job_idx" ON "public"."crawl_errors" USING btree (
+  "crawl_job_id" "pg_catalog"."uuid_ops" ASC NULLS LAST,
+  "created_at" "pg_catalog"."timestamptz_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Primary Key structure for table crawl_errors
+-- ----------------------------
+ALTER TABLE "public"."crawl_errors" ADD CONSTRAINT "crawl_errors_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table crawl_jobs
+-- ----------------------------
+CREATE INDEX "crawl_jobs_crawl_source_created_idx" ON "public"."crawl_jobs" USING btree (
+  "crawl_source_id" "pg_catalog"."uuid_ops" ASC NULLS LAST,
+  "created_at" "pg_catalog"."timestamptz_ops" DESC NULLS FIRST
+);
+CREATE INDEX "crawl_jobs_status_idx" ON "public"."crawl_jobs" USING btree (
+  "status" "pg_catalog"."enum_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Checks structure for table crawl_jobs
+-- ----------------------------
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_expected_documents_check" CHECK (expected_documents IS NULL OR expected_documents >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_pages_discovered_check" CHECK (pages_discovered >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_pages_succeeded_check" CHECK (pages_succeeded >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_pages_failed_check" CHECK (pages_failed >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_documents_added_check" CHECK (documents_added >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_documents_updated_check" CHECK (documents_updated >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_documents_unchanged_check" CHECK (documents_unchanged >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_documents_missing_check" CHECK (documents_missing >= 0);
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_pages_visited_check" CHECK (pages_visited >= 0);
+
+-- ----------------------------
+-- Primary Key structure for table crawl_jobs
+-- ----------------------------
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Triggers structure for table crawl_sources
+-- ----------------------------
+CREATE TRIGGER "crawl_sources_set_updated_at" BEFORE UPDATE ON "public"."crawl_sources"
+FOR EACH ROW
+EXECUTE PROCEDURE "public"."set_updated_at"();
+
+-- ----------------------------
+-- Uniques structure for table crawl_sources
+-- ----------------------------
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_start_url_unique" UNIQUE ("start_url");
+
+-- ----------------------------
+-- Checks structure for table crawl_sources
+-- ----------------------------
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_name_check" CHECK (char_length(name) >= 1 AND char_length(name) <= 200);
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_max_pages_check" CHECK (max_pages IS NULL OR max_pages >= 1 AND max_pages <= 10000);
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_max_documents_check" CHECK (max_documents IS NULL OR max_documents >= 1 AND max_documents <= 10000);
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_max_depth_check" CHECK (max_depth >= 0 AND max_depth <= 20);
+
+-- ----------------------------
+-- Primary Key structure for table crawl_sources
+-- ----------------------------
+ALTER TABLE "public"."crawl_sources" ADD CONSTRAINT "crawl_sources_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table crawled_document_assets
+-- ----------------------------
+CREATE INDEX "crawled_document_assets_document_idx" ON "public"."crawled_document_assets" USING btree (
+  "document_id" "pg_catalog"."uuid_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Uniques structure for table crawled_document_assets
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_assets" ADD CONSTRAINT "crawled_document_assets_document_url_unique" UNIQUE ("document_id", "original_url");
+
+-- ----------------------------
+-- Checks structure for table crawled_document_assets
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_assets" ADD CONSTRAINT "crawled_document_assets_http_status_check" CHECK (http_status IS NULL OR http_status >= 100 AND http_status <= 599);
+
+-- ----------------------------
+-- Primary Key structure for table crawled_document_assets
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_assets" ADD CONSTRAINT "crawled_document_assets_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table crawled_document_versions
+-- ----------------------------
+CREATE INDEX "crawled_document_versions_document_fetched_idx" ON "public"."crawled_document_versions" USING btree (
+  "document_id" "pg_catalog"."uuid_ops" ASC NULLS LAST,
+  "fetched_at" "pg_catalog"."timestamptz_ops" DESC NULLS FIRST
+);
+
+-- ----------------------------
+-- Uniques structure for table crawled_document_versions
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_number_unique" UNIQUE ("document_id", "version");
+
+-- ----------------------------
+-- Checks structure for table crawled_document_versions
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_version_check" CHECK (version >= 1);
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_content_hash_check" CHECK (char_length(content_hash) = 64);
+
+-- ----------------------------
+-- Primary Key structure for table crawled_document_versions
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table crawled_documents
+-- ----------------------------
+CREATE INDEX "crawled_documents_crawl_source_status_idx" ON "public"."crawled_documents" USING btree (
+  "crawl_source_id" "pg_catalog"."uuid_ops" ASC NULLS LAST,
+  "status" "pg_catalog"."enum_ops" ASC NULLS LAST
+);
+CREATE INDEX "crawled_documents_last_seen_idx" ON "public"."crawled_documents" USING btree (
+  "last_seen_at" "pg_catalog"."timestamptz_ops" DESC NULLS FIRST
+);
+
+-- ----------------------------
+-- Triggers structure for table crawled_documents
+-- ----------------------------
+CREATE TRIGGER "crawled_documents_set_updated_at" BEFORE UPDATE ON "public"."crawled_documents"
+FOR EACH ROW
+EXECUTE PROCEDURE "public"."set_updated_at"();
+
+-- ----------------------------
+-- Uniques structure for table crawled_documents
+-- ----------------------------
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_crawl_source_url_unique" UNIQUE ("crawl_source_id", "canonical_url");
+
+-- ----------------------------
+-- Checks structure for table crawled_documents
+-- ----------------------------
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_content_hash_check" CHECK (char_length(content_hash) = 64);
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_start_year_check" CHECK (start_year IS NULL OR start_year >= 1800 AND start_year <= 2200);
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_current_version_check" CHECK (current_version >= 1);
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_end_year_check" CHECK (end_year IS NULL OR end_year >= 1800 AND end_year <= 2200);
+
+-- ----------------------------
+-- Primary Key structure for table crawled_documents
+-- ----------------------------
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table document_chunks
+-- ----------------------------
+CREATE INDEX "idx_document_chunks_document_id" ON "public"."document_chunks" USING btree (
+  "document_id" "pg_catalog"."uuid_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Uniques structure for table document_chunks
+-- ----------------------------
+ALTER TABLE "public"."document_chunks" ADD CONSTRAINT "document_chunks_document_id_chunk_index_key" UNIQUE ("document_id", "chunk_index");
+
+-- ----------------------------
+-- Primary Key structure for table document_chunks
+-- ----------------------------
+ALTER TABLE "public"."document_chunks" ADD CONSTRAINT "document_chunks_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table document_metadata
+-- ----------------------------
+CREATE INDEX "idx_document_metadata_keywords" ON "public"."document_metadata" USING gin (
+  "keywords" COLLATE "pg_catalog"."default" "pg_catalog"."array_ops"
+);
+CREATE INDEX "idx_document_metadata_policy_areas" ON "public"."document_metadata" USING gin (
+  "policy_areas" COLLATE "pg_catalog"."default" "pg_catalog"."array_ops"
+);
+
+-- ----------------------------
+-- Primary Key structure for table document_metadata
+-- ----------------------------
+ALTER TABLE "public"."document_metadata" ADD CONSTRAINT "document_metadata_pkey" PRIMARY KEY ("document_id");
+
+-- ----------------------------
+-- Indexes structure for table document_pages
+-- ----------------------------
+CREATE INDEX "idx_document_pages_document_id" ON "public"."document_pages" USING btree (
+  "document_id" "pg_catalog"."uuid_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Uniques structure for table document_pages
+-- ----------------------------
+ALTER TABLE "public"."document_pages" ADD CONSTRAINT "document_pages_document_id_page_number_key" UNIQUE ("document_id", "page_number");
+
+-- ----------------------------
+-- Primary Key structure for table document_pages
+-- ----------------------------
+ALTER TABLE "public"."document_pages" ADD CONSTRAINT "document_pages_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table documents
+-- ----------------------------
+CREATE INDEX "idx_documents_approved_access" ON "public"."documents" USING btree (
+  "approved" "pg_catalog"."bool_ops" ASC NULLS LAST,
+  "access_level" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "idx_documents_status" ON "public"."documents" USING btree (
+  "status" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Uniques structure for table documents
+-- ----------------------------
+ALTER TABLE "public"."documents" ADD CONSTRAINT "documents_file_path_key" UNIQUE ("file_path");
+
+-- ----------------------------
+-- Primary Key structure for table documents
+-- ----------------------------
+ALTER TABLE "public"."documents" ADD CONSTRAINT "documents_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Primary Key structure for table processing_jobs
+-- ----------------------------
+ALTER TABLE "public"."processing_jobs" ADD CONSTRAINT "processing_jobs_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Primary Key structure for table test_table
+-- ----------------------------
+ALTER TABLE "public"."test_table" ADD CONSTRAINT "test_table_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Foreign Keys structure for table chunk_embeddings
+-- ----------------------------
+ALTER TABLE "public"."chunk_embeddings" ADD CONSTRAINT "chunk_embeddings_chunk_id_fkey" FOREIGN KEY ("chunk_id") REFERENCES "public"."document_chunks" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table crawl_errors
+-- ----------------------------
+ALTER TABLE "public"."crawl_errors" ADD CONSTRAINT "crawl_errors_crawl_job_id_fkey" FOREIGN KEY ("crawl_job_id") REFERENCES "public"."crawl_jobs" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."crawl_errors" ADD CONSTRAINT "crawl_errors_crawl_source_id_fkey" FOREIGN KEY ("crawl_source_id") REFERENCES "public"."crawl_sources" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table crawl_jobs
+-- ----------------------------
+ALTER TABLE "public"."crawl_jobs" ADD CONSTRAINT "crawl_jobs_crawl_source_id_fkey" FOREIGN KEY ("crawl_source_id") REFERENCES "public"."crawl_sources" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table crawled_document_assets
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_assets" ADD CONSTRAINT "crawled_document_assets_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."crawled_documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table crawled_document_versions
+-- ----------------------------
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_crawl_job_id_fkey" FOREIGN KEY ("crawl_job_id") REFERENCES "public"."crawl_jobs" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE "public"."crawled_document_versions" ADD CONSTRAINT "crawled_document_versions_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."crawled_documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table crawled_documents
+-- ----------------------------
+ALTER TABLE "public"."crawled_documents" ADD CONSTRAINT "crawled_documents_crawl_source_id_fkey" FOREIGN KEY ("crawl_source_id") REFERENCES "public"."crawl_sources" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table document_chunks
+-- ----------------------------
+ALTER TABLE "public"."document_chunks" ADD CONSTRAINT "document_chunks_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table document_metadata
+-- ----------------------------
+ALTER TABLE "public"."document_metadata" ADD CONSTRAINT "document_metadata_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table document_pages
+-- ----------------------------
+ALTER TABLE "public"."document_pages" ADD CONSTRAINT "document_pages_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Foreign Keys structure for table processing_jobs
+-- ----------------------------
+ALTER TABLE "public"."processing_jobs" ADD CONSTRAINT "processing_jobs_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;

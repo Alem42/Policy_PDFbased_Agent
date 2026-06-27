@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 @dataclass(slots=True)
@@ -28,5 +28,5 @@ class BaseCrawler(ABC):
     name: str
 
     @abstractmethod
-    async def crawl(self, source: SourceRead) -> CrawlResult:
+    async def crawl(self, crawl_source: CrawlSourceRead) -> CrawlResult:
         raise NotImplementedError

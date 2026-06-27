@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from app.api.dependencies.auth import require_admin
 from app.schemas.settings import SettingsResponse, SettingsUpdate
-from app.services.auth_service import require_admin
 from app.services.settings_service import get_public_settings, update_public_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])

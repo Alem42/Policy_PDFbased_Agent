@@ -14,7 +14,7 @@ class PaginationPage:
 
 
 class ConfigPaginationStrategy:
-    """Generate listing-page URLs from source.config.pagination."""
+    """Generate listing-page URLs from crawl_source.config.pagination."""
 
     def next_pages(
         self,

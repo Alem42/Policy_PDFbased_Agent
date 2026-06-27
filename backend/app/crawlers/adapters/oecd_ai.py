@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.crawlers.base import CrawledDocument
 from app.crawlers.http import HttpCrawler
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 
 
 class OecdAiCrawler(HttpCrawler):
@@ -20,21 +20,18 @@ class OecdAiCrawler(HttpCrawler):
         self,
         soup: BeautifulSoup,
         base_url: str,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> list[str]:
         heading = soup.find(
-            string=lambda value: isinstance(value, str)
-            and "List of policy initiatives" in value
+            string=lambda value: isinstance(value, str) and "List of policy initiatives" in value
         )
         heading_parent = heading.parent if heading else None
         container_text = (
-            heading_parent.get_text(" ", strip=True)
-            if isinstance(heading_parent, Tag)
-            else ""
+            heading_parent.get_text(" ", strip=True) if isinstance(heading_parent, Tag) else ""
         )
         match = re.search(r"\(([\d,]+)\)", container_text)
         if match is None:
-            return super()._pagination_links(soup, base_url, source)
+            return super()._pagination_links(soup, base_url, crawl_source)
 
         total = int(match.group(1).replace(",", ""))
         total_pages = math.ceil(total / self.page_size)
@@ -61,9 +58,9 @@ class OecdAiCrawler(HttpCrawler):
     def _parse_document(
         self,
         response: httpx.Response,
-        source: SourceRead,
+        crawl_source: CrawlSourceRead,
     ) -> CrawledDocument:
-        document = super()._parse_document(response, source)
+        document = super()._parse_document(response, crawl_source)
         document.markdown = self._clean_oecd_markdown(document.markdown)
         soup = BeautifulSoup(response.text, "html.parser")
 
@@ -72,15 +69,11 @@ class OecdAiCrawler(HttpCrawler):
             document.title = detail_title.get_text(" ", strip=True)
 
         summary = self._summary_after(detail_title)
-        country_node = soup.select_one(
-            ".taxonomy-relation-list .flags span.content"
-        )
+        country_node = soup.select_one(".taxonomy-relation-list .flags span.content")
         structured = {
             **document.metadata.get("structured", {}),
             "summary": summary,
-            "country": (
-                country_node.get_text(" ", strip=True) if country_node else None
-            ),
+            "country": (country_node.get_text(" ", strip=True) if country_node else None),
             "policy_status": self._label_value(soup, "Status:"),
             "start_year": self._integer(self._label_value(soup, "Start Year:")),
             "end_year": self._integer(self._label_value(soup, "End Year:")),
@@ -109,9 +102,7 @@ class OecdAiCrawler(HttpCrawler):
 
     @staticmethod
     def _label_container(soup: BeautifulSoup, label: str) -> Tag | None:
-        node = soup.find(
-            string=lambda value: isinstance(value, str) and value.strip() == label
-        )
+        node = soup.find(string=lambda value: isinstance(value, str) and value.strip() == label)
         if node is None or not isinstance(node.parent, Tag):
             return None
         parent = node.parent.parent
@@ -147,8 +138,7 @@ class OecdAiCrawler(HttpCrawler):
     def _section_values(soup: BeautifulSoup, heading_text: str) -> list[str]:
         heading = soup.find(
             ["h2", "h3", "h4"],
-            string=lambda value: isinstance(value, str)
-            and value.strip() == heading_text,
+            string=lambda value: isinstance(value, str) and value.strip() == heading_text,
         )
         if heading is None:
             return []
@@ -167,7 +157,7 @@ class OecdAiCrawler(HttpCrawler):
             return None
         match = re.search(r"\b(18|19|20|21)\d{2}\b", value)
         return int(match.group(0)) if match else None
-    
+
     @staticmethod
     def _clean_oecd_markdown(markdown: str | None) -> str:
         if not markdown:

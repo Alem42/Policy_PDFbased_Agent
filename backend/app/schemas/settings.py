@@ -1,4 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+
+class RuntimeSettings(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    llm_api_key: str | None = None
+    deepseek_api_key: str | None = None
+    llm_chat_model: str | None = None
+    deepseek_chat_model: str | None = None
 
 
 class SettingsResponse(BaseModel):

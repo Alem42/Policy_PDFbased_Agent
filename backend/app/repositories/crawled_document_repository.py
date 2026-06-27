@@ -9,22 +9,22 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.database import database
 from app.models import CrawledDocumentModel
-from app.schemas.document import (
+from app.schemas.crawled_document import (
+    CrawledDocumentAssetRead,
+    CrawledDocumentDetailRead,
+    CrawledDocumentMetadataRead,
     CrawledDocumentRead,
-    DocumentAssetRead,
-    DocumentDetailRead,
-    DocumentMetadataRead,
-    DocumentSearchResultRead,
-    DocumentSnippetRead,
-    DocumentSourceInfoRead,
-    DocumentVersionRead,
+    CrawledDocumentSearchResultRead,
+    CrawledDocumentSnippetRead,
+    CrawledDocumentSourceInfoRead,
+    CrawledDocumentVersionRead,
 )
 
 
-def document_model_to_schema(model: CrawledDocumentModel) -> CrawledDocumentRead:
+def crawled_document_model_to_schema(model: CrawledDocumentModel) -> CrawledDocumentRead:
     return CrawledDocumentRead(
         id=model.id,
-        source_id=model.source_id,
+        crawl_source_id=model.crawl_source_id,
         canonical_url=model.canonical_url,
         title=model.title,
         summary=model.summary,
@@ -56,8 +56,7 @@ def _matches_query(value: object, query: str) -> bool:
         return any(_matches_query(item, query) for item in value)
     if isinstance(value, dict):
         return any(
-            _matches_query(key, query) or _matches_query(item, query)
-            for key, item in value.items()
+            _matches_query(key, query) or _matches_query(item, query) for key, item in value.items()
         )
     return query in str(value).lower()
 
@@ -66,18 +65,18 @@ def _string_list(value: object) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [str(item) for item in value]
+        return [str(item) for item in value if str(item)]
     return [str(value)]
 
 
 class CrawledDocumentRepository:
-    """Read repository for PostgreSQL, with a durable JSON development fallback."""
+    """Repository for crawler-discovered documents and their crawl history."""
 
     def __init__(self, path: Path | None = None) -> None:
-        self._path = path or get_settings().document_store_path
-        self._documents: dict[UUID, CrawledDocumentRead] = {}
-        self._versions: dict[UUID, list[DocumentVersionRead]] = {}
-        self._assets: dict[UUID, list[DocumentAssetRead]] = {}
+        self._path = path or get_settings().crawled_document_store_path
+        self._crawled_documents: dict[UUID, CrawledDocumentRead] = {}
+        self._versions: dict[UUID, list[CrawledDocumentVersionRead]] = {}
+        self._assets: dict[UUID, list[CrawledDocumentAssetRead]] = {}
         self._lock = RLock()
         self._load()
 
@@ -86,14 +85,21 @@ class CrawledDocumentRepository:
         settings = get_settings()
         return settings.database_enabled and settings.persistence_backend == "database"
 
-    async def list_documents(self, source_id: UUID | None = None) -> list[CrawledDocumentRead]:
+    async def list_crawled_documents(
+        self,
+        crawl_source_id: UUID | None = None,
+    ) -> list[CrawledDocumentRead]:
         if not self.uses_database:
             with self._lock:
-                documents = list(self._documents.values())
-                if source_id is not None:
-                    documents = [item for item in documents if item.source_id == source_id]
+                crawled_documents = list(self._crawled_documents.values())
+                if crawl_source_id is not None:
+                    crawled_documents = [
+                        item
+                        for item in crawled_documents
+                        if item.crawl_source_id == crawl_source_id
+                    ]
                 return sorted(
-                    documents,
+                    crawled_documents,
                     key=lambda item: item.last_seen_at,
                     reverse=True,
                 )
@@ -103,214 +109,122 @@ class CrawledDocumentRepository:
             statement = select(CrawledDocumentModel).order_by(
                 CrawledDocumentModel.last_seen_at.desc()
             )
-            if source_id is not None:
-                statement = statement.where(CrawledDocumentModel.source_id == source_id)
+            if crawl_source_id is not None:
+                statement = statement.where(
+                    CrawledDocumentModel.crawl_source_id == crawl_source_id
+                )
             models = (await session.scalars(statement)).all()
-            return [document_model_to_schema(model) for model in models]
+            return [crawled_document_model_to_schema(model) for model in models]
 
-    async def search_documents(
+    async def search_crawled_documents(
         self,
         query: str,
         *,
         limit: int = 20,
-    ) -> list[DocumentSearchResultRead]:
+    ) -> list[CrawledDocumentSearchResultRead]:
         normalized_query = query.strip().lower()
         if not normalized_query:
             return []
         if not self.uses_database:
-            return self._search_local_documents(normalized_query, limit=limit)
+            return self._search_local_crawled_documents(normalized_query, limit=limit)
 
         factory = self.session_factory()
         async with factory() as session:
             pattern = f"%{normalized_query}%"
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         select
-                          d.id,
-                          d.original_filename,
-                          d.status,
-                          d.approved,
-                          d.uploaded_at,
-                          d.processed_at,
-                          m.title,
-                          m.summary,
-                          m.source_organisation,
-                          m.country_region,
-                          m.year,
-                          m.keywords,
+                          id,
+                          canonical_url,
+                          title,
+                          summary,
+                          country,
+                          start_year,
+                          status,
+                          first_seen_at,
+                          last_seen_at,
+                          metadata,
                           array_remove(array[
-                            case when lower(d.original_filename) like :pattern
-                              then 'filename' end,
-                            case when lower(coalesce(m.title, '')) like :pattern
+                            case when lower(canonical_url) like :pattern
+                              then 'canonical_url' end,
+                            case when lower(coalesce(title, '')) like :pattern
                               then 'title' end,
-                            case when lower(coalesce(m.summary, '')) like :pattern
+                            case when lower(coalesce(summary, '')) like :pattern
                               then 'summary' end,
-                            case when exists (
-                              select 1
-                              from unnest(coalesce(m.keywords, array[]::text[])) keyword
-                              where lower(keyword) like :pattern
-                            ) then 'keywords' end
+                            case when lower(coalesce(country, '')) like :pattern
+                              then 'country' end,
+                            case when lower(metadata::text) like :pattern
+                              then 'metadata' end
                           ], null) as match_fields
-                        from public.documents d
-                        left join public.document_metadata m on m.document_id = d.id
+                        from public.crawled_documents
                         where
-                          lower(d.original_filename) like :pattern
-                          or lower(coalesce(m.title, '')) like :pattern
-                          or lower(coalesce(m.summary, '')) like :pattern
-                          or exists (
-                            select 1
-                            from unnest(coalesce(m.keywords, array[]::text[])) keyword
-                            where lower(keyword) like :pattern
-                          )
-                        order by d.uploaded_at desc
+                          lower(canonical_url) like :pattern
+                          or lower(coalesce(title, '')) like :pattern
+                          or lower(coalesce(summary, '')) like :pattern
+                          or lower(coalesce(country, '')) like :pattern
+                          or lower(metadata::text) like :pattern
+                        order by last_seen_at desc
                         limit :limit
                         """
-                    ),
-                    {"pattern": pattern, "limit": limit},
+                        ),
+                        {"pattern": pattern, "limit": limit},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return [
-            DocumentSearchResultRead(
-                document_id=row["id"],
-                original_filename=row["original_filename"],
-                title=row["title"],
-                summary=row["summary"],
-                source_organisation=row["source_organisation"],
-                country_region=row["country_region"],
-                year=row["year"],
-                keywords=list(row["keywords"] or []),
-                status=row["status"],
-                approved=row["approved"],
-                uploaded_at=row["uploaded_at"],
-                processed_at=row["processed_at"],
+            self._search_result_from_row(
+                row,
                 match_fields=list(row["match_fields"] or []),
             )
             for row in rows
         ]
 
-    async def get(self, document_id: UUID) -> CrawledDocumentRead | None:
+    async def get(self, crawled_document_id: UUID) -> CrawledDocumentRead | None:
         if not self.uses_database:
             with self._lock:
-                return self._documents.get(document_id)
+                return self._crawled_documents.get(crawled_document_id)
         factory = self.session_factory()
         async with factory() as session:
-            model = await session.get(CrawledDocumentModel, document_id)
-            return document_model_to_schema(model) if model else None
+            model = await session.get(CrawledDocumentModel, crawled_document_id)
+            return crawled_document_model_to_schema(model) if model else None
 
     async def get_detail(
         self,
-        document_id: UUID,
+        crawled_document_id: UUID,
         *,
         snippet_limit: int = 8,
-    ) -> DocumentDetailRead | None:
-        if not self.uses_database:
-            return await self._get_local_detail(document_id, snippet_limit=snippet_limit)
-
-        factory = self.session_factory()
-        async with factory() as session:
-            processed = (
-                await session.execute(
-                    text(
-                        """
-                        select
-                          d.id,
-                          d.original_filename,
-                          d.file_size,
-                          d.mime_type,
-                          d.status,
-                          d.approved,
-                          d.access_level,
-                          d.uploaded_at,
-                          d.processed_at,
-                          m.title,
-                          m.summary,
-                          m.source_type,
-                          m.source_organisation,
-                          m.country_region,
-                          m.language,
-                          m.year,
-                          m.publication_date,
-                          m.policy_areas,
-                          m.keywords,
-                          m.stakeholders,
-                          m.implementation_risks,
-                          m.metadata_json
-                        from public.documents d
-                        left join public.document_metadata m on m.document_id = d.id
-                        where d.id = :document_id
-                        """
-                    ),
-                    {"document_id": document_id},
-                )
-            ).mappings().first()
-            if processed is not None:
-                snippet_rows = (
-                    await session.execute(
-                        text(
-                            """
-                            select
-                              id,
-                              chunk_index,
-                              page_start,
-                              page_end,
-                              section_title,
-                              language,
-                              text,
-                              token_count,
-                              keywords,
-                              metadata_json
-                            from public.document_chunks
-                            where document_id = :document_id
-                            order by chunk_index
-                            limit :snippet_limit
-                            """
-                        ),
-                        {"document_id": document_id, "snippet_limit": snippet_limit},
-                    )
-                ).mappings().all()
-                snippet_count = (
-                    await session.execute(
-                        text(
-                            """
-                            select count(*)
-                            from public.document_chunks
-                            where document_id = :document_id
-                            """
-                        ),
-                        {"document_id": document_id},
-                    )
-                ).scalar_one()
-                return self._processed_detail_from_rows(
-                    processed,
-                    snippet_rows,
-                    snippet_count,
-                )
-
-        document = await self.get(document_id)
+    ) -> CrawledDocumentDetailRead | None:
+        document = await self.get(crawled_document_id)
         if document is None:
             return None
         return await self._crawled_detail(document, snippet_limit=snippet_limit)
 
-    async def versions(self, document_id: UUID) -> list[DocumentVersionRead]:
+    async def versions(
+        self,
+        crawled_document_id: UUID,
+    ) -> list[CrawledDocumentVersionRead]:
         if not self.uses_database:
             with self._lock:
-                return list(self._versions.get(document_id, []))
+                return list(self._versions.get(crawled_document_id, []))
         factory = self.session_factory()
         async with factory() as session:
             statement = (
                 select(CrawledDocumentModel)
                 .options(selectinload(CrawledDocumentModel.versions))
-                .where(CrawledDocumentModel.id == document_id)
+                .where(CrawledDocumentModel.id == crawled_document_id)
             )
             model = await session.scalar(statement)
             if model is None:
                 return []
             return [
-                DocumentVersionRead(
+                CrawledDocumentVersionRead(
                     id=version.id,
-                    document_id=version.document_id,
+                    crawled_document_id=version.document_id,
                     version=version.version,
                     content_hash=version.content_hash,
                     title=version.title,
@@ -321,24 +235,27 @@ class CrawledDocumentRepository:
                 for version in sorted(model.versions, key=lambda item: item.version)
             ]
 
-    async def assets(self, document_id: UUID) -> list[DocumentAssetRead]:
+    async def assets(
+        self,
+        crawled_document_id: UUID,
+    ) -> list[CrawledDocumentAssetRead]:
         if not self.uses_database:
             with self._lock:
-                return list(self._assets.get(document_id, []))
+                return list(self._assets.get(crawled_document_id, []))
         factory = self.session_factory()
         async with factory() as session:
             statement = (
                 select(CrawledDocumentModel)
                 .options(selectinload(CrawledDocumentModel.assets))
-                .where(CrawledDocumentModel.id == document_id)
+                .where(CrawledDocumentModel.id == crawled_document_id)
             )
             model = await session.scalar(statement)
             if model is None:
                 return []
             return [
-                DocumentAssetRead(
+                CrawledDocumentAssetRead(
                     id=asset.id,
-                    document_id=asset.document_id,
+                    crawled_document_id=asset.document_id,
                     asset_type=asset.asset_type,
                     original_url=asset.original_url,
                     title=asset.title,
@@ -352,28 +269,16 @@ class CrawledDocumentRepository:
                 for asset in model.assets
             ]
 
-    async def _get_local_detail(
-        self,
-        document_id: UUID,
-        *,
-        snippet_limit: int,
-    ) -> DocumentDetailRead | None:
-        with self._lock:
-            document = self._documents.get(document_id)
-        if document is None:
-            return None
-        return await self._crawled_detail(document, snippet_limit=snippet_limit)
-
     async def _crawled_detail(
         self,
-        document: CrawledDocumentRead,
+        crawled_document: CrawledDocumentRead,
         *,
         snippet_limit: int,
-    ) -> DocumentDetailRead:
-        versions = await self.versions(document.id)
-        assets = await self.assets(document.id)
+    ) -> CrawledDocumentDetailRead:
+        versions = await self.versions(crawled_document.id)
+        assets = await self.assets(crawled_document.id)
         latest_version = max(versions, key=lambda item: item.version, default=None)
-        snippets: list[DocumentSnippetRead] = []
+        snippets: list[CrawledDocumentSnippetRead] = []
         if latest_version is not None:
             paragraphs = [
                 paragraph.strip()
@@ -381,136 +286,95 @@ class CrawledDocumentRepository:
                 if paragraph.strip()
             ]
             snippets = [
-                DocumentSnippetRead(
-                    chunk_id=latest_version.id,
+                CrawledDocumentSnippetRead(
+                    version_id=latest_version.id,
                     chunk_index=index,
                     text_preview=_preview(paragraph),
                     metadata=latest_version.metadata,
                 )
                 for index, paragraph in enumerate(paragraphs[:snippet_limit])
             ]
-        source_url = assets[0].original_url if assets else document.canonical_url
-        return DocumentDetailRead(
-            document_id=document.id,
-            status=document.status.value,
-            approved=None,
-            uploaded_at=document.first_seen_at,
-            processed_at=document.last_seen_at,
-            summary=document.summary,
-            metadata=DocumentMetadataRead(
-                title=document.title,
-                summary=document.summary,
-                country_region=document.country,
-                year=document.start_year,
-                metadata=document.metadata,
+        source_url = assets[0].original_url if assets else crawled_document.canonical_url
+        return CrawledDocumentDetailRead(
+            crawled_document_id=crawled_document.id,
+            status=crawled_document.status.value,
+            first_seen_at=crawled_document.first_seen_at,
+            last_seen_at=crawled_document.last_seen_at,
+            summary=crawled_document.summary,
+            metadata=CrawledDocumentMetadataRead(
+                title=crawled_document.title,
+                summary=crawled_document.summary,
+                country=crawled_document.country,
+                policy_status=crawled_document.policy_status,
+                start_year=crawled_document.start_year,
+                end_year=crawled_document.end_year,
+                metadata=crawled_document.metadata,
             ),
-            source=DocumentSourceInfoRead(
-                source_type="crawled_document",
-                source_url=source_url,
-            ),
+            source=CrawledDocumentSourceInfoRead(source_url=source_url),
             snippets=snippets,
             snippet_count=len(snippets),
         )
 
     @staticmethod
-    def _processed_detail_from_rows(
-        document_row,
-        snippet_rows,
-        snippet_count: int,
-    ) -> DocumentDetailRead:
-        metadata_json = document_row["metadata_json"] or {}
-        source_url = metadata_json.get("source_url") or metadata_json.get("url")
-        metadata = DocumentMetadataRead(
-            title=document_row["title"],
-            summary=document_row["summary"],
-            source_type=document_row["source_type"],
-            source_organisation=document_row["source_organisation"],
-            country_region=document_row["country_region"],
-            language=document_row["language"],
-            year=document_row["year"],
-            publication_date=document_row["publication_date"],
-            policy_areas=list(document_row["policy_areas"] or []),
-            keywords=list(document_row["keywords"] or []),
-            stakeholders=list(document_row["stakeholders"] or []),
-            implementation_risks=list(document_row["implementation_risks"] or []),
-            metadata=metadata_json,
-        )
-        return DocumentDetailRead(
-            document_id=document_row["id"],
-            status=document_row["status"],
-            approved=document_row["approved"],
-            uploaded_at=document_row["uploaded_at"],
-            processed_at=document_row["processed_at"],
-            summary=document_row["summary"],
-            metadata=metadata,
-            source=DocumentSourceInfoRead(
-                source_type=document_row["source_type"],
-                source_organisation=document_row["source_organisation"],
-                source_url=source_url,
-                original_filename=document_row["original_filename"],
-                mime_type=document_row["mime_type"],
-                file_size=document_row["file_size"],
-                access_level=document_row["access_level"],
-            ),
-            snippets=[
-                DocumentSnippetRead(
-                    chunk_id=row["id"],
-                    chunk_index=row["chunk_index"],
-                    page_start=row["page_start"],
-                    page_end=row["page_end"],
-                    section_title=row["section_title"],
-                    language=row["language"],
-                    text_preview=_preview(row["text"]),
-                    token_count=row["token_count"],
-                    keywords=list(row["keywords"] or []),
-                    metadata=row["metadata_json"] or {},
-                )
-                for row in snippet_rows
-            ],
-            snippet_count=snippet_count,
+    def _search_result_from_row(
+        row,
+        *,
+        match_fields: list[str],
+    ) -> CrawledDocumentSearchResultRead:
+        metadata = row["metadata"] or {}
+        return CrawledDocumentSearchResultRead(
+            crawled_document_id=row["id"],
+            canonical_url=row["canonical_url"],
+            title=row["title"],
+            summary=row["summary"],
+            country=row["country"],
+            start_year=row["start_year"],
+            keywords=_string_list(metadata.get("keywords")),
+            status=row["status"],
+            first_seen_at=row["first_seen_at"],
+            last_seen_at=row["last_seen_at"],
+            match_fields=match_fields,
         )
 
-    def _search_local_documents(
+    def _search_local_crawled_documents(
         self,
         query: str,
         *,
         limit: int,
-    ) -> list[DocumentSearchResultRead]:
+    ) -> list[CrawledDocumentSearchResultRead]:
         with self._lock:
-            documents = sorted(
-                self._documents.values(),
+            crawled_documents = sorted(
+                self._crawled_documents.values(),
                 key=lambda item: item.last_seen_at,
                 reverse=True,
             )
-        results: list[DocumentSearchResultRead] = []
-        for document in documents:
+        results: list[CrawledDocumentSearchResultRead] = []
+        for crawled_document in crawled_documents:
             match_fields = []
-            if _matches_query(document.canonical_url, query):
-                match_fields.append("filename")
-            if _matches_query(document.title, query):
+            if _matches_query(crawled_document.canonical_url, query):
+                match_fields.append("canonical_url")
+            if _matches_query(crawled_document.title, query):
                 match_fields.append("title")
-            if _matches_query(document.summary, query):
+            if _matches_query(crawled_document.summary, query):
                 match_fields.append("summary")
-            if _matches_query(document.metadata.get("keywords"), query) or _matches_query(
-                document.metadata,
-                query,
-            ):
-                match_fields.append("keywords")
+            if _matches_query(crawled_document.country, query):
+                match_fields.append("country")
+            if _matches_query(crawled_document.metadata, query):
+                match_fields.append("metadata")
             if not match_fields:
                 continue
             results.append(
-                DocumentSearchResultRead(
-                    document_id=document.id,
-                    original_filename=document.canonical_url.rsplit("/", 1)[-1],
-                    title=document.title,
-                    summary=document.summary,
-                    country_region=document.country,
-                    year=document.start_year,
-                    keywords=_string_list(document.metadata.get("keywords")),
-                    status=document.status.value,
-                    approved=None,
-                    uploaded_at=document.first_seen_at,
-                    processed_at=document.last_seen_at,
+                CrawledDocumentSearchResultRead(
+                    crawled_document_id=crawled_document.id,
+                    canonical_url=crawled_document.canonical_url,
+                    title=crawled_document.title,
+                    summary=crawled_document.summary,
+                    country=crawled_document.country,
+                    start_year=crawled_document.start_year,
+                    keywords=_string_list(crawled_document.metadata.get("keywords")),
+                    status=crawled_document.status.value,
+                    first_seen_at=crawled_document.first_seen_at,
+                    last_seen_at=crawled_document.last_seen_at,
                     match_fields=match_fields,
                 )
             )
@@ -520,22 +384,22 @@ class CrawledDocumentRepository:
 
     def save_local(
         self,
-        document: CrawledDocumentRead,
-        version: DocumentVersionRead | None = None,
-        assets: list[DocumentAssetRead] | None = None,
+        crawled_document: CrawledDocumentRead,
+        version: CrawledDocumentVersionRead | None = None,
+        assets: list[CrawledDocumentAssetRead] | None = None,
         *,
         persist: bool = True,
     ) -> None:
         with self._lock:
-            self._documents[document.id] = document
+            self._crawled_documents[crawled_document.id] = crawled_document
             if version is not None:
-                self._versions.setdefault(document.id, []).append(version)
+                self._versions.setdefault(crawled_document.id, []).append(version)
             if assets:
                 existing = {
-                    asset.original_url: asset for asset in self._assets.get(document.id, [])
+                    asset.original_url: asset for asset in self._assets.get(crawled_document.id, [])
                 }
                 existing.update({asset.original_url: asset for asset in assets})
-                self._assets[document.id] = list(existing.values())
+                self._assets[crawled_document.id] = list(existing.values())
             if persist:
                 self._persist()
 
@@ -547,14 +411,19 @@ class CrawledDocumentRepository:
         if not self._path.exists():
             return
         payload = json.loads(self._path.read_text(encoding="utf-8"))
-        for raw in payload.get("documents", []):
+        raw_documents = payload.get("crawled_documents", payload.get("documents", []))
+        for raw in raw_documents:
             item = CrawledDocumentRead.model_validate(raw)
-            self._documents[item.id] = item
+            self._crawled_documents[item.id] = item
         self._versions = {
-            UUID(document_id): [
-                DocumentVersionRead.model_validate(
+            UUID(crawled_document_id): [
+                CrawledDocumentVersionRead.model_validate(
                     {
                         **raw,
+                        "crawled_document_id": raw.get(
+                            "crawled_document_id",
+                            raw.get("document_id"),
+                        ),
                         "clean_markdown": raw.get(
                             "clean_markdown",
                             raw.get("markdown", ""),
@@ -563,27 +432,38 @@ class CrawledDocumentRepository:
                 )
                 for raw in versions
             ]
-            for document_id, versions in payload.get("versions", {}).items()
+            for crawled_document_id, versions in payload.get("versions", {}).items()
         }
         self._assets = {
-            UUID(document_id): [DocumentAssetRead.model_validate(raw) for raw in assets]
-            for document_id, assets in payload.get("assets", {}).items()
+            UUID(crawled_document_id): [
+                CrawledDocumentAssetRead.model_validate(
+                    {
+                        **raw,
+                        "crawled_document_id": raw.get(
+                            "crawled_document_id",
+                            raw.get("document_id"),
+                        ),
+                    }
+                )
+                for raw in assets
+            ]
+            for crawled_document_id, assets in payload.get("assets", {}).items()
         }
 
     def _persist(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
         payload = {
-            "documents": [
-                document.model_dump(mode="json") for document in self._documents.values()
+            "crawled_documents": [
+                document.model_dump(mode="json") for document in self._crawled_documents.values()
             ],
             "versions": {
-                str(document_id): [version.model_dump(mode="json") for version in versions]
-                for document_id, versions in self._versions.items()
+                str(crawled_document_id): [version.model_dump(mode="json") for version in versions]
+                for crawled_document_id, versions in self._versions.items()
             },
             "assets": {
-                str(document_id): [asset.model_dump(mode="json") for asset in assets]
-                for document_id, assets in self._assets.items()
+                str(crawled_document_id): [asset.model_dump(mode="json") for asset in assets]
+                for crawled_document_id, assets in self._assets.items()
             },
         }
         temporary_path.write_text(

@@ -7,7 +7,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.crawlers.base import CrawledDocument
-from app.schemas.source import SourceRead
+from app.schemas.crawl_source import CrawlSourceRead
 from app.security.urls import validate_public_url
 
 
@@ -17,7 +17,7 @@ class AttachmentDownloader:
 
     async def download(
         self,
-        source: SourceRead,
+        source: CrawlSourceRead,
         documents: list[CrawledDocument],
         *,
         client: httpx.AsyncClient | None = None,
@@ -40,7 +40,7 @@ class AttachmentDownloader:
 
     async def _download_with_client(
         self,
-        source: SourceRead,
+        source: CrawlSourceRead,
         documents: list[CrawledDocument],
         client: httpx.AsyncClient,
     ) -> list[str]:
@@ -64,7 +64,7 @@ class AttachmentDownloader:
 
     async def _download_asset(
         self,
-        source: SourceRead,
+        source: CrawlSourceRead,
         document: CrawledDocument,
         asset: dict[str, object],
         url: str,
@@ -88,7 +88,7 @@ class AttachmentDownloader:
 
     def _target_path(
         self,
-        source: SourceRead,
+        source: CrawlSourceRead,
         document: CrawledDocument,
         url: str,
     ) -> Path:
