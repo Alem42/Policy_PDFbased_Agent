@@ -9,6 +9,7 @@ venv/
 # Backend local configuration and runtime data
 backend/.env
 backend/data/
+.env.production
 
 # Node/Vite
 node_modules/
