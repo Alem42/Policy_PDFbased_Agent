@@ -1,10 +1,10 @@
 import httpx
 from bs4 import BeautifulSoup
 
-from app.crawlers.adapters.oecd_ai import OecdAiCrawler
-from app.crawlers.http import HttpCrawler
-from app.crawlers.selector import CrawlerSelector
-from app.schemas.crawl_source import CrawlSourceRead
+from app.modules.crawling.crawlers.adapters.oecd_ai import OecdAiCrawler
+from app.modules.crawling.crawlers.http import HttpCrawler
+from app.modules.crawling.crawlers.selector import CrawlerSelector
+from app.modules.crawling.schemas.source import CrawlSourceRead
 
 
 def test_oecd_adapter_generates_next_page_and_extracts_fields() -> None:

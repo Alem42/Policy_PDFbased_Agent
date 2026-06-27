@@ -1,5 +1,5 @@
-from app.crawlers.base import CrawledDocument, CrawlResult
-from app.services.crawl_service import CrawlService
+from app.modules.crawling.crawlers.base import CrawledDocument, CrawlResult
+from app.modules.crawling.service import CrawlService
 
 
 def test_known_expected_total_requires_every_document() -> None:

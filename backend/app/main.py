@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import database
-from app.repositories.crawl_job_repository import crawl_job_repository
+from app.modules.crawling.repositories.job import crawl_job_repository
 
 
 @asynccontextmanager

@@ -1,10 +1,10 @@
 from pathlib import Path
 from uuid import uuid4
 
-from app.crawlers.base import CrawledDocument
-from app.repositories.crawled_document_repository import CrawledDocumentRepository
-from app.schemas.crawled_document import CrawledDocumentStatus
-from app.services.incremental_sync import IncrementalSyncService
+from app.modules.crawling.crawlers.base import CrawledDocument
+from app.modules.crawling.incremental_sync import IncrementalSyncService
+from app.modules.crawling.repositories.document import CrawledDocumentRepository
+from app.modules.crawling.schemas.document import CrawledDocumentStatus
 
 
 async def test_incremental_add_unchanged_update_and_missing(tmp_path: Path) -> None:

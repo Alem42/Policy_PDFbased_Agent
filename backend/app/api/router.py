@@ -1,16 +1,14 @@
 from fastapi import APIRouter
 
-from app.api.routes import (
-    admin,
-    auth,
-    chat,
-    crawl_jobs,
-    crawl_sources,
-    crawled_documents,
-    documents,
-    health,
-    settings,
-)
+from app.modules.auth import router as auth
+from app.modules.chat import router as chat
+from app.modules.crawling.routers import documents as crawled_documents
+from app.modules.crawling.routers import jobs as crawl_jobs
+from app.modules.crawling.routers import sources as crawl_sources
+from app.modules.documents import admin_router as admin
+from app.modules.documents import router as documents
+from app.modules.settings import router as settings
+from app.modules.system import router as health
 
 api_router = APIRouter()
 api_router.include_router(health.router)

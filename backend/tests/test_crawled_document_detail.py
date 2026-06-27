@@ -3,11 +3,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.repositories.crawled_document_repository import (
+from app.modules.crawling.repositories.document import (
     CrawledDocumentRepository,
     crawled_document_repository,
 )
-from app.schemas.crawled_document import (
+from app.modules.crawling.schemas.document import (
     CrawledDocumentRead,
     CrawledDocumentVersionRead,
 )
@@ -39,7 +39,7 @@ async def test_crawled_document_detail_includes_metadata_source_and_snippets(
     detail = await repository.get_detail(document.id)
 
     assert detail is not None
-    assert detail.crawled_document_id == document.id
+    assert detail.id == document.id
     assert detail.summary == "A short policy summary."
     assert detail.metadata.title == "AI Policy Strategy"
     assert detail.metadata.country == "Exampleland"
@@ -87,7 +87,7 @@ async def test_search_crawled_documents_matches_canonical_url(tmp_path) -> None:
 
     results = await repository.search_crawled_documents("unique-filename")
 
-    assert results[0].crawled_document_id == document.id
+    assert results[0].id == document.id
     assert results[0].canonical_url == "https://example.org/files/unique-filename-strategy.pdf"
     assert "canonical_url" in results[0].match_fields
 
@@ -106,7 +106,7 @@ async def test_search_crawled_documents_matches_metadata_keywords(tmp_path) -> N
 
     results = await repository.search_crawled_documents("frontier governance")
 
-    assert results[0].crawled_document_id == document.id
+    assert results[0].id == document.id
     assert results[0].keywords == ["frontier governance marker"]
     assert "metadata" in results[0].match_fields
 
@@ -132,5 +132,5 @@ def test_crawled_document_detail_api_returns_saved_document() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["crawled_document_id"] == str(document.id)
+    assert payload["id"] == str(document.id)
     assert payload["source"]["source_url"] == "https://example.org/api-policy.pdf"

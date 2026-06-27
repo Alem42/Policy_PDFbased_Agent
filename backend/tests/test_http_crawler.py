@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
-from app.crawlers.http import HttpCrawler
-from app.schemas.crawl_source import CrawlSourceRead
+from app.modules.crawling.crawlers.http import HttpCrawler
+from app.modules.crawling.schemas.source import CrawlSourceRead
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from app.crawlers.pagination import ConfigPaginationStrategy
+from app.modules.crawling.crawlers.pagination import ConfigPaginationStrategy
 
 
 def test_numbered_pagination_extracts_total_and_generates_next_url() -> None:

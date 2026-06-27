@@ -18,19 +18,30 @@ catalogue APIs, and PostgreSQL/pgvector persistence.
 ```text
 backend/
 |-- app/
-|   |-- api/             # FastAPI routes and dependencies
-|   |-- core/            # Configuration and database lifecycle
-|   |-- crawlers/        # HTTP, Playwright, Firecrawl, and source adapters
-|   |-- ingestion/       # Ingestion contracts, metadata, and taxonomy
-|   |-- models/entities/ # SQLAlchemy models grouped by domain
-|   |-- rag/             # Embeddings, generation, and LangGraph workflow
-|   |-- repositories/    # Persistence boundaries
-|   `-- services/        # Application workflows
+|   |-- api/             # Top-level FastAPI router composition
+|   |-- core/            # Shared configuration, database, and ORM foundations
+|   `-- modules/
+|       |-- auth/        # Authentication and authorization
+|       |-- settings/    # Runtime LLM settings
+|       |-- documents/   # Library, PDF ingestion, chunks, and embeddings
+|       |-- crawling/    # Sources, jobs, crawlers, cleaning, and crawl results
+|       |-- chat/        # RAG answer generation and LangGraph workflow
+|       `-- system/      # Health and application metadata endpoints
 |-- database/init.sql    # PostgreSQL/pgvector schema dump
 |-- docs/                # API contracts and Git workflow
 |-- examples/sources/    # Example crawler source configurations
 `-- tests/
 ```
+
+Each business module owns its HTTP routes, schemas, services, persistence code,
+and models. Cross-module calls should use the owning module's service or query
+interface; modules must not duplicate persistence code for data owned elsewhere.
+
+The document module separates persistence by responsibility under
+`modules/documents/repositories/`: document records and governance, extracted
+content and metadata, catalogue response queries, embeddings, and processing
+jobs. Routes use the catalogue repository while ingestion services use the
+record/content repositories directly.
 
 ## Local setup
 
