@@ -15,7 +15,7 @@ from app.models import (
     CrawledDocumentVersionModel,
 )
 from app.schemas.document import (
-    CrawledCrawledDocumentRead,
+    CrawledDocumentRead,
     DocumentAssetRead,
     DocumentStatus,
     DocumentVersionRead,

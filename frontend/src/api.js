@@ -190,3 +190,7 @@ export function saveSettings(settings) {
     body: JSON.stringify(settings),
   });
 }
+
+export function getProcessingStatus(documentId) {
+  return request(`/admin/documents/${encodeURIComponent(documentId)}/processing-status`);
+}

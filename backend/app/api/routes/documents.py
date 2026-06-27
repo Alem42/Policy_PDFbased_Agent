@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated
 from uuid import UUID
 
@@ -70,7 +71,8 @@ async def list_documents(
     tag: str | None = None,
 ) -> list[DocumentRead]:
     try:
-        rows = list_document_records(
+        rows = await asyncio.to_thread(
+            list_document_records,
             include_restricted=bool(user and user["role"] == "admin"),
             policy_area=policy_area,
             country_or_region=country_or_region,
@@ -88,7 +90,8 @@ async def get_document(
     user: OptionalUser,
 ) -> DocumentRead:
     try:
-        row = get_document_detail(
+        row = await asyncio.to_thread(
+            get_document_detail,
             str(document_id),
             include_restricted=bool(user and user["role"] == "admin"),
         )
@@ -104,8 +107,12 @@ async def get_document_file(
 ) -> FileResponse:
     try:
         include_restricted = user["role"] == "admin"
-        row = get_document_detail(str(document_id), include_restricted=include_restricted)
-        path = resolve_pdf(str(document_id), include_restricted=include_restricted)
+        row = await asyncio.to_thread(
+            get_document_detail, str(document_id), include_restricted=include_restricted
+        )
+        path = await asyncio.to_thread(
+            resolve_pdf, str(document_id), include_restricted=include_restricted
+        )
         return FileResponse(path, media_type="application/pdf", filename=row["original_filename"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -118,8 +125,12 @@ async def get_document_pages(
 ) -> dict:
     try:
         include_restricted = user["role"] == "admin"
-        row = get_document_detail(str(document_id), include_restricted=include_restricted)
-        pages = extract_pages(str(document_id), include_restricted=include_restricted)
+        row = await asyncio.to_thread(
+            get_document_detail, str(document_id), include_restricted=include_restricted
+        )
+        pages = await asyncio.to_thread(
+            extract_pages, str(document_id), include_restricted=include_restricted
+        )
         return {
             "filename": row["original_filename"],
             "document_id": row["id"],
@@ -137,7 +148,8 @@ async def list_document_chunks(
     user: OptionalUser,
 ) -> list[dict]:
     try:
-        return get_document_chunks(
+        return await asyncio.to_thread(
+            get_document_chunks,
             str(document_id),
             include_restricted=bool(user and user["role"] == "admin"),
         )

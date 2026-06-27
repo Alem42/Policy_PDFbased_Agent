@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import Depends, Header, HTTPException, status
 
 from app.core.config import get_settings
-from app.core.database import get_connection, init_db
+from app.core.database import get_connection
 
 TOKEN_TTL_SECONDS = 60 * 60 * 24
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
@@ -83,7 +83,6 @@ def _public_user(row: dict) -> dict:
 
 
 def create_user(username: str, password: str, role: str | None = None) -> dict:
-    init_db()
     clean_username = username.strip()
     if len(clean_username) < 3:
         raise ValueError("Username must be at least 3 characters.")
@@ -113,7 +112,6 @@ def create_user(username: str, password: str, role: str | None = None) -> dict:
 
 
 def authenticate_user(username: str, password: str) -> dict | None:
-    init_db()
     with get_connection() as connection:
         row = connection.execute(
             """
@@ -175,7 +173,6 @@ def get_current_user(
             detail=str(exc),
         ) from exc
 
-    init_db()
     with get_connection() as connection:
         row = connection.execute(
             """

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { clearAuth, getCurrentUser, getDocuments, getStoredUser, rescanDocuments } from "./api";
+import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
@@ -54,6 +54,43 @@ export default function App() {
     loadDocuments();
   }, [user]);
 
+  async function handleDocumentsChanged(documentIds) {
+    if (!documentIds || documentIds.length === 0) {
+      await loadDocuments();
+      return;
+    }
+
+    // Poll for document processing status until all docs are ready or failed
+    const maxAttempts = 40; // 2 minutes at 3s intervals
+    let allReady = false;
+
+    for (let attempt = 0; attempt < maxAttempts && !allReady; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt === 0 ? 0 : 3000)); // First check immediately
+
+      try {
+        const statuses = await Promise.all(
+          documentIds.map((id) => getProcessingStatus(id).catch(() => ({ status: "queued" }))),
+        );
+
+        allReady = statuses.every(
+          (s) => s.status === "indexed" || s.status === "ready" || s.status === "failed",
+        );
+
+        if (allReady) {
+          await loadDocuments();
+          break;
+        }
+      } catch {
+        // Continue polling on error
+      }
+    }
+
+    if (!allReady) {
+      // Final refresh even if not all docs are ready
+      await loadDocuments();
+    }
+  }
+
   async function handleRescanDocuments() {
     await rescanDocuments();
     await loadDocuments();
@@ -93,7 +130,7 @@ export default function App() {
           user={user}
           onRefresh={loadDocuments}
           onRescan={handleRescanDocuments}
-          onDocumentsChanged={loadDocuments}
+          onDocumentsChanged={handleDocumentsChanged}
         />
       )}
       {activeView === "home" && (
@@ -101,7 +138,7 @@ export default function App() {
           documents={documents}
           loading={loading}
           user={user}
-          onDocumentsChanged={loadDocuments}
+          onDocumentsChanged={handleDocumentsChanged}
           onNavigate={setActiveView}
         />
       )}

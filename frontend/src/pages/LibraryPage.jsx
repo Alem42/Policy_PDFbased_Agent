@@ -287,10 +287,26 @@ export default function LibraryPage({
                 )}
               </div>
               <div className="row-actions">
+                {["uploaded", "parsed", "annotated"].includes(document.status) && (
+                  <small style={{ color: "#999" }}>
+                    {document.status === "uploaded" && "uploading..."}
+                    {document.status === "parsed" && "parsing..."}
+                    {document.status === "annotated" && "analysing..."}
+                  </small>
+                )}
+                {document.status === "failed" && (
+                  <small style={{ color: "#d00" }}>failed</small>
+                )}
                 <button className="button ghost" type="button" onClick={() => handleDetail(document)}>
                   Details
                 </button>
-                <button className="button ghost" type="button" onClick={() => handleChunks(document)}>
+                <button
+                  className="button ghost"
+                  type="button"
+                  onClick={() => handleChunks(document)}
+                  disabled={document.status !== "ready"}
+                  title={document.status !== "ready" ? "Document still processing" : ""}
+                >
                   Chunks
                 </button>
                 <button className="button ghost" type="button" onClick={() => handleOpenSource(document)}>

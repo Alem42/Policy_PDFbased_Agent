@@ -1,3 +1,5 @@
+import logging
+import logging.config
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,6 +12,30 @@ from app.core.database import database, init_db
 from app.repositories.job_repository import job_repository
 
 settings = get_settings()
+
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            "datefmt": "%H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+        },
+    },
+    "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        # Suppress noisy third-party loggers
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
+        "openai": {"level": "WARNING"},
+    },
+})
 
 
 @asynccontextmanager

@@ -10,13 +10,15 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
     event.preventDefault();
     if (!files.length || busy) return;
 
+    const form = event.currentTarget;
     setBusy(true);
     setError("");
     try {
-      await uploadDocuments(files);
+      const uploads = await uploadDocuments(files);
+      const documentIds = uploads.map((u) => u.document_id);
       setFiles([]);
-      event.currentTarget.reset();
-      await onUploaded();
+      form.reset();
+      await onUploaded(documentIds);
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {

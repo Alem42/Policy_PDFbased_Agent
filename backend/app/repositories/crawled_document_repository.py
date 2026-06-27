@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.database import database
 from app.models import CrawledDocumentModel
 from app.schemas.document import (
-    CrawledCrawledDocumentRead,
+    CrawledDocumentRead,
     DocumentAssetRead,
     DocumentDetailRead,
     DocumentMetadataRead,
