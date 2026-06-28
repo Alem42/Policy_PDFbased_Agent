@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { askQuestion } from "../api";
 
-export default function ChatPage({ documents }) {
+export default function ChatPage({ documents, user, onNavigate }) {
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
@@ -59,17 +59,13 @@ export default function ChatPage({ documents }) {
 
   return (
     <section className="page-stack">
-      <div className="page-heading">
-        <p className="eyebrow">AI Assistant</p>
-        <h1>Question & answer</h1>
-        <p>Choose source PDFs, then ask questions against their extracted text.</p>
-      </div>
 
       <div className="chat-layout">
         <aside className="content-panel source-panel">
           <p className="eyebrow">Context</p>
-          <h2>Selected PDFs</h2>
+          <h2>Sources</h2>
           <div className="checkbox-list">
+            {documents.length === 0 && <p className="muted">No documents available.</p>}
             {documents.map((document) => (
               <label key={document.id || document.name}>
                 <input
@@ -87,7 +83,7 @@ export default function ChatPage({ documents }) {
           <div className="section-heading">
             <div>
               <p className="eyebrow">Conversation</p>
-              <h2>Ask your documents</h2>
+              <h2>Chat</h2>
             </div>
             <button
               className="button ghost"
@@ -97,7 +93,7 @@ export default function ChatPage({ documents }) {
                 setError("");
               }}
             >
-              Clear
+              Clear Chat
             </button>
           </div>
 
@@ -122,8 +118,13 @@ export default function ChatPage({ documents }) {
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={handleQuestionKeyDown}
-              placeholder="Ask a question about the selected PDFs..."
+              placeholder={
+                selected.length 
+                  ? "Ask a question about the selected PDFs..." 
+                  : "Please select at least one document first..."
+              }
               rows="3"
+              disabled={!selected.length}
             />
             <button
               className="button primary"

@@ -3,12 +3,12 @@ import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStored
 import AppHeader from "./components/AppHeader";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
-import HomePage from "./pages/HomePage";
 import LibraryPage from "./pages/LibraryPage";
 import SettingsPage from "./pages/SettingsPage";
+import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
-  const [activeView, setActiveView] = useState("home");
+  const [activeView, setActiveView] = useState("chat");
   const [documents, setDocuments] = useState([]);
   const [user, setUser] = useState(getStoredUser());
   const [loading, setLoading] = useState(true);
@@ -17,11 +17,6 @@ export default function App() {
   const documentCount = useMemo(() => documents.length, [documents]);
 
   async function loadDocuments() {
-    if (!user) {
-      setDocuments([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError("");
     try {
@@ -99,13 +94,12 @@ export default function App() {
   function handleLogout() {
     clearAuth();
     setUser(null);
-    setDocuments([]);
-    setActiveView("home");
+    setActiveView("chat");
   }
 
   function handleAuthenticated(nextUser) {
     setUser(nextUser);
-    setActiveView("library");
+    setActiveView("admin");
   }
 
   return (
@@ -120,10 +114,19 @@ export default function App() {
 
       {error && <div className="notice error">{error}</div>}
 
-      {activeView === "auth" && <AuthPage onAuthenticated={handleAuthenticated} />}
-      {activeView === "settings" && user?.role === "admin" && <SettingsPage />}
-      {activeView === "chat" && user && <ChatPage documents={documents} />}
-      {activeView === "library" && user && (
+      {activeView === "auth" && (
+        <AuthPage onAuthenticated={handleAuthenticated} onNavigate={setActiveView} />
+      )}
+      
+      {activeView === "settings" && (
+        <SettingsPage user={user} onNavigate={setActiveView} />
+      )}
+      
+      {activeView === "chat" && (
+        <ChatPage documents={documents} user={user} onNavigate={setActiveView} />
+      )}
+      
+      {activeView === "library" && (
         <LibraryPage
           documents={documents}
           loading={loading}
@@ -131,10 +134,12 @@ export default function App() {
           onRefresh={loadDocuments}
           onRescan={handleRescanDocuments}
           onDocumentsChanged={handleDocumentsChanged}
+          onNavigate={setActiveView}
         />
       )}
-      {activeView === "home" && (
-        <HomePage
+      
+      {activeView === "admin" && (
+        <AdminDashboard
           documents={documents}
           loading={loading}
           user={user}

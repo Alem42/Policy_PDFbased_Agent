@@ -26,37 +26,41 @@ export default function AppMenu({ currentView, user, onNavigate }) {
       </button>
       {open && (
         <div className="menu-popover">
+          {/* public access */}
           <button
-            className={currentView === "home" ? "active" : ""}
+            className={currentView === "chat" ? "active" : ""}
             type="button"
-            onClick={() => navigate("home")}
+            onClick={() => navigate("chat")}
           >
-            Home
+            Question & Answer
           </button>
           <button
             className={currentView === "library" ? "active" : ""}
             type="button"
             onClick={() => navigate("library")}
-            disabled={!user}
           >
-            Documents
+            Document Library
           </button>
-          <button
-            className={currentView === "chat" ? "active" : ""}
-            type="button"
-            onClick={() => navigate("chat")}
-            disabled={!user}
-          >
-            Question & answer
-          </button>
-          {user?.role === "admin" && (
-            <button
-              className={currentView === "settings" ? "active" : ""}
-              type="button"
-              onClick={() => navigate("settings")}
-            >
-              Token settings
-            </button>
+          
+          {/* admin access */}
+          {user && (
+            <>
+              <div className="menu-divider" style={{ margin: "8px 0", borderTop: "1px solid #eee" }}></div>
+              <button
+                className={currentView === "admin" ? "active" : ""}
+                type="button"
+                onClick={() => navigate("admin")}
+              >
+                Dashboard
+              </button>
+              <button
+                className={currentView === "settings" ? "active" : ""}
+                type="button"
+                onClick={() => navigate("settings")}
+              >
+                Token Settings
+              </button>
+            </>
           )}
         </div>
       )}

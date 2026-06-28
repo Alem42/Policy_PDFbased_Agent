@@ -184,7 +184,7 @@ export default function LibraryPage({
           <button className="button ghost" disabled={busy} type="button" onClick={onRefresh}>
             Refresh
           </button>
-          {user?.role === "admin" && (
+          {user && (
             <button className="button primary" disabled={busy} type="button" onClick={handleRescan}>
               {busy ? "Working..." : "Rescan files"}
             </button>
@@ -192,7 +192,7 @@ export default function LibraryPage({
         </div>
       </div>
 
-      {user?.role === "admin" && <DocumentUpload compact onUploaded={onDocumentsChanged} />}
+      {user && <DocumentUpload compact onUploaded={onDocumentsChanged} />}
 
       <div className="filter-bar">
         <input
@@ -280,7 +280,7 @@ export default function LibraryPage({
                 </strong>
                 <span>{document.page_count || 0} pages</span>
                 <span>{document.chunk_count || 0} chunks</span>
-                {user?.role === "admin" && (
+                {user && (
                   <span>
                     {document.approved ? "approved" : "not approved"} / {document.access_level}
                   </span>
@@ -312,7 +312,7 @@ export default function LibraryPage({
                 <button className="button ghost" type="button" onClick={() => handleOpenSource(document)}>
                   Source
                 </button>
-                {user?.role === "admin" && (
+                {user && (
                   <>
                     <button
                       className="button ghost"

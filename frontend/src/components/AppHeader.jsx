@@ -5,7 +5,7 @@ export default function AppHeader({ currentView, documentCount, user, onLogout, 
     <header className="topbar">
       <div className="topbar-left">
         <AppMenu currentView={currentView} user={user} onNavigate={onNavigate} />
-        <button className="brand" type="button" onClick={() => onNavigate("home")}>
+        <button className="brand" type="button" onClick={() => onNavigate("Chat")}>
           <span className="brand-mark">P</span>
           <span>
             <strong>PDF Assistant</strong>
