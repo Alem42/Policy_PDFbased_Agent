@@ -1,4 +1,16 @@
 import { useState } from "react";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Alert,
+  Select,
+  MenuItem,
+  FormControl,
+} from "@mui/material";
 import { login, register, saveAuth } from "../api";
 
 export default function AuthPage({ onAuthenticated, onNavigate }) {
@@ -54,111 +66,133 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
   }
 
   return (
-    <section className="auth-page">
-      <div className="content-panel auth-card">
-        {mode === "login" ? (
-          <>
-            <p className="eyebrow">Restricted Access</p>
-            <h1>Admin Login</h1>
-            <p className="muted">
-              Knowledge base management requires administrator credentials.
-            </p>
+    <Box
+      component="section"
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        pt: "60px",
+        pb: "60px",
+      }}
+    >
+      <Card sx={{ maxWidth: 440, width: "100%", p: 3 }}>
+        <CardContent sx={{ p: "0 !important" }}>
+          {mode === "login" ? (
+            <>
+              <Typography variant="subtitle2">Restricted Access</Typography>
+              <Typography variant="h1" sx={{ fontSize: "clamp(36px, 5vw, 56px)" }}>
+                Admin Login
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
+                Knowledge base management requires administrator credentials.
+              </Typography>
 
-            {error && <div className="notice error">{error}</div>}
+              {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
 
-            <form className="settings-form auth-form" onSubmit={handleLogin}>
-              <label className="settings-field full">
-                <span>Username</span>
-                <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  autoComplete="username"
-                />
-              </label>
-              <label className="settings-field full">
-                <span>Password</span>
-                <input
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  type="password"
-                  autoComplete="current-password"
-                />
-              </label>
+              <Box component="form" onSubmit={handleLogin} sx={{ mt: 3, display: "grid", gap: 2 }}>
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                    Username
+                  </Typography>
+                  <TextField
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    autoComplete="username"
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                    Password
+                  </Typography>
+                  <TextField
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type="password"
+                    autoComplete="current-password"
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
 
-              <div className="settings-actions">
-                <button className="button primary full-width" disabled={busy} type="submit">
-                  {busy ? "Authenticating..." : "Log in"}
-                </button>
-                <button
-                  className="button ghost full-width"
-                  type="button"
-                  onClick={() => switchMode("register")}
-                >
-                  Register a new account
-                </button>
-                <button
-                  className="button ghost full-width"
-                  type="button"
-                  onClick={() => onNavigate("chat")}
-                >
-                  Back to Public Site
-                </button>
-              </div>
-            </form>
-          </>
-        ) : (
-          <>
-            <p className="eyebrow">Account Setup</p>
-            <h1>Register</h1>
-            <p className="muted">
-              Create a new account. Role can be set to user or admin for testing.
-            </p>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
+                  <Button variant="contained" disabled={busy} type="submit" fullWidth>
+                    {busy ? "Authenticating..." : "Log in"}
+                  </Button>
+                  <Button variant="outlined" type="button" onClick={() => switchMode("register")} fullWidth>
+                    Register a new account
+                  </Button>
+                  <Button variant="outlined" type="button" onClick={() => onNavigate("chat")} fullWidth>
+                    Back to Public Site
+                  </Button>
+                </Box>
+              </Box>
+            </>
+          ) : (
+            <>
+              <Typography variant="subtitle2">Account Setup</Typography>
+              <Typography variant="h1" sx={{ fontSize: "clamp(36px, 5vw, 56px)" }}>
+                Register
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
+                Create a new account. Role can be set to user or admin for testing.
+              </Typography>
 
-            {error && <div className="notice error">{error}</div>}
-            {notice && <div className="notice success">{notice}</div>}
+              {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+              {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}
 
-            <form className="settings-form auth-form" onSubmit={handleRegister}>
-              <label className="settings-field full">
-                <span>Username</span>
-                <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  autoComplete="username"
-                />
-              </label>
-              <label className="settings-field full">
-                <span>Password</span>
-                <input
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  type="password"
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="settings-field full">
-                <span>Role</span>
-                <select value={role} onChange={(event) => setRole(event.target.value)}>
-                  <option value="user">User (Policy Researcher)</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </label>
+              <Box component="form" onSubmit={handleRegister} sx={{ mt: 3, display: "grid", gap: 2 }}>
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                    Username
+                  </Typography>
+                  <TextField
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    autoComplete="username"
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                    Password
+                  </Typography>
+                  <TextField
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                    Role
+                  </Typography>
+                  <FormControl size="small" fullWidth>
+                    <Select value={role} onChange={(event) => setRole(event.target.value)}>
+                      <MenuItem value="user">User (Policy Researcher)</MenuItem>
+                      <MenuItem value="admin">Admin</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
 
-              <div className="settings-actions">
-                <button className="button primary full-width" disabled={busy} type="submit">
-                  {busy ? "Registering..." : "Register"}
-                </button>
-                <button
-                  className="button ghost full-width"
-                  type="button"
-                  onClick={() => switchMode("login")}
-                >
-                  Back to Login
-                </button>
-              </div>
-            </form>
-          </>
-        )}
-      </div>
-    </section>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
+                  <Button variant="contained" disabled={busy} type="submit" fullWidth>
+                    {busy ? "Registering..." : "Register"}
+                  </Button>
+                  <Button variant="outlined" type="button" onClick={() => switchMode("login")} fullWidth>
+                    Back to Login
+                  </Button>
+                </Box>
+              </Box>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </Box>
   );
 }
