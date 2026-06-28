@@ -28,6 +28,13 @@ export default function AppMenu({ currentView, user, onNavigate }) {
         <div className="menu-popover">
           {/* public access */}
           <button
+            className={currentView === "home" ? "active" : ""}
+            type="button"
+            onClick={() => navigate("home")}
+          >
+            Overview
+          </button>
+          <button
             className={currentView === "chat" ? "active" : ""}
             type="button"
             onClick={() => navigate("chat")}

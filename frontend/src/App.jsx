@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
-import AuthPage from "./pages/AuthPage";
-import ChatPage from "./pages/ChatPage";
-import LibraryPage from "./pages/LibraryPage";
-import SettingsPage from "./pages/SettingsPage";
-import AdminDashboard from "./pages/AdminDashboard";
+import { getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
 
 export default function App() {
-  const [activeView, setActiveView] = useState("chat");
+  const location = useLocation();
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
   const [user, setUser] = useState(getStoredUser());
   const [loading, setLoading] = useState(true);
@@ -17,6 +15,11 @@ export default function App() {
   const [contextSourceIds, setContextSourceIds] = useState([]);
 
   const documentCount = useMemo(() => documents.length, [documents]);
+  const activeView = getViewFromPath(location.pathname);
+
+  function navigateToView(view, options) {
+    navigate(VIEW_PATHS[view] || ROUTES.chat, options);
+  }
 
   async function loadDocuments() {
     setLoading(true);
@@ -107,12 +110,11 @@ export default function App() {
     clearAuth();
     setUser(null);
     setContextSourceIds([]);
-    setActiveView("chat");
+    navigateToView("chat", { replace: true });
   }
 
   function handleAuthenticated(nextUser) {
     setUser(nextUser);
-    setActiveView("admin");
   }
 
   return (
@@ -122,53 +124,26 @@ export default function App() {
         documentCount={documentCount}
         user={user}
         onLogout={handleLogout}
-        onNavigate={setActiveView}
+        onNavigate={navigateToView}
       />
 
       {error && <div className="notice error">{error}</div>}
 
-      {activeView === "auth" && (
-        <AuthPage onAuthenticated={handleAuthenticated} onNavigate={setActiveView} />
-      )}
-      
-      {activeView === "settings" && (
-        <SettingsPage user={user} onNavigate={setActiveView} />
-      )}
-      
-      {activeView === "chat" && (
-        <ChatPage 
-        documents={documents} 
-        user={user} 
-        onNavigate={setActiveView}
-        contextSourceIds={contextSourceIds}
-        onRemoveSource={handleRemoveSource}
-         />
-      )}
-      
-      {activeView === "library" && (
-        <LibraryPage
-          documents={documents}
-          loading={loading}
-          user={user}
-          onRefresh={loadDocuments}
-          onRescan={handleRescanDocuments}
-          onDocumentsChanged={handleDocumentsChanged}
-          onNavigate={setActiveView}
-          contextSourceIds={contextSourceIds}
-          onAddSource={handleAddSource}
-          onRemoveSource={handleRemoveSource}
-        />
-      )}
-      
-      {activeView === "admin" && (
-        <AdminDashboard
-          documents={documents}
-          loading={loading}
-          user={user}
-          onDocumentsChanged={handleDocumentsChanged}
-          onNavigate={setActiveView}
-        />
-      )}
+      <Outlet
+        context={{
+          documents,
+          loading,
+          user,
+          contextSourceIds,
+          loadDocuments,
+          handleDocumentsChanged,
+          handleRescanDocuments,
+          handleAddSource,
+          handleRemoveSource,
+          handleAuthenticated,
+          navigateToView,
+        }}
+      />
     </main>
   );
 }
