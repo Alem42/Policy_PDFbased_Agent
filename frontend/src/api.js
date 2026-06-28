@@ -33,28 +33,50 @@ async function request(path, options = {}) {
 }
 
 function normaliseDocument(document) {
-  const policyAreas = document.policy_areas || (document.policy_area ? [document.policy_area] : []);
-  const keywords = document.keywords || document.tags || [];
-  const name = document.name || document.original_filename || document.title || document.id;
+  const metadata = document.metadata || {};
+  const source = document.source || {};
+  const policyAreas =
+    document.policy_areas ??
+    metadata.policy_areas ??
+    (document.policy_area ? [document.policy_area] : []);
+  const keywords = document.keywords ?? metadata.keywords ?? document.tags ?? [];
+  const originalFilename =
+    document.original_filename ?? source.original_filename ?? document.name ?? null;
+  const title = document.title ?? metadata.title ?? originalFilename ?? document.id;
+  const name = originalFilename ?? title;
+
   return {
     ...document,
     id: document.id,
     name,
-    original_filename: document.original_filename || name,
-    title: document.title || name,
-    status: document.processing_status || document.status || "uploaded",
-    country_region: document.country_region || document.country_or_region || null,
-    source_type: document.source_type || document.credibility_level || null,
+    original_filename: originalFilename ?? name,
+    title,
+    summary: document.summary ?? metadata.summary ?? null,
+    status: document.processing_status ?? document.status ?? "uploaded",
+    country_region:
+      document.country_region ?? metadata.country_region ?? document.country_or_region ?? null,
+    source_type:
+      document.source_type ?? metadata.source_type ?? source.source_type ?? document.credibility_level ?? null,
+    source_organisation:
+      document.source_organisation ?? metadata.source_organisation ?? source.source_organisation ?? null,
+    source_url: document.source_url ?? source.source_url ?? null,
+    language: document.language ?? metadata.language ?? null,
     policy_areas: policyAreas,
     keywords,
-    year: document.year || document.published_year || null,
-    size: document.size || 0,
-    modified_at: document.modified_at || Date.parse(document.uploaded_at || "") / 1000 || 0,
-    page_count: document.page_count || 0,
-    chunk_count: document.chunk_count || 0,
+    stakeholders: document.stakeholders ?? metadata.stakeholders ?? [],
+    implementation_risks:
+      document.implementation_risks ?? metadata.implementation_risks ?? [],
+    year: document.year ?? metadata.year ?? document.published_year ?? null,
+    publication_date: document.publication_date ?? metadata.publication_date ?? null,
+    mime_type: document.mime_type ?? source.mime_type ?? null,
+    size: document.size ?? document.file_size ?? source.file_size ?? 0,
+    modified_at:
+      document.modified_at ?? (Date.parse(document.uploaded_at || "") / 1000 || 0),
+    page_count: document.page_count ?? 0,
+    chunk_count: document.chunk_count ?? 0,
     approved: document.approved ?? true,
-    access_level: document.access_level || "public",
-    metadata_json: document.metadata_json || {},
+    access_level: document.access_level ?? source.access_level ?? "public",
+    metadata_json: document.metadata_json ?? metadata.metadata ?? {},
   };
 }
 
@@ -62,7 +84,8 @@ function normaliseChunk(chunk) {
   return {
     ...chunk,
     id: chunk.id,
-    text: chunk.text || chunk.text_preview || "",
+    text: chunk.text ?? chunk.text_preview ?? "",
+    metadata_json: chunk.metadata_json ?? chunk.metadata ?? {},
   };
 }
 
@@ -106,7 +129,21 @@ export function getCurrentUser() {
 
 export async function getDocuments() {
   const documents = await request("/documents");
-  return { documents: documents.map(normaliseDocument) };
+  const normalisedDocuments = documents.map(normaliseDocument);
+  const enrichedDocuments = await Promise.all(
+    normalisedDocuments.map(async (document) => {
+      if (document.status !== "ready") return document;
+
+      try {
+        return normaliseDocument(
+          await request(`/documents/${encodeURIComponent(document.id)}`),
+        );
+      } catch {
+        return document;
+      }
+    }),
+  );
+  return { documents: enrichedDocuments };
 }
 
 export function rescanDocuments() {
