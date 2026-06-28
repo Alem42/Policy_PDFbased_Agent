@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Container, Alert } from "@mui/material";
 import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
 import { getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
@@ -118,7 +119,7 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
+    <Container maxWidth="lg" sx={{ pb: 8 }}>
       <AppHeader
         currentView={activeView}
         documentCount={documentCount}
@@ -127,7 +128,7 @@ export default function App() {
         onNavigate={navigateToView}
       />
 
-      {error && <div className="notice error">{error}</div>}
+      {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
 
       <Outlet
         context={{
@@ -144,6 +145,6 @@ export default function App() {
           navigateToView,
         }}
       />
-    </main>
+    </Container>
   );
 }
