@@ -14,6 +14,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [contextSourceIds, setContextSourceIds] = useState([]);
+
   const documentCount = useMemo(() => documents.length, [documents]);
 
   async function loadDocuments() {
@@ -91,9 +93,20 @@ export default function App() {
     await loadDocuments();
   }
 
+  function handleAddSource(documentId) {
+    setContextSourceIds((prev) => 
+      prev.includes(documentId) ? prev : [...prev, documentId]
+    );
+  }
+
+  function handleRemoveSource(documentId) {
+    setContextSourceIds((prev) => prev.filter((id) => id !== documentId));
+  }
+
   function handleLogout() {
     clearAuth();
     setUser(null);
+    setContextSourceIds([]);
     setActiveView("chat");
   }
 
@@ -123,7 +136,13 @@ export default function App() {
       )}
       
       {activeView === "chat" && (
-        <ChatPage documents={documents} user={user} onNavigate={setActiveView} />
+        <ChatPage 
+        documents={documents} 
+        user={user} 
+        onNavigate={setActiveView}
+        contextSourceIds={contextSourceIds}
+        onRemoveSource={handleRemoveSource}
+         />
       )}
       
       {activeView === "library" && (
@@ -135,6 +154,9 @@ export default function App() {
           onRescan={handleRescanDocuments}
           onDocumentsChanged={handleDocumentsChanged}
           onNavigate={setActiveView}
+          contextSourceIds={contextSourceIds}
+          onAddSource={handleAddSource}
+          onRemoveSource={handleRemoveSource}
         />
       )}
       
