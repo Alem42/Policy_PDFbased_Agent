@@ -82,7 +82,6 @@ export default function AdminDashboard({
                     {formatDate(document.uploaded_at)}
                   </span>
                 </div>
-                {/* TODO: Delete and Edit */}
               </article>
             ))
           )}

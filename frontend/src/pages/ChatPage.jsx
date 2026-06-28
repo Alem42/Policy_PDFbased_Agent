@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { askQuestion } from "../api";
 
-export default function ChatPage({ documents, user, onNavigate }) {
+export default function ChatPage({ 
+  documents, 
+  user, 
+  onNavigate,
+  contextSourceIds = [],
+  onRemoveSource
+ }) {
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
@@ -10,11 +16,13 @@ export default function ChatPage({ documents, user, onNavigate }) {
 
   useEffect(() => {
     setSelected((current) => {
-      const available = new Set(documents.map((document) => document.id));
-      const retained = current.filter((id) => available.has(id));
-      return retained.length ? retained : documents.map((document) => document.id);
+      const stillSelected = current.filter((id) => contextSourceIds.includes(id));
+      const newSources = contextSourceIds.filter((id) => !current.includes(id));
+      return [...stillSelected, ...newSources];
     });
-  }, [documents]);
+  }, [contextSourceIds]);
+
+  const sourceDocs = documents.filter((doc) => contextSourceIds.includes(doc.id));
 
   function toggleDocument(documentId) {
     setSelected((current) =>
@@ -65,17 +73,41 @@ export default function ChatPage({ documents, user, onNavigate }) {
           <p className="eyebrow">Context</p>
           <h2>Sources</h2>
           <div className="checkbox-list">
-            {documents.length === 0 && <p className="muted">No documents available.</p>}
-            {documents.map((document) => (
-              <label key={document.id || document.name}>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(document.id)}
-                  onChange={() => toggleDocument(document.id)}
-                />
-                <span>{document.title || document.name}</span>
-              </label>
-            ))}
+            {sourceDocs.length === 0 ? (
+              <div className="empty-state" style={{ padding: "2rem 1rem", textAlign: "center" }}>
+                <p className="muted" style={{ marginBottom: "1rem" }}>
+                  No source files in the context right now.
+                </p>
+                <button className="button ghost" onClick={() => onNavigate("library")}>
+                  Find relevant files
+                </button>
+              </div>
+            ) : (
+              sourceDocs.map((document) => (
+                <div 
+                  key={document.id || document.name} 
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}
+                >
+                  <label style={{ margin: 0, flex: 1, display: "flex", alignItems: "center", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(document.id)}
+                      onChange={() => toggleDocument(document.id)}
+                      style={{ marginRight: "8px" }}
+                    />
+                    <span style={{ wordBreak: "break-word" }}>{document.title || document.name}</span>
+                  </label>
+                  <button
+                    className="icon-button"
+                    title="Remove from context"
+                    style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "#999", padding: "0 8px" }}
+                    onClick={() => onRemoveSource(document.id)}
+                  >
+                    x
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </aside>
 

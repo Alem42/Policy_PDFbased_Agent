@@ -17,6 +17,9 @@ export default function LibraryPage({
   onRefresh,
   onRescan,
   onDocumentsChanged,
+  contextSourceIds = [],
+  onAddSource,
+  onRemoveSource
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -296,6 +299,24 @@ export default function LibraryPage({
                 )}
                 {document.status === "failed" && (
                   <small style={{ color: "#d00" }}>failed</small>
+                )}
+                {contextSourceIds.includes(document.id) ? (
+                  <button 
+                    className="button ghost" 
+                    type="button" 
+                    onClick={() => onRemoveSource(document.id)}
+                    style={{ color: "#d00" }}
+                  >
+                    Remove from context
+                  </button>
+                ) : (
+                  <button 
+                    className="button primary" 
+                    type="button" 
+                    onClick={() => onAddSource(document.id)}
+                  >
+                    Add to chat sources
+                  </button>
                 )}
                 <button className="button ghost" type="button" onClick={() => handleDetail(document)}>
                   Details
