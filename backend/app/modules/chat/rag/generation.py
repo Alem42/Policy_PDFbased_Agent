@@ -5,18 +5,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
+from app.modules.chat.rag.prompts import ResponseMode, get_system_prompt
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
-
-SYSTEM_PROMPT = """You are a careful PDF question-answering assistant.
-Answer the user's question using only the supplied PDF text.
-If the PDF text does not contain enough information, say that you cannot determine
-the answer from the uploaded PDFs.
-Reply in the same language as the user's question.
-When useful, mention the source file and page number.
-
-PDF text:
-{context}
-"""
 
 
 def format_context(pages: list[dict]) -> tuple[str, bool]:
@@ -49,6 +39,7 @@ def generate_answer(
     question: str,
     context: str,
     model: str | None = None,
+    response_mode: ResponseMode = "researcher",
 ) -> str:
     api_key, _ = get_llm_api_key()
     if not api_key:
@@ -57,9 +48,10 @@ def generate_answer(
     if not context:
         raise ValueError("No extractable text was found in the selected PDFs.")
 
+    system_prompt = get_system_prompt(response_mode)
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SYSTEM_PROMPT),
+            ("system", system_prompt),
             ("human", "{question}"),
         ]
     )

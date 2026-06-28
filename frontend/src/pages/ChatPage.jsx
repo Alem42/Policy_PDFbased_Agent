@@ -11,6 +11,7 @@ export default function ChatPage({
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
+  const [responseMode, setResponseMode] = useState("researcher");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,13 +44,15 @@ export default function ChatPage({
     setError("");
 
     try {
-      const result = await askQuestion(cleanQuestion, selected);
+      const result = await askQuestion(cleanQuestion, selected, responseMode);
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
           content: result.answer,
           truncated: result.truncated,
+          evidenceSufficient: result.evidence_sufficient,
+          responseMode: result.response_mode || responseMode,
         },
       ]);
     } catch (chatError) {
@@ -134,16 +137,49 @@ export default function ChatPage({
               <div className="empty-state">Ask a question to start a conversation.</div>
             )}
             {messages.map((message, index) => (
-              <div className={`message ${message.role}`} key={`${message.role}-${index}`}>
-                <span>{message.role === "user" ? "You" : "Assistant"}</span>
+              <div
+                className={`message ${message.role}${message.evidenceSufficient === false ? " insufficient" : ""}`}
+                key={`${message.role}-${index}`}
+              >
+                <span>
+                  {message.role === "user" ? "You" : "Assistant"}
+                  {message.role === "assistant" && message.responseMode && (
+                    <small className="message-mode">
+                      {message.responseMode === "student" ? "Student mode" : "Policy researcher mode"}
+                    </small>
+                  )}
+                </span>
                 <p>{message.content}</p>
                 {message.truncated && <small>The combined PDF text was truncated.</small>}
+                {message.evidenceSufficient === false && (
+                  <small className="muted">Answer withheld because evidence was insufficient.</small>
+                )}
               </div>
             ))}
             {busy && <div className="message assistant">Thinking...</div>}
           </div>
 
           {error && <div className="notice error">{error}</div>}
+
+          <div className="mode-toggle" role="group" aria-label="Response mode">
+            <span className="mode-toggle-label">Response mode</span>
+            <button
+              className={`mode-toggle-button${responseMode === "researcher" ? " active" : ""}`}
+              type="button"
+              disabled={busy}
+              onClick={() => setResponseMode("researcher")}
+            >
+              Policy Researcher
+            </button>
+            <button
+              className={`mode-toggle-button${responseMode === "student" ? " active" : ""}`}
+              type="button"
+              disabled={busy}
+              onClick={() => setResponseMode("student")}
+            >
+              Student
+            </button>
+          </div>
 
           <form className="chat-form" onSubmit={handleSubmit}>
             <textarea
