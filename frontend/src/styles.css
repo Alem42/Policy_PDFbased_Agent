@@ -678,6 +678,59 @@ pre {
   background: #edf1ed;
 }
 
+.message.assistant.insufficient {
+  background: #f8f1e8;
+  border: 1px solid #e4c9a8;
+}
+
+.message-mode {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #5f6d64;
+}
+
+.mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e3dd;
+}
+
+.mode-toggle-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5f6d64;
+  margin-right: 4px;
+}
+
+.mode-toggle-button {
+  padding: 8px 14px;
+  border: 1px solid #cfd5cf;
+  border-radius: 999px;
+  background: #fff;
+  color: #214f42;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mode-toggle-button.active {
+  background: #214f42;
+  border-color: #214f42;
+  color: #fff;
+}
+
+.mode-toggle-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .chat-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

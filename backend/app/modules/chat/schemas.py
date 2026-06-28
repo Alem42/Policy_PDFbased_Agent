@@ -1,6 +1,9 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+ResponseMode = Literal["researcher", "student"]
 
 
 class ChatFilters(BaseModel):
@@ -19,6 +22,7 @@ class ChatRequest(BaseModel):
     filters: ChatFilters = Field(default_factory=ChatFilters)
     top_k: int = Field(default=6, ge=1, le=20)
     model: str | None = None
+    response_mode: ResponseMode = "researcher"
 
 
 class Citation(BaseModel):
@@ -34,6 +38,8 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
     truncated: bool = False
+    evidence_sufficient: bool = True
+    response_mode: ResponseMode = "researcher"
 
 
 class DocumentChunkRead(BaseModel):

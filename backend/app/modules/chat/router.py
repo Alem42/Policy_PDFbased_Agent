@@ -26,6 +26,7 @@ async def chat(
             question=payload.question,
             document_ids=identifiers,
             model=payload.model,
+            response_mode=payload.response_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
         )
@@ -33,6 +34,8 @@ async def chat(
             answer=result["answer"],
             citations=[Citation(**citation) for citation in result.get("citations", [])],
             truncated=result.get("truncated", False),
+            evidence_sufficient=result.get("evidence_sufficient", True),
+            response_mode=payload.response_mode,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

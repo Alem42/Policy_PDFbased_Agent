@@ -171,11 +171,15 @@ export function getDocumentPages(documentId) {
   return request(`/documents/${encodeURIComponent(documentId)}/pages`);
 }
 
-export function askQuestion(question, documentIds) {
+export function askQuestion(question, documentIds, responseMode = "researcher") {
   return request("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, document_ids: documentIds }),
+    body: JSON.stringify({
+      question,
+      document_ids: documentIds,
+      response_mode: responseMode,
+    }),
   });
 }
 

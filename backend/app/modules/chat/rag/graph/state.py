@@ -1,4 +1,6 @@
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
+
+ResponseMode = Literal["researcher", "student"]
 
 
 class PDFQAState(TypedDict):
@@ -8,6 +10,7 @@ class PDFQAState(TypedDict):
     document_ids: NotRequired[list[str]]
     filenames: NotRequired[list[str]]
     model: str | None
+    response_mode: NotRequired[ResponseMode]
     top_k: NotRequired[int]
     include_restricted: NotRequired[bool]
     pages: NotRequired[list[dict]]
@@ -15,4 +18,7 @@ class PDFQAState(TypedDict):
     citations: NotRequired[list[dict]]
     context: NotRequired[str]
     truncated: NotRequired[bool]
+    used_vector_retrieval: NotRequired[bool]
+    evidence_sufficient: NotRequired[bool]
+    evidence_reason: NotRequired[str | None]
     answer: NotRequired[str]
