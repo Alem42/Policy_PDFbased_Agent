@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { login, register, saveAuth } from "../api";
+import { login, saveAuth } from "../api";
 
-export default function AuthPage({ onAuthenticated }) {
-  const [mode, setMode] = useState("login");
+export default function AuthPage({ onAuthenticated, onNavigate }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("user");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,12 +12,11 @@ export default function AuthPage({ onAuthenticated }) {
     setBusy(true);
     setError("");
     try {
-      const auth =
-        mode === "login"
-          ? await login(username, password)
-          : await register(username, password, role);
+      // 仅保留 login 逻辑
+      const auth = await login(username, password);
       saveAuth(auth);
       onAuthenticated(auth.user);
+      onNavigate("admin");
     } catch (authError) {
       setError(authError.message);
     } finally {
@@ -30,17 +27,17 @@ export default function AuthPage({ onAuthenticated }) {
   return (
     <section className="auth-page">
       <div className="content-panel auth-card">
-        <p className="eyebrow">{mode === "login" ? "Welcome back" : "Create account"}</p>
-        <h1>{mode === "login" ? "Log in" : "Register"}</h1>
+        <p className="eyebrow">Restricted Access</p>
+        <h1>Admin Login</h1>
         <p className="muted">
-          Guests can view the home page. Document search and Q&A require an account.
+          Knowledge base management requires administrator credentials.
         </p>
 
         {error && <div className="notice error">{error}</div>}
 
         <form className="settings-form auth-form" onSubmit={handleSubmit}>
           <label className="settings-field full">
-            <span>Username</span>
+            <span>Admin Username</span>
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -53,31 +50,20 @@ export default function AuthPage({ onAuthenticated }) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               type="password"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              autoComplete="current-password"
             />
           </label>
-          {mode === "register" && (
-            <label className="settings-field">
-              <span>Role</span>
-              <select value={role} onChange={(event) => setRole(event.target.value)}>
-                <option value="user">Normal user</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </label>
-          )}
+          
           <div className="settings-actions">
-            <button className="button primary" disabled={busy} type="submit">
-              {busy ? "Working..." : mode === "login" ? "Log in" : "Register"}
+            <button className="button primary full-width" disabled={busy} type="submit">
+              {busy ? "Authenticating..." : "Log in"}
             </button>
-            <button
-              className="button ghost"
-              type="button"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError("");
-              }}
+            <button 
+              className="button ghost full-width" 
+              type="button" 
+              onClick={() => onNavigate("chat")}
             >
-              {mode === "login" ? "Create account" : "Use existing account"}
+              Back to User Dashboard
             </button>
           </div>
         </form>
