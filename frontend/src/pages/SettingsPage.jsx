@@ -1,18 +1,7 @@
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings } from "../api";
 
-export default function SettingsPage() {
-  // requires admin login
-  if (!user) {
-    return (
-      <section className="settings-layout">
-        <div className="empty-state" style={{ width: "100%", marginTop: "40px" }}>
-          <p>Access Denied. Administrator privileges required for settings.</p>
-          <button className="button primary" onClick={() => onNavigate("auth")}>Go to Login</button>
-        </div>
-      </section>
-    );
-  }
+export default function SettingsPage({ user, onNavigate }) {
   const [settings, setSettings] = useState(null);
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
@@ -36,8 +25,19 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (user) loadSettings();
+  }, [user]);
+
+  if (!user) {
+    return (
+      <section className="settings-layout">
+        <div className="empty-state" style={{ width: "100%", marginTop: "40px" }}>
+          <p>Access Denied. Administrator privileges required for settings.</p>
+          <button className="button primary" onClick={() => onNavigate("auth")}>Go to Login</button>
+        </div>
+      </section>
+    );
+  }
 
   async function handleSave(event) {
     event.preventDefault();
