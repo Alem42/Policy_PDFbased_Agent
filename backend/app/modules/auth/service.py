@@ -54,7 +54,12 @@ def public_user(row: dict) -> dict:
     }
 
 
-def create_user(username: str, password: str, role: str | None = None) -> dict:
+def create_user(
+    username: str,
+    password: str,
+    role: str | None = None,
+    secret: str | None = None,
+) -> dict:
     clean_username = username.strip()
     if len(clean_username) < 3:
         raise ValueError("Username must be at least 3 characters.")
@@ -63,6 +68,10 @@ def create_user(username: str, password: str, role: str | None = None) -> dict:
     clean_role = role or "user"
     if clean_role not in {"admin", "user"}:
         raise ValueError("Role must be admin or user.")
+    # if clean_role == "admin":
+    #     configured_secret = get_settings().admin_register_secret
+    #     if configured_secret and secret != configured_secret:
+    #         raise ValueError("Invalid admin registration secret.")
     row = user_repository.create(clean_username, hash_password(password), clean_role)
     return public_user(row)
 

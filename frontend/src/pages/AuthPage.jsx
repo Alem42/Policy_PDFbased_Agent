@@ -10,14 +10,21 @@ import {
   Select,
   MenuItem,
   FormControl,
+  ToggleButtonGroup,
+  ToggleButton,
 } from "@mui/material";
 import { login, register, saveAuth } from "../api";
 
+// mode: "login" | "register"
+// loginType: "user" | "admin"
+
 export default function AuthPage({ onAuthenticated, onNavigate }) {
   const [mode, setMode] = useState("login");
+  const [loginType, setLoginType] = useState("user");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
+  const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -29,6 +36,13 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     setUsername("");
     setPassword("");
     setRole("user");
+    setSecret("");
+  }
+
+  function handleLoginTypeChange(_, next) {
+    if (!next) return;
+    setLoginType(next);
+    setError("");
   }
 
   async function handleLogin(event) {
@@ -39,7 +53,12 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
       const auth = await login(username, password);
       saveAuth(auth);
       onAuthenticated(auth.user);
-      onNavigate("admin");
+      // Redirect based on actual role
+      if (auth.user.role === "admin") {
+        onNavigate("admin");
+      } else {
+        onNavigate("chat");
+      }
     } catch (authError) {
       setError(authError.message);
     } finally {
@@ -53,11 +72,12 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     setError("");
     setNotice("");
     try {
-      await register(username, password, role);
-      setNotice(`User "${username}" registered successfully. You can now log in.`);
+      await register(username, password, role, role === "admin" ? secret : undefined);
+      setNotice(`Account "${username}" registered. You can now log in.`);
       setUsername("");
       setPassword("");
       setRole("user");
+      setSecret("");
     } catch (regError) {
       setError(regError.message);
     } finally {
@@ -68,23 +88,37 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
   return (
     <Box
       component="section"
-      sx={{
-        display: "flex",
-        justifyContent: "center",
-        pt: "60px",
-        pb: "60px",
-      }}
+      sx={{ display: "flex", justifyContent: "center", pt: "60px", pb: "60px" }}
     >
       <Card sx={{ maxWidth: 440, width: "100%", p: 3 }}>
         <CardContent sx={{ p: "0 !important" }}>
           {mode === "login" ? (
             <>
-              <Typography variant="subtitle2">Restricted Access</Typography>
-              <Typography variant="h1" sx={{ fontSize: "clamp(36px, 5vw, 56px)" }}>
-                Admin Login
+              <Typography variant="subtitle2">Welcome back</Typography>
+              <Typography variant="h1" sx={{ fontSize: "clamp(32px, 5vw, 48px)" }}>
+                Log in
               </Typography>
-              <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
-                Knowledge base management requires administrator credentials.
+
+              {/* User / Admin toggle */}
+              <ToggleButtonGroup
+                value={loginType}
+                exclusive
+                onChange={handleLoginTypeChange}
+                size="small"
+                sx={{ mt: 2 }}
+              >
+                <ToggleButton value="user" sx={{ px: 2.5 }}>
+                  User Login
+                </ToggleButton>
+                <ToggleButton value="admin" sx={{ px: 2.5 }}>
+                  Admin Login
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              <Typography variant="body2" sx={{ mt: 1.5, color: "text.secondary" }}>
+                {loginType === "admin"
+                  ? "Knowledge base management requires administrator credentials."
+                  : "Log in to access the policy Q&A chat."}
               </Typography>
 
               {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
@@ -96,7 +130,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   </Typography>
                   <TextField
                     value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    onChange={(e) => setUsername(e.target.value)}
                     autoComplete="username"
                     fullWidth
                     size="small"
@@ -108,7 +142,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   </Typography>
                   <TextField
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
                     type="password"
                     autoComplete="current-password"
                     fullWidth
@@ -121,22 +155,22 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                     {busy ? "Authenticating..." : "Log in"}
                   </Button>
                   <Button variant="outlined" type="button" onClick={() => switchMode("register")} fullWidth>
-                    Register a new account
+                    Create an account
                   </Button>
-                  <Button variant="outlined" type="button" onClick={() => onNavigate("chat")} fullWidth>
-                    Back to Public Site
+                  <Button variant="text" type="button" onClick={() => onNavigate("library")} fullWidth>
+                    Browse library without logging in
                   </Button>
                 </Box>
               </Box>
             </>
           ) : (
             <>
-              <Typography variant="subtitle2">Account Setup</Typography>
-              <Typography variant="h1" sx={{ fontSize: "clamp(36px, 5vw, 56px)" }}>
+              <Typography variant="subtitle2">New account</Typography>
+              <Typography variant="h1" sx={{ fontSize: "clamp(32px, 5vw, 48px)" }}>
                 Register
               </Typography>
               <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
-                Create a new account. Role can be set to user or admin for testing.
+                Create an account to access the chat and document library.
               </Typography>
 
               {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
@@ -149,7 +183,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   </Typography>
                   <TextField
                     value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    onChange={(e) => setUsername(e.target.value)}
                     autoComplete="username"
                     fullWidth
                     size="small"
@@ -161,7 +195,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   </Typography>
                   <TextField
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
                     type="password"
                     autoComplete="new-password"
                     fullWidth
@@ -170,22 +204,41 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 </Box>
                 <Box sx={{ display: "grid", gap: 0.5 }}>
                   <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Role
+                    Account type
                   </Typography>
                   <FormControl size="small" fullWidth>
-                    <Select value={role} onChange={(event) => setRole(event.target.value)}>
+                    <Select value={role} onChange={(e) => { setRole(e.target.value); setSecret(""); }}>
                       <MenuItem value="user">User (Policy Researcher)</MenuItem>
                       <MenuItem value="admin">Admin</MenuItem>
                     </Select>
                   </FormControl>
                 </Box>
 
+                {role === "admin" && (
+                  <Box sx={{ display: "grid", gap: 0.5 }}>
+                    <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+                      Admin registration secret
+                    </Typography>
+                    <TextField
+                      value={secret}
+                      onChange={(e) => setSecret(e.target.value)}
+                      type="password"
+                      placeholder="Enter the secret issued by your administrator"
+                      fullWidth
+                      size="small"
+                    />
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      Contact your system administrator to obtain this secret.
+                    </Typography>
+                  </Box>
+                )}
+
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
                   <Button variant="contained" disabled={busy} type="submit" fullWidth>
-                    {busy ? "Registering..." : "Register"}
+                    {busy ? "Registering..." : "Create account"}
                   </Button>
                   <Button variant="outlined" type="button" onClick={() => switchMode("login")} fullWidth>
-                    Back to Login
+                    Back to login
                   </Button>
                 </Box>
               </Box>

@@ -26,6 +26,34 @@ export default function ChatPage({
   contextSourceIds = [],
   onRemoveSource,
 }) {
+  if (!user) {
+    return (
+      <Box
+        sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 8 }}
+      >
+        <Card sx={{ p: 4, maxWidth: 420, width: "100%", textAlign: "center" }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Authentication required
+          </Typography>
+          <Typography variant="h2" sx={{ fontSize: 24, mb: 2 }}>
+            Sign in to use Chat
+          </Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
+            The Q&amp;A chat is only available to registered users. Please log in or create
+            an account to continue.
+          </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <Button variant="contained" onClick={() => onNavigate("auth")}>
+              Log in
+            </Button>
+            <Button variant="outlined" onClick={() => onNavigate("library")}>
+              Browse document library
+            </Button>
+          </Box>
+        </Card>
+      </Box>
+    );
+  }
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
