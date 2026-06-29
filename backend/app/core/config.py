@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     legacy_document_storage_dir: Path = Path("data/pdf")
     vector_index_dir: Path = Path("data/vector_index")
     default_top_k: int = Field(default=6, ge=1, le=20)
+    embedding_model_name: str = "BAAI/bge-small-en-v1.5"
+    embedding_batch_size: int = Field(default=32, ge=1, le=256)
     default_embedding_dimensions: int = 384
     max_context_characters: int = 120_000
 
