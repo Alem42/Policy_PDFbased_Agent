@@ -1,42 +1,96 @@
 from __future__ import annotations
 
-import hashlib
 import math
-import re
+from collections.abc import Iterable
+from functools import lru_cache
+
+from fastembed import TextEmbedding
 
 from app.core.config import get_settings
 
-EMBEDDING_MODEL_NAME = "local-hashing-v1"
-TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
+EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 
 def estimate_token_count(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def get_embedding_model_name() -> str:
+    return get_settings().embedding_model_name
+
+
+@lru_cache(maxsize=4)
+def _load_model(model_name: str) -> TextEmbedding:
+    """Load each configured embedding model once per backend process."""
+    return TextEmbedding(model_name=model_name)
+
+
+def _vector_to_list(vector: Iterable[float], expected_dimensions: int) -> list[float]:
+    values = [float(value) for value in vector]
+    if len(values) != expected_dimensions:
+        raise ValueError(
+            "Embedding dimension mismatch: "
+            f"expected {expected_dimensions}, received {len(values)}."
+        )
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("Embedding contains a non-finite value.")
+    return values
+
+
+def embed_documents(texts: list[str]) -> list[list[float]]:
+    """Generate passage embeddings for document chunks in bounded batches."""
+    if not texts:
+        return []
+
+    cleaned_texts = [text.strip() for text in texts]
+    if any(not text for text in cleaned_texts):
+        raise ValueError("Document text must not be blank.")
+
+    settings = get_settings()
+    model = _load_model(settings.embedding_model_name)
+    vectors: list[list[float]] = []
+
+    for start in range(0, len(cleaned_texts), settings.embedding_batch_size):
+        batch = cleaned_texts[start : start + settings.embedding_batch_size]
+        vectors.extend(
+            _vector_to_list(vector, settings.default_embedding_dimensions)
+            for vector in model.passage_embed(batch)
+        )
+
+    if len(vectors) != len(cleaned_texts):
+        raise RuntimeError(
+            "Embedding provider returned an unexpected number of document vectors: "
+            f"expected {len(cleaned_texts)}, received {len(vectors)}."
+        )
+    return vectors
+
+
+def embed_query(text: str) -> list[float]:
+    """Generate the retrieval embedding for a user query."""
+    cleaned_text = text.strip()
+    if not cleaned_text:
+        raise ValueError("Query text must not be blank.")
+
+    settings = get_settings()
+    model = _load_model(settings.embedding_model_name)
+    vectors = list(model.query_embed(cleaned_text))
+    if len(vectors) != 1:
+        raise RuntimeError(
+            "Embedding provider returned an unexpected number of query vectors: "
+            f"expected 1, received {len(vectors)}."
+        )
+    return _vector_to_list(vectors[0], settings.default_embedding_dimensions)
+
+
 def embed_text(text: str, dimensions: int | None = None) -> list[float]:
-    """Create a deterministic local vector for development.
-
-    This keeps the database/vector retrieval pipeline working before an external
-    embedding provider is chosen. It is not a replacement for a production
-    semantic embedding model.
-    """
-    selected_dimensions = dimensions or get_settings().default_embedding_dimensions
-    vector = [0.0] * selected_dimensions
-    tokens = TOKEN_PATTERN.findall(text.lower())
-    if not tokens:
-        return vector
-
-    for token in tokens:
-        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
-        bucket = int.from_bytes(digest[:4], "big") % selected_dimensions
-        sign = 1.0 if digest[4] % 2 == 0 else -1.0
-        vector[bucket] += sign
-
-    norm = math.sqrt(sum(value * value for value in vector))
-    if not norm:
-        return vector
-    return [value / norm for value in vector]
+    """Backward-compatible alias for callers that embed a query-like string."""
+    configured_dimensions = get_settings().default_embedding_dimensions
+    if dimensions is not None and dimensions != configured_dimensions:
+        raise ValueError(
+            "Custom embedding dimensions are no longer supported: "
+            f"configured model outputs {configured_dimensions} dimensions."
+        )
+    return embed_query(text)
 
 
 def vector_literal(vector: list[float]) -> str:

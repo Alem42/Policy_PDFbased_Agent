@@ -77,17 +77,19 @@ export default function AppHeader({ currentView, documentCount, user, onLogout, 
       >
         <CircleIcon sx={{ fontSize: 8, color: "#4a9f6f" }} />
         {user
-          ? `Admin Workspace - ${documentCount} document${documentCount === 1 ? "" : "s"}`
+          ? user.role === "admin"
+            ? `Admin Workspace — ${documentCount} document${documentCount === 1 ? "" : "s"}`
+            : `${user.username}'s Workspace — ${documentCount} document${documentCount === 1 ? "" : "s"}`
           : "Public Workspace"}
       </Box>
 
       {user ? (
         <Button variant="outlined" onClick={onLogout}>
-          {user.username} - Log out
+          {user.username} — Log out
         </Button>
       ) : (
         <Button variant="contained" onClick={() => onNavigate("auth")}>
-          Admin Login
+          Login
         </Button>
       )}
     </Box>

@@ -7,7 +7,12 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 from app.modules.documents.chunker import document_chunker
-from app.modules.documents.embeddings import EMBEDDING_MODEL_NAME, embed_text, vector_literal
+from app.modules.documents.embeddings import (
+    embed_documents,
+    embed_query,
+    get_embedding_model_name,
+    vector_literal,
+)
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.ingestion.metadata_extractor import generate_document_metadata
 from app.modules.documents.pdf_extractor import pdf_extractor
@@ -43,13 +48,14 @@ def process_document(document_id: str) -> None:
         document_repository.set_status(document_id, "annotated")
 
         chunks = document_chunker.chunk(pages)
-        embeddings = [vector_literal(embed_text(chunk["text"])) for chunk in chunks]
+        chunk_vectors = embed_documents([chunk["text"] for chunk in chunks])
+        embeddings = [vector_literal(vector) for vector in chunk_vectors]
         embedding_repository.replace_document_chunks(
             document_id,
             chunks,
             embeddings,
             language=metadata.get("language"),
-            embedding_model=EMBEDDING_MODEL_NAME,
+            embedding_model=get_embedding_model_name(),
         )
         document_repository.set_status(document_id, "ready")
         processing_job_repository.finish(
@@ -221,7 +227,7 @@ def retrieve_relevant_chunks(
         document_repository.get_record(identifier, include_restricted=include_restricted)
         for identifier in identifiers
     ]
-    query_vector = vector_literal(embed_text(question))
+    query_vector = vector_literal(embed_query(question))
     return embedding_repository.retrieve(
         query_vector,
         [str(document["id"]) for document in documents],

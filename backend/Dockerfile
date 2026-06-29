@@ -8,7 +8,6 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY app ./app
-COPY supabase ./supabase
 COPY database ./database
 
 RUN pip install --no-cache-dir ".[database]"
