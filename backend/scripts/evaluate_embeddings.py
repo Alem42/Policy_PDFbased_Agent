@@ -5,7 +5,11 @@ import math
 import statistics
 from dataclasses import dataclass
 
-from app.modules.documents.embeddings import EMBEDDING_MODEL_NAME, embed_text
+from app.modules.documents.embeddings import (
+    embed_documents,
+    embed_query,
+    get_embedding_model_name,
+)
 
 EXPECTED_DIMENSIONS = 384
 MIN_TOP1_ACCURACY = 0.75
@@ -148,8 +152,8 @@ def vector_norm(vector: list[float]) -> float:
 
 
 def evaluate() -> dict[str, object]:
-    probe = embed_text("A simple English policy sentence.")
-    deterministic = probe == embed_text("A simple English policy sentence.")
+    probe = embed_documents(["A simple English policy sentence."])[0]
+    deterministic = probe == embed_documents(["A simple English policy sentence."])[0]
     finite = all(math.isfinite(value) for value in probe)
 
     margins: list[float] = []
@@ -157,7 +161,7 @@ def evaluate() -> dict[str, object]:
     distractor_scores: list[float] = []
     top1_wins = 0
 
-    print(f"Embedding model: {EMBEDDING_MODEL_NAME}")
+    print(f"Embedding model: {get_embedding_model_name()}")
     print(f"Dimensions: {len(probe)}")
     print(f"Deterministic: {deterministic}")
     print(f"Finite values: {finite}")
@@ -166,12 +170,12 @@ def evaluate() -> dict[str, object]:
     print("-" * 78)
 
     for index, case in enumerate(CASES, start=1):
-        query_vector = embed_text(case.query)
-        relevant_score = cosine_similarity(query_vector, embed_text(case.relevant))
-        distractor_score = cosine_similarity(
-            query_vector,
-            embed_text(case.lexical_distractor),
+        query_vector = embed_query(case.query)
+        relevant_vector, distractor_vector = embed_documents(
+            [case.relevant, case.lexical_distractor]
         )
+        relevant_score = cosine_similarity(query_vector, relevant_vector)
+        distractor_score = cosine_similarity(query_vector, distractor_vector)
         margin = relevant_score - distractor_score
         relevant_wins = margin > 0.0
         top1_wins += int(relevant_wins)
@@ -191,11 +195,12 @@ def evaluate() -> dict[str, object]:
     mean_distractor = statistics.fmean(distractor_scores)
     mean_margin = statistics.fmean(margins)
 
-    chinese_vector = embed_text("政府为新能源汽车提供财政补贴。")
+    chinese_vector = embed_documents(["政府为新能源汽车提供财政补贴。"])[0]
     chinese_zero_vector = vector_norm(chinese_vector) == 0.0
 
-    first_order_vector = embed_text("government taxes companies")
-    reversed_order_vector = embed_text("companies taxes government")
+    first_order_vector, reversed_order_vector = embed_documents(
+        ["government taxes companies", "companies taxes government"]
+    )
     word_order_collision = first_order_vector == reversed_order_vector
 
     contract_pass = (
