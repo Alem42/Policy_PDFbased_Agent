@@ -21,6 +21,7 @@ from app.modules.documents.repositories.documents import document_repository
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.repositories.helpers import row_to_metadata
 from app.modules.documents.repositories.processing_jobs import processing_job_repository
+from app.modules.documents.reranker import rerank_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -228,11 +229,25 @@ def retrieve_relevant_chunks(
         for identifier in identifiers
     ]
     query_vector = vector_literal(embed_query(question))
-    return embedding_repository.retrieve(
+
+    candidate_limit = max(limit * 3, 20)
+    candidates = embedding_repository.retrieve(
         query_vector,
         [str(document["id"]) for document in documents],
-        limit=limit,
+        limit=candidate_limit,
     )
+
+    try:
+        return rerank_chunks(
+            question,
+            candidates,
+            limit=limit,
+        )
+    except Exception:
+        logger.exception(
+            "Reranking failed; returning dense-vector ranking instead."
+        )
+        return candidates[:limit]
 
 
 def copy_pdf_into_library(source_path: Path) -> str:
