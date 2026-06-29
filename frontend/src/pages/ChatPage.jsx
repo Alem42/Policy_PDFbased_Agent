@@ -17,7 +17,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { askQuestion } from "../api";
+import { askQuestion, openDocumentFile } from "../api";
+import CitationList from "../components/CitationList";
 
 export default function ChatPage({
   documents,
@@ -99,6 +100,7 @@ export default function ChatPage({
           truncated: result.truncated,
           evidenceSufficient: result.evidence_sufficient,
           responseMode: result.response_mode || responseMode,
+          citations: Array.isArray(result.citations) ? result.citations : [],
         },
       ]);
     } catch (chatError) {
@@ -112,6 +114,15 @@ export default function ChatPage({
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
+  }
+
+  async function handleOpenCitation(citation) {
+    setError("");
+    try {
+      await openDocumentFile(citation.document_id, citation.page);
+    } catch (sourceError) {
+      setError(sourceError.message);
+    }
   }
 
   return (
@@ -279,6 +290,12 @@ export default function ChatPage({
                   <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
                     {message.content}
                   </Typography>
+                )}
+                {message.role === "assistant" && message.evidenceSufficient !== false && (
+                  <CitationList
+                    citations={message.citations}
+                    onOpenSource={handleOpenCitation}
+                  />
                 )}
                 {message.truncated && (
                   <Typography variant="caption" sx={{ color: "warning.main" }}>

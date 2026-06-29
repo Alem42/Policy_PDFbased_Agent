@@ -167,14 +167,15 @@ export function getDocumentFileUrl(documentId) {
   return apiPath(`/documents/${encodeURIComponent(documentId)}/file`);
 }
 
-export async function openDocumentFile(documentId) {
+export async function openDocumentFile(documentId, page = null) {
   const token = localStorage.getItem("authToken");
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(getDocumentFileUrl(documentId), { headers });
   if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
   const blob = await response.blob();
-  window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+  const pageFragment = Number.isInteger(page) && page > 0 ? `#page=${page}` : "";
+  window.open(`${URL.createObjectURL(blob)}${pageFragment}`, "_blank", "noopener,noreferrer");
 }
 
 export async function uploadDocuments(files) {
