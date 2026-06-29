@@ -17,7 +17,7 @@ CurrentUser = Annotated[dict, Depends(get_current_user)]
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(payload: AuthRequest) -> dict:
     try:
-        user = create_user(payload.username, payload.password, payload.role)
+        user = create_user(payload.username, payload.password, payload.role, payload.secret)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

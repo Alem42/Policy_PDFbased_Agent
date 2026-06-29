@@ -1,4 +1,4 @@
-from app.modules.chat.rag.evidence import assess_evidence_sufficiency
+from app.modules.chat.rag.evidence import MAX_VECTOR_DISTANCE, assess_evidence_sufficiency
 from app.modules.chat.rag.generation import format_context, generate_answer
 from app.modules.chat.rag.graph.state import PDFQAState, ResponseMode
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
@@ -32,14 +32,17 @@ def retrieve_context_node(state: PDFQAState) -> dict:
         limit=state.get("top_k", 8),
         include_restricted=state.get("include_restricted", False),
     )
-    used_vector_retrieval = bool(chunks)
-    context_source = chunks or state["pages"]
+    # Only treat as vector retrieval when at least one chunk meets the distance threshold.
+    # Avoids blocking generic questions when embeddings are weak or non-semantic.
+    relevant_chunks = [c for c in chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE]
+    used_vector_retrieval = bool(relevant_chunks)
+    context_source = relevant_chunks or state["pages"]
     context, truncated = format_context(context_source)
     if not context:
         return {
             "context": "",
             "truncated": truncated,
-            "chunks": chunks,
+            "chunks": relevant_chunks,
             "citations": [],
             "used_vector_retrieval": used_vector_retrieval,
         }
@@ -52,12 +55,12 @@ def retrieve_context_node(state: PDFQAState) -> dict:
             "page": chunk["page_start"],
             "quote": chunk["text"][:500],
         }
-        for chunk in chunks
+        for chunk in relevant_chunks
     ]
     return {
         "context": context,
         "truncated": truncated,
-        "chunks": chunks,
+        "chunks": relevant_chunks,
         "citations": citations,
         "used_vector_retrieval": used_vector_retrieval,
     }

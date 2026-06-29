@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     app_secret: str = "development-only-change-me"
 
     firecrawl_api_key: str | None = None
+    admin_register_secret: str | None = None
 
 
 @lru_cache
