@@ -98,7 +98,7 @@ export const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <Navigate to={ROUTES.chat} replace /> },
-      { path: ROUTES.home.slice(1), element: <HomeRoute /> },
+      //{ path: ROUTES.home.slice(1), element: <HomeRoute /> },
       { path: ROUTES.chat.slice(1), element: <ChatRoute /> },
       { path: ROUTES.library.slice(1), element: <LibraryRoute /> },
       { path: ROUTES.admin.slice(1), element: <AdminRoute /> },

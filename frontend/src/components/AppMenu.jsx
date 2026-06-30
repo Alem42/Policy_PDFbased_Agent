@@ -8,7 +8,7 @@ import DashboardIcon from "@mui/icons-material/DashboardOutlined";
 import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 
 const PUBLIC_ITEMS = [
-  { view: "home", label: "Overview", icon: <HomeIcon fontSize="small" /> },
+  // { view: "home", label: "Overview", icon: <HomeIcon fontSize="small" /> },
   { view: "chat", label: "Question & Answer", icon: <ChatIcon fontSize="small" /> },
   { view: "library", label: "Document Library", icon: <LibraryBooksIcon fontSize="small" /> },
 ];
@@ -97,7 +97,7 @@ export default function AppMenu({ currentView, user, onNavigate }) {
             <ListItemText>{item.label}</ListItemText>
           </MenuItem>
         ))}
-        {user && [
+        {user?.role === "admin" && [
           <Divider key="div" sx={{ my: 0.5 }} />,
           ...ADMIN_ITEMS.map((item) => (
             <MenuItem
