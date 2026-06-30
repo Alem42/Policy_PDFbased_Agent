@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Card,
@@ -13,19 +13,22 @@ import {
   Skeleton,
   Menu,
   Divider,
+  Pagination,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import { useSearchParams } from "react-router-dom";
 import {
   deleteDocument,
   getDocumentChunks,
   getDocumentDetail,
   openDocumentFile,
+  searchDocuments,
   updateDocument,
 } from "../api";
 import DocumentDrawer from "../components/DocumentDrawer";
 import DocumentUpload from "../components/DocumentUpload";
-import { asText, formatDate, formatSize } from "../utils/format";
+import { formatDate, formatSize } from "../utils/format";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -43,11 +46,22 @@ const SORT_OPTIONS = [
   { value: "chunks_desc", label: "Most chunks" },
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const SEARCH_PARAM_DEFAULTS = {
+  q: "",
+  status: "all",
+  policy_area: "all",
+  country_region: "all",
+  source_type: "all",
+  sort: "uploaded_desc",
+  page: 1,
+  page_size: 20,
+};
+
 const filterSelectSx = { minWidth: 140, "& .MuiSelect-select": { py: "10px" } };
 
 export default function LibraryPage({
   documents,
-  loading,
   user,
   onRefresh,
   onRescan,
@@ -56,12 +70,26 @@ export default function LibraryPage({
   onAddSource,
   onRemoveSource,
 }) {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [areaFilter, setAreaFilter] = useState("all");
-  const [regionFilter, setRegionFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("uploaded_desc");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") || "";
+  const requestedStatus = searchParams.get("status") || "all";
+  const statusFilter = STATUS_OPTIONS.some(({ value }) => value === requestedStatus)
+    ? requestedStatus
+    : "all";
+  const areaFilter = searchParams.get("policy_area") || "all";
+  const regionFilter = searchParams.get("country_region") || "all";
+  const typeFilter = searchParams.get("source_type") || "all";
+  const requestedSort = searchParams.get("sort") || "uploaded_desc";
+  const sortBy = SORT_OPTIONS.some(({ value }) => value === requestedSort)
+    ? requestedSort
+    : "uploaded_desc";
+  const requestedPage = Number.parseInt(searchParams.get("page") || "1", 10);
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const requestedPageSize = Number.parseInt(searchParams.get("page_size") || "20", 10);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
+  const [pageData, setPageData] = useState({ items: [], total: 0, pages: 0 });
+  const [searchLoading, setSearchLoading] = useState(true);
+  const [searchVersion, setSearchVersion] = useState(0);
   const [selected, setSelected] = useState(null);
   const [chunks, setChunks] = useState(null);
   const [openChunkId, setOpenChunkId] = useState(null);
@@ -69,6 +97,20 @@ export default function LibraryPage({
   const [error, setError] = useState("");
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
+
+  function updateSearchParams(updates, { replace = false } = {}) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === SEARCH_PARAM_DEFAULTS[key] || value === "" || value === "all") {
+          next.delete(key);
+        } else {
+          next.set(key, String(value));
+        }
+      }
+      return next;
+    }, { replace });
+  }
 
   const policyAreas = useMemo(
     () =>
@@ -92,38 +134,67 @@ export default function LibraryPage({
     [documents],
   );
 
-  const filteredDocuments = useMemo(() => {
-    const cleanQuery = query.trim().toLowerCase();
-    const filtered = documents.filter((document) => {
-      const searchText = [
-        document.name,
-        document.title,
-        document.summary,
-        document.country_region,
-        document.source_type,
-        document.year,
-        asText(document.policy_areas),
-        asText(document.keywords),
-      ]
-        .join(" ")
-        .toLowerCase();
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true);
+      setError("");
+      try {
+        const result = await searchDocuments(
+          {
+            q: query.trim(),
+            status: statusFilter,
+            policy_area: areaFilter,
+            country_region: regionFilter,
+            source_type: typeFilter,
+            sort: sortBy,
+            page,
+            page_size: pageSize,
+          },
+          { signal: controller.signal },
+        );
+        if (result.pages > 0 && page > result.pages) {
+          updateSearchParams({ page: result.pages }, { replace: true });
+          return;
+        }
+        setPageData(result);
+      } catch (searchError) {
+        if (searchError.name !== "AbortError") setError(searchError.message);
+      } finally {
+        if (!controller.signal.aborted) setSearchLoading(false);
+      }
+    }, 300);
 
-      return (
-        (!cleanQuery || searchText.includes(cleanQuery)) &&
-        (statusFilter === "all" || document.status === statusFilter) &&
-        (areaFilter === "all" || (document.policy_areas || []).includes(areaFilter)) &&
-        (regionFilter === "all" || document.country_region === regionFilter) &&
-        (typeFilter === "all" || document.source_type === typeFilter)
-      );
-    });
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    areaFilter,
+    page,
+    pageSize,
+    query,
+    regionFilter,
+    searchVersion,
+    sortBy,
+    statusFilter,
+    typeFilter,
+    user,
+  ]);
 
-    return [...filtered].sort((first, second) => {
-      if (sortBy === "name_asc") return first.name.localeCompare(second.name);
-      if (sortBy === "year_desc") return (second.year || 0) - (first.year || 0);
-      if (sortBy === "chunks_desc") return (second.chunk_count || 0) - (first.chunk_count || 0);
-      return (second.modified_at || 0) - (first.modified_at || 0);
-    });
-  }, [areaFilter, documents, query, regionFilter, sortBy, statusFilter, typeFilter]);
+  function refreshSearch() {
+    setSearchVersion((current) => current + 1);
+  }
+
+  async function handleRefresh() {
+    await onRefresh();
+    refreshSearch();
+  }
+
+  async function handleDocumentsChanged(documentIds) {
+    await onDocumentsChanged(documentIds);
+    refreshSearch();
+  }
 
   async function handleDelete(document) {
     if (!window.confirm(`Delete "${document.name}"?`)) return;
@@ -132,7 +203,7 @@ export default function LibraryPage({
     try {
       await deleteDocument(document.id);
       if (selected?.id === document.id) closeDrawer();
-      await onDocumentsChanged();
+      await handleDocumentsChanged();
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
@@ -157,7 +228,7 @@ export default function LibraryPage({
     setError("");
     try {
       await updateDocument(document.id, updates);
-      await onDocumentsChanged();
+      await handleDocumentsChanged();
     } catch (updateError) {
       setError(updateError.message);
     } finally {
@@ -203,6 +274,7 @@ export default function LibraryPage({
     setError("");
     try {
       await onRescan();
+      refreshSearch();
       closeDrawer();
     } catch (rescanError) {
       setError(rescanError.message);
@@ -247,7 +319,7 @@ export default function LibraryPage({
         </Typography>
       </Box>
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        <Button variant="outlined" disabled={busy} onClick={onRefresh}>
+        <Button variant="outlined" disabled={busy} onClick={handleRefresh}>
           Refresh
         </Button>
         {user?.role === "admin" && (
@@ -258,7 +330,7 @@ export default function LibraryPage({
       </Box>
       </Box>
 
-      {user?.role === "admin" && <DocumentUpload compact onUploaded={onDocumentsChanged} />}
+      {user?.role === "admin" && <DocumentUpload compact onUploaded={handleDocumentsChanged} />}
 
       {/* Filter bar */}
       <Card
@@ -273,20 +345,26 @@ export default function LibraryPage({
       >
         <TextField
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            updateSearchParams({ q: event.target.value, page: 1 }, { replace: true });
+          }}
           placeholder="Search filename, title, region, policy area, keywords"
           size="small"
           sx={{ minWidth: 220, flex: 1 }}
         />
         <FormControl size="small" sx={filterSelectSx}>
-          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <Select value={statusFilter} onChange={(event) => {
+            updateSearchParams({ status: event.target.value, page: 1 });
+          }}>
             {STATUS_OPTIONS.map((opt) => (
               <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
             ))}
           </Select>
         </FormControl>
         <FormControl size="small" sx={filterSelectSx}>
-          <Select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+          <Select value={areaFilter} onChange={(event) => {
+            updateSearchParams({ policy_area: event.target.value, page: 1 });
+          }}>
             <MenuItem value="all">All policy areas</MenuItem>
             {policyAreas.map((area) => (
               <MenuItem key={area} value={area}>{area}</MenuItem>
@@ -294,7 +372,9 @@ export default function LibraryPage({
           </Select>
         </FormControl>
         <FormControl size="small" sx={filterSelectSx}>
-          <Select value={regionFilter} onChange={(event) => setRegionFilter(event.target.value)}>
+          <Select value={regionFilter} onChange={(event) => {
+            updateSearchParams({ country_region: event.target.value, page: 1 });
+          }}>
             <MenuItem value="all">All regions</MenuItem>
             {regions.map((region) => (
               <MenuItem key={region} value={region}>{region}</MenuItem>
@@ -302,7 +382,9 @@ export default function LibraryPage({
           </Select>
         </FormControl>
         <FormControl size="small" sx={filterSelectSx}>
-          <Select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+          <Select value={typeFilter} onChange={(event) => {
+            updateSearchParams({ source_type: event.target.value, page: 1 });
+          }}>
             <MenuItem value="all">All source types</MenuItem>
             {sourceTypes.map((sourceType) => (
               <MenuItem key={sourceType} value={sourceType}>{sourceType}</MenuItem>
@@ -310,7 +392,9 @@ export default function LibraryPage({
           </Select>
         </FormControl>
         <FormControl size="small" sx={filterSelectSx}>
-          <Select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+          <Select value={sortBy} onChange={(event) => {
+            updateSearchParams({ sort: event.target.value, page: 1 });
+          }}>
             {SORT_OPTIONS.map((opt) => (
               <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
             ))}
@@ -340,7 +424,7 @@ export default function LibraryPage({
           <Typography variant="body2" sx={{ fontWeight: 800 }}>Actions</Typography>
         </Box>
 
-        {loading ? (
+        {searchLoading ? (
           <Box sx={{ p: 2 }}>
             {Array.from({ length: 4 }).map((_, i) => (
               <Box
@@ -377,12 +461,12 @@ export default function LibraryPage({
               </Box>
             ))}
           </Box>
-        ) : filteredDocuments.length === 0 ? (
+        ) : pageData.items.length === 0 ? (
           <Typography sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
             No matching PDFs.
           </Typography>
         ) : (
-          filteredDocuments.map((document) => (
+          pageData.items.map((document) => (
             <Box
               key={document.id}
               sx={{
@@ -523,6 +607,59 @@ export default function LibraryPage({
           ))
         )}
       </Card>
+
+      {!searchLoading && pageData.total > 0 && (
+        <Card
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            flexWrap: "wrap",
+            mt: 2,
+            px: 2,
+            py: 1.25,
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, pageData.total)} of{" "}
+            {pageData.total} document{pageData.total === 1 ? "" : "s"}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Per page
+              </Typography>
+              <FormControl size="small">
+                <Select
+                  value={pageSize}
+                  onChange={(event) => {
+                    updateSearchParams({ page_size: Number(event.target.value), page: 1 });
+                  }}
+                  inputProps={{ "aria-label": "Documents per page" }}
+                  sx={{
+                    minWidth: 76,
+                    color: "primary.main",
+                    fontWeight: 800,
+                    "& .MuiSelect-select": { py: "7px", pl: 1.5 },
+                  }}
+                >
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+            <Pagination
+              count={pageData.pages}
+              page={page}
+              onChange={(_, nextPage) => updateSearchParams({ page: nextPage })}
+              color="primary"
+              shape="rounded"
+            />
+          </Box>
+        </Card>
+      )}
 
       <Menu anchorEl={moreMenuAnchor} open={Boolean(moreMenuAnchor)} onClose={closeMoreMenu}>
         <MenuItem onClick={() => runMoreAction(handleOpenSource)}>Open source</MenuItem>

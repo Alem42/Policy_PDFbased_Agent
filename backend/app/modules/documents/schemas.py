@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -111,13 +111,32 @@ class DocumentSearchResultRead(BaseModel):
     original_filename: str
     title: str | None = None
     summary: str | None = None
+    source_type: str | None = None
     source_organisation: str | None = None
     country_region: str | None = None
+    language: str | None = None
     year: int | None = None
+    publication_date: date | None = None
+    policy_areas: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    mime_type: str | None = None
+    file_size: int | None = None
+    page_count: int = 0
+    chunk_count: int = 0
     status: DocumentStatus
     approved: bool | None = None
     access_level: AccessLevel | None = None
     uploaded_at: datetime | None = None
     processed_at: datetime | None = None
     match_fields: list[str] = Field(default_factory=list)
+
+
+DocumentSort = Literal["uploaded_desc", "name_asc", "year_desc", "chunks_desc"]
+
+
+class DocumentSearchPageRead(BaseModel):
+    items: list[DocumentSearchResultRead]
+    page: int
+    page_size: int
+    total: int
+    pages: int

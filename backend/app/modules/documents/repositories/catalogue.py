@@ -1,4 +1,5 @@
 import asyncio
+import math
 from uuid import UUID
 
 from app.modules.documents.repositories.content import document_content_repository
@@ -9,6 +10,7 @@ from app.modules.documents.schemas import (
     DocumentChunkRead,
     DocumentDetailRead,
     DocumentMetadataRead,
+    DocumentSearchPageRead,
     DocumentSearchResultRead,
     DocumentSourceInfoRead,
     DocumentVersionRead,
@@ -35,16 +37,40 @@ class DocumentCatalogueRepository:
         self,
         query: str,
         *,
-        limit: int = 20,
+        page: int = 1,
+        page_size: int = 20,
+        status: str | None = None,
+        policy_area: str | None = None,
+        country_region: str | None = None,
+        source_type: str | None = None,
+        sort: str = "uploaded_desc",
         include_restricted: bool = False,
-    ) -> list[DocumentSearchResultRead]:
-        rows = await asyncio.to_thread(
-            document_repository.list_records,
-            query=query,
-            limit=limit,
-            include_restricted=include_restricted,
+    ) -> DocumentSearchPageRead:
+        filters = {
+            "query": query,
+            "status": status,
+            "policy_area": policy_area,
+            "country_or_region": country_region,
+            "source_type": source_type,
+            "include_restricted": include_restricted,
+        }
+        rows, total = await asyncio.gather(
+            asyncio.to_thread(
+                document_repository.list_records,
+                **filters,
+                sort=sort,
+                offset=(page - 1) * page_size,
+                limit=page_size,
+            ),
+            asyncio.to_thread(document_repository.count_records, **filters),
         )
-        return [self._search_result(row, query=query) for row in rows]
+        return DocumentSearchPageRead(
+            items=[self._search_result(row, query=query) for row in rows],
+            page=page,
+            page_size=page_size,
+            total=total,
+            pages=math.ceil(total / page_size),
+        )
 
     async def get(
         self,
@@ -124,20 +150,38 @@ class DocumentCatalogueRepository:
     def _search_result(row: dict, query: str | None = None) -> DocumentSearchResultRead:
         metadata = row_to_metadata(row) if "name" not in row else row
         match_fields: list[str] = []
-        if query:
-            lowered = query.lower()
-            for field in ("original_filename", "title", "summary", "keywords"):
-                if lowered in str(metadata.get(field) or "").lower():
+        clean_query = query.strip().lower() if query else ""
+        if clean_query:
+            for field in (
+                "original_filename",
+                "title",
+                "summary",
+                "country_region",
+                "source_type",
+                "source_organisation",
+                "policy_areas",
+                "keywords",
+                "year",
+            ):
+                if clean_query in str(metadata.get(field) or "").lower():
                     match_fields.append(field)
         return DocumentSearchResultRead(
             id=metadata["id"],
             original_filename=metadata["original_filename"],
             title=metadata.get("title"),
             summary=metadata.get("summary"),
+            source_type=metadata.get("source_type"),
             source_organisation=metadata.get("source_organisation"),
             country_region=metadata.get("country_region"),
+            language=metadata.get("language"),
             year=metadata.get("year"),
+            publication_date=metadata.get("publication_date"),
+            policy_areas=metadata.get("policy_areas", []),
             keywords=metadata.get("keywords", []),
+            mime_type=metadata.get("mime_type"),
+            file_size=metadata.get("file_size"),
+            page_count=metadata.get("page_count", 0),
+            chunk_count=metadata.get("chunk_count", 0),
             status=metadata["status"],
             approved=metadata.get("approved"),
             access_level=metadata.get("access_level"),

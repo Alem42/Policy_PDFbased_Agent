@@ -81,7 +81,7 @@ These routes expose the unified PostgreSQL-backed document catalogue.
 | Method | Path | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/documents?limit=100` | Public | List documents; `limit` is between 1 and 500. |
-| `GET` | `/api/v1/documents/search?q={query}&limit=20` | Public | Search documents; `limit` is between 1 and 100. |
+| `GET` | `/api/v1/documents/search?q={query}&page=1&page_size=20` | Public | Search and paginate documents from PostgreSQL. Supports `status`, `policy_area`, `country_region`, `source_type`, and `sort`; `page_size` is between 1 and 100. |
 | `GET` | `/api/v1/documents/{document_id}` | Public | Return document detail and metadata. |
 | `GET` | `/api/v1/documents/{document_id}/file` | Public | Download the original PDF. |
 | `GET` | `/api/v1/documents/{document_id}/chunks?limit=20` | Public | Return chunk previews; `limit` is between 1 and 100. |
@@ -89,6 +89,11 @@ These routes expose the unified PostgreSQL-backed document catalogue.
 | `GET` | `/api/v1/documents/{document_id}/assets` | Public | Return linked assets. |
 
 The former `/pages` endpoint is not part of the current router.
+
+Document search returns `{items, page, page_size, total, pages}`. Supported
+sort values are `uploaded_desc`, `name_asc`, `year_desc`, and `chunks_desc`.
+An omitted or blank `q` returns a paginated catalogue without a text-search
+condition.
 
 ## Crawled documents
 
