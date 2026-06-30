@@ -131,21 +131,21 @@ export function getCurrentUser() {
 
 export async function getDocuments() {
   const documents = await request("/documents");
-  const normalisedDocuments = documents.map(normaliseDocument);
-  const enrichedDocuments = await Promise.all(
-    normalisedDocuments.map(async (document) => {
-      if (document.status !== "ready") return document;
+  return { documents: documents.map(normaliseDocument) };
+}
 
-      try {
-        return normaliseDocument(
-          await request(`/documents/${encodeURIComponent(document.id)}`),
-        );
-      } catch {
-        return document;
-      }
-    }),
-  );
-  return { documents: enrichedDocuments };
+export async function searchDocuments(filters = {}, options = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== "" && value !== "all") {
+      params.set(key, String(value));
+    }
+  }
+  const result = await request(`/documents/search?${params.toString()}`, options);
+  return {
+    ...result,
+    items: result.items.map(normaliseDocument),
+  };
 }
 
 export function rescanDocuments() {
