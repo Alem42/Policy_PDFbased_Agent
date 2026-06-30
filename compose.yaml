@@ -5,6 +5,9 @@ services:
     network_mode: host
     env_file:
       - .env.production
+    environment:
+      HOME: /app/data
+      HF_HOME: /app/data/model_cache/huggingface
     user: "1000:1000"
     volumes:
       - ./backend/data:/app/data

@@ -4,13 +4,17 @@ from functools import lru_cache
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+from app.core.config import get_settings, resolve_backend_path
+
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-base"
 
 
 @lru_cache(maxsize=1)
 def _load_reranker() -> TextCrossEncoder:
     """Load and cache the cross-encoder reranker."""
-    return TextCrossEncoder(model_name=RERANKER_MODEL_NAME)
+    cache_dir = resolve_backend_path(get_settings().model_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return TextCrossEncoder(model_name=RERANKER_MODEL_NAME, cache_dir=str(cache_dir))
 
 
 def rerank_chunks(

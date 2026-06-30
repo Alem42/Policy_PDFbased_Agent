@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from fastembed import TextEmbedding
 
-from app.core.config import get_settings
+from app.core.config import get_settings, resolve_backend_path
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
@@ -22,7 +22,9 @@ def get_embedding_model_name() -> str:
 @lru_cache(maxsize=4)
 def _load_model(model_name: str) -> TextEmbedding:
     """Load each configured embedding model once per backend process."""
-    return TextEmbedding(model_name=model_name)
+    cache_dir = resolve_backend_path(get_settings().model_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
 
 
 def _vector_to_list(vector: Iterable[float], expected_dimensions: int) -> list[float]:
