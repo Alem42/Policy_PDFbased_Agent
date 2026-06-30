@@ -11,7 +11,10 @@ from app.modules.documents.schemas import (
     DocumentAssetRead,
     DocumentChunkRead,
     DocumentDetailRead,
+    DocumentSearchPageRead,
     DocumentSearchResultRead,
+    DocumentSort,
+    DocumentStatus,
     DocumentVersionRead,
 )
 from app.modules.documents.service import get_document as get_document_record
@@ -36,15 +39,27 @@ async def list_documents(
     )
 
 
-@router.get("/search", response_model=list[DocumentSearchResultRead])
+@router.get("/search", response_model=DocumentSearchPageRead)
 async def search_documents(
     user: OptionalUser,
-    q: str = Query(min_length=1),
-    limit: int = Query(default=20, ge=1, le=100),
-) -> list[DocumentSearchResultRead]:
+    q: str = Query(default="", max_length=500),
+    status: Annotated[DocumentStatus | None, Query()] = None,
+    policy_area: str | None = Query(default=None, max_length=200),
+    country_region: str | None = Query(default=None, max_length=200),
+    source_type: str | None = Query(default=None, max_length=200),
+    sort: Annotated[DocumentSort, Query()] = "uploaded_desc",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+) -> DocumentSearchPageRead:
     return await document_catalogue_repository.search_documents(
         q,
-        limit=limit,
+        status=status.value if status else None,
+        policy_area=policy_area,
+        country_region=country_region,
+        source_type=source_type,
+        sort=sort,
+        page=page,
+        page_size=page_size,
         include_restricted=_include_restricted(user),
     )
 

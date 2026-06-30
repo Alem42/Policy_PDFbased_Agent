@@ -87,34 +87,35 @@ class DocumentRepository:
         source_organisation: str | None = None,
         tag: str | None = None,
         query: str | None = None,
+        status: str | None = None,
+        source_type: str | None = None,
+        sort: str = "uploaded_desc",
+        offset: int = 0,
         limit: int | None = None,
     ) -> list[dict]:
-        clauses: list[str] = []
-        values: list[object] = []
-        if not include_restricted:
-            clauses.append("d.approved = true AND d.access_level = 'public'")
-        for value, clause in (
-            (policy_area, "%s = ANY(m.policy_areas)"),
-            (country_or_region, "m.country_region = %s"),
-            (source_organisation, "m.source_organisation = %s"),
-            (tag, "%s = ANY(m.keywords)"),
-        ):
-            if value:
-                clauses.append(clause)
-                values.append(value)
-        if query:
-            clauses.append(
-                """(
-                    d.original_filename ILIKE %s OR m.title ILIKE %s OR
-                    m.summary ILIKE %s OR array_to_string(m.keywords, ' ') ILIKE %s
-                )"""
-            )
-            pattern = f"%{query.strip()}%"
-            values.extend([pattern] * 4)
+        clauses, values = self._filters(
+            include_restricted=include_restricted,
+            policy_area=policy_area,
+            country_or_region=country_or_region,
+            source_organisation=source_organisation,
+            tag=tag,
+            query=query,
+            status=status,
+            source_type=source_type,
+        )
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         limit_sql = "LIMIT %s" if limit is not None else ""
+        offset_sql = "OFFSET %s" if offset else ""
         if limit is not None:
             values.append(limit)
+        if offset:
+            values.append(offset)
+        order_sql = {
+            "uploaded_desc": "d.uploaded_at DESC, d.original_filename ASC",
+            "name_asc": "d.original_filename ASC, d.uploaded_at DESC",
+            "year_desc": "m.year DESC NULLS LAST, d.uploaded_at DESC",
+            "chunks_desc": "chunk_count DESC, d.uploaded_at DESC",
+        }.get(sort, "d.uploaded_at DESC, d.original_filename ASC")
         with get_connection() as connection:
             rows = connection.execute(
                 f"""
@@ -134,12 +135,95 @@ class DocumentRepository:
                     FROM document_chunks GROUP BY document_id
                 ) c ON c.document_id = d.id
                 {where_sql}
-                ORDER BY d.uploaded_at DESC, d.original_filename ASC
+                ORDER BY {order_sql}
                 {limit_sql}
+                {offset_sql}
                 """,
                 tuple(values),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def count_records(
+        self,
+        *,
+        include_restricted: bool = False,
+        policy_area: str | None = None,
+        country_or_region: str | None = None,
+        source_organisation: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        status: str | None = None,
+        source_type: str | None = None,
+    ) -> int:
+        clauses, values = self._filters(
+            include_restricted=include_restricted,
+            policy_area=policy_area,
+            country_or_region=country_or_region,
+            source_organisation=source_organisation,
+            tag=tag,
+            query=query,
+            status=status,
+            source_type=source_type,
+        )
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with get_connection() as connection:
+            row = connection.execute(
+                f"""
+                SELECT count(*) AS total
+                FROM documents d
+                LEFT JOIN document_metadata m ON m.document_id = d.id
+                {where_sql}
+                """,
+                tuple(values),
+            ).fetchone()
+        return int(row["total"])
+
+    @staticmethod
+    def _filters(
+        *,
+        include_restricted: bool,
+        policy_area: str | None,
+        country_or_region: str | None,
+        source_organisation: str | None,
+        tag: str | None,
+        query: str | None,
+        status: str | None,
+        source_type: str | None,
+    ) -> tuple[list[str], list[object]]:
+        clauses: list[str] = []
+        values: list[object] = []
+        if not include_restricted:
+            clauses.append("d.approved = true AND d.access_level = 'public'")
+        for value, clause in (
+            (policy_area, "%s = ANY(m.policy_areas)"),
+            (country_or_region, "m.country_region = %s"),
+            (source_organisation, "m.source_organisation = %s"),
+            (tag, "%s = ANY(m.keywords)"),
+            (status, "d.status = %s"),
+            (source_type, "m.source_type = %s"),
+        ):
+            if value:
+                clauses.append(clause)
+                values.append(value)
+        clean_query = query.strip() if query else ""
+        if clean_query:
+            clauses.append(
+                """(
+                    d.original_filename ILIKE %s ESCAPE '!' OR
+                    m.title ILIKE %s ESCAPE '!' OR
+                    m.summary ILIKE %s ESCAPE '!' OR
+                    m.country_region ILIKE %s ESCAPE '!' OR
+                    m.source_type ILIKE %s ESCAPE '!' OR
+                    m.source_organisation ILIKE %s ESCAPE '!' OR
+                    array_to_string(m.policy_areas, ' ') ILIKE %s ESCAPE '!' OR
+                    array_to_string(m.keywords, ' ') ILIKE %s ESCAPE '!' OR
+                    CAST(m.year AS TEXT) ILIKE %s ESCAPE '!'
+                )"""
+            )
+            escaped_query = clean_query.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+            pattern = f"%{escaped_query}%"
+            values.extend([pattern] * 9)
+        return clauses, values
 
     def get_record(self, identifier: str, *, include_restricted: bool = True) -> dict:
         visibility_sql = (
