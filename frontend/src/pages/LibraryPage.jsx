@@ -234,25 +234,31 @@ export default function LibraryPage({
         }}
       >
         <Box>
-          <Typography variant="subtitle2">Policy library</Typography>
-          <Typography variant="h1">PDF Management</Typography>
-          <Typography variant="body1" sx={{ mt: "18px", color: "#63706a" }}>
-            Manage uploaded documents, inspect metadata, and review retrieval chunks.
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-          <Button variant="outlined" disabled={busy} onClick={onRefresh}>
-            Refresh
+        <Typography variant="subtitle2">
+          {user?.role === "admin" ? "Admin Workspace" : "Policy library"}
+        </Typography>
+        <Typography variant="h1">
+          {user?.role === "admin" ? "PDF Management" : "Document Library"}
+        </Typography>
+        <Typography variant="body1" sx={{ mt: "18px", color: "#63706a" }}>
+          {user?.role === "admin"
+            ? "Manage uploaded documents, inspect metadata, and review retrieval chunks."
+            : "Browse available documents, inspect metadata, and add relevant sources to your chat context."}
+        </Typography>
+      </Box>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+        <Button variant="outlined" disabled={busy} onClick={onRefresh}>
+          Refresh
+        </Button>
+        {user?.role === "admin" && (
+          <Button variant="contained" disabled={busy} onClick={handleRescan}>
+            {busy ? "Working..." : "Rescan files"}
           </Button>
-          {user && (
-            <Button variant="contained" disabled={busy} onClick={handleRescan}>
-              {busy ? "Working..." : "Rescan files"}
-            </Button>
-          )}
-        </Box>
+        )}
+      </Box>
       </Box>
 
-      {user && <DocumentUpload compact onUploaded={onDocumentsChanged} />}
+      {user?.role === "admin" && <DocumentUpload compact onUploaded={onDocumentsChanged} />}
 
       {/* Filter bar */}
       <Card
@@ -446,7 +452,7 @@ export default function LibraryPage({
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
                   {document.chunk_count || 0} chunks
                 </Typography>
-                {user && (
+                {user?.role === "admin" && (
                   <Typography variant="body2" sx={{ color: "text.secondary" }}>
                     {document.approved ? "approved" : "not approved"} / {document.access_level}
                   </Typography>
@@ -491,7 +497,7 @@ export default function LibraryPage({
                 <Button size="small" variant="outlined" disabled={busy} onClick={() => handleDetail(document)}>
                   Details
                 </Button>
-                {user && (
+                {user?.role === "admin" && (
                   <Button
                     size="small"
                     variant="outlined"
@@ -520,8 +526,8 @@ export default function LibraryPage({
 
       <Menu anchorEl={moreMenuAnchor} open={Boolean(moreMenuAnchor)} onClose={closeMoreMenu}>
         <MenuItem onClick={() => runMoreAction(handleOpenSource)}>Open source</MenuItem>
-        {user && <Divider />}
-        {user && (
+        {user?.role === "admin" && <Divider />}
+        {user?.role === "admin" && (
           <MenuItem
             onClick={() =>
               runMoreAction((document) =>
@@ -534,7 +540,7 @@ export default function LibraryPage({
             Make {moreMenuDocument?.access_level === "public" ? "private" : "public"}
           </MenuItem>
         )}
-        {user && (
+        {user?.role === "admin" && (
           <MenuItem sx={{ color: "error.main" }} onClick={() => runMoreAction(handleDelete)}>
             Delete
           </MenuItem>

@@ -9,7 +9,7 @@ export default function AdminDashboard({
   onDocumentsChanged,
   onNavigate,
 }) {
-  if (!user) {
+  if (!(user.role === "admin")) {
     return (
       <Box component="section" sx={{ py: 4, textAlign: "center" }}>
         <Typography sx={{ py: 4, color: "text.secondary" }}>

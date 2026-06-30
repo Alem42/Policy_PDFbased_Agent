@@ -35,7 +35,7 @@ export default function SettingsPage({ user, onNavigate }) {
   }
 
   useEffect(() => {
-    if (user) loadSettings();
+    if (user?.role === "admin") loadSettings();
     else setLoading(false);
   }, [user]);
 
@@ -81,7 +81,7 @@ export default function SettingsPage({ user, onNavigate }) {
     }
   }
 
-  if (!user) {
+  if (!(user.role === "admin")) {
     return (
       <Box component="section" sx={{ display: "flex", py: 4, textAlign: "center" }}>
         <Box sx={{ width: "100%", mt: 5 }}>
