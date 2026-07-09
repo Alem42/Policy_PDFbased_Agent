@@ -8,6 +8,7 @@ class RuntimeSettings(BaseModel):
     deepseek_api_key: str | None = None
     llm_chat_model: str | None = None
     deepseek_chat_model: str | None = None
+    llm_provider: str | None = None  # e.g. "deepseek", "openai", "anthropic", "custom"
 
 
 class SettingsResponse(BaseModel):
@@ -17,6 +18,7 @@ class SettingsResponse(BaseModel):
     llm_chat_model: str
     llm_chat_model_source: str
     llm_base_url: str
+    llm_provider: str  # active provider key
 
 
 class SettingsUpdate(BaseModel):
@@ -24,3 +26,4 @@ class SettingsUpdate(BaseModel):
     llm_chat_model: str | None = None
     deepseek_api_key: str | None = None
     deepseek_chat_model: str | None = None
+    llm_provider: str | None = None  # set to one of the keys in llm_providers.py

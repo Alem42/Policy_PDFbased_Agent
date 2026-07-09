@@ -13,6 +13,7 @@ class PDFQAState(TypedDict):
     response_mode: NotRequired[ResponseMode]
     top_k: NotRequired[int]
     include_restricted: NotRequired[bool]
+    history: NotRequired[list[dict]]  # [{"role": "user"|"assistant", "content": str}, ...]
     pages: NotRequired[list[dict]]
     chunks: NotRequired[list[dict]]
     citations: NotRequired[list[dict]]

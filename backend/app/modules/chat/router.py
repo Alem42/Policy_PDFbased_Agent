@@ -1,10 +1,11 @@
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.rag.graph.workflow import run_pdf_qa
-from app.modules.chat.schemas import ChatRequest, ChatResponse, Citation
+from app.modules.chat.schemas import MAX_HISTORY_TURNS, ChatRequest, ChatResponse, Citation
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
@@ -21,14 +22,23 @@ async def chat(
     if not identifiers:
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
+    # Trim history to the last MAX_HISTORY_TURNS turns (user + assistant pairs).
+    # Each turn is 2 messages, so we keep the last MAX_HISTORY_TURNS * 2 messages.
+    raw_history = [msg.model_dump() for msg in payload.history]
+    trimmed_history = raw_history[-(MAX_HISTORY_TURNS * 2):]
+
     try:
-        result = run_pdf_qa(
+        # run_pdf_qa is synchronous (LangGraph + CPU-bound embedding/reranking).
+        # Running it in a thread pool prevents blocking the async event loop.
+        result = await asyncio.to_thread(
+            run_pdf_qa,
             question=payload.question,
             document_ids=identifiers,
             model=payload.model,
             response_mode=payload.response_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
+            history=trimmed_history,
         )
         return ChatResponse(
             answer=result["answer"],
