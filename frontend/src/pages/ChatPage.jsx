@@ -8,17 +8,49 @@ import {
   FormControlLabel,
   TextField,
   Alert,
-  ToggleButtonGroup,
-  ToggleButton,
   IconButton,
   CircularProgress,
+  Menu,
+  MenuItem,
+  ListItemText,
 } from "@mui/material";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { askQuestion, openDocumentFile } from "../api";
 import CitationList from "../components/CitationList";
+
+const RESPONSE_MODE_OPTIONS = [
+  {
+    value: "researcher",
+    label: "Policy Researcher",
+    description: "Dense, specialist language for practitioners",
+  },
+  {
+    value: "student",
+    label: "Student",
+    description: "Plain language with short explanations",
+  },
+];
+
+const ANSWER_MODE_OPTIONS = [
+  {
+    value: "analysis",
+    label: "Document Analysis",
+    description: "Answer only from selected documents",
+  },
+  {
+    value: "chat",
+    label: "Open Discussion",
+    description: "Discuss with general knowledge allowed",
+  },
+];
+
+function getOptionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label || value;
+}
 
 export default function ChatPage({
   documents,
@@ -59,6 +91,9 @@ export default function ChatPage({
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [responseMode, setResponseMode] = useState("researcher");
+  const [answerMode, setAnswerMode] = useState("analysis");
+  const [responseModeAnchor, setResponseModeAnchor] = useState(null);
+  const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -91,7 +126,7 @@ export default function ChatPage({
     setError("");
 
     try {
-      const result = await askQuestion(cleanQuestion, selected, responseMode);
+      const result = await askQuestion(cleanQuestion, selected, responseMode, answerMode);
       setMessages((current) => [
         ...current,
         {
@@ -100,6 +135,7 @@ export default function ChatPage({
           truncated: result.truncated,
           evidenceSufficient: result.evidence_sufficient,
           responseMode: result.response_mode || responseMode,
+          answerMode: result.answer_mode || answerMode,
           citations: Array.isArray(result.citations) ? result.citations : [],
         },
       ]);
@@ -232,13 +268,16 @@ export default function ChatPage({
                   <Typography variant="body2" sx={{ fontWeight: 800 }}>
                     {message.role === "user" ? "You" : "Assistant"}
                   </Typography>
-                  {message.role === "assistant" && message.responseMode && (
+                  {message.role === "assistant" && (message.responseMode || message.answerMode) && (
                     <Typography
                       component="small"
                       variant="caption"
                       sx={{ color: "text.secondary" }}
                     >
-                      {message.responseMode === "student" ? "Student mode" : "Policy researcher mode"}
+                      {[
+                        message.responseMode === "student" ? "Student" : "Policy Researcher",
+                        message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
+                      ].join(" · ")}
                     </Typography>
                   )}
                 </Box>
@@ -302,7 +341,13 @@ export default function ChatPage({
                     The combined PDF text was truncated.
                   </Typography>
                 )}
-                {message.evidenceSufficient === false && (
+                {message.evidenceSufficient === false && message.answerMode === "chat" && (
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                    Selected documents provided limited evidence; this answer may include
+                    general knowledge beyond the excerpts.
+                  </Typography>
+                )}
+                {message.evidenceSufficient === false && message.answerMode !== "chat" && (
                   <Typography variant="caption" sx={{ color: "text.secondary" }}>
                     Answer withheld because evidence was insufficient.
                   </Typography>
@@ -321,21 +366,89 @@ export default function ChatPage({
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-          {/* Mode Toggle */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 800, mb: 1 }}>
-              Response mode
-            </Typography>
-            <ToggleButtonGroup
-              value={responseMode}
-              exclusive
-              onChange={(_, newMode) => newMode && setResponseMode(newMode)}
-              disabled={busy}
-              size="small"
-            >
-              <ToggleButton value="researcher">Policy Researcher</ToggleButton>
-              <ToggleButton value="student">Student</ToggleButton>
-            </ToggleButtonGroup>
+          {/* Mode selectors */}
+          <Box
+            sx={{
+              mb: 2,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 1.5,
+              alignItems: "center",
+            }}
+          >
+            <Box>
+              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
+                Writing style
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(event) => setResponseModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+              >
+                {getOptionLabel(RESPONSE_MODE_OPTIONS, responseMode)}
+              </Button>
+              <Menu
+                anchorEl={responseModeAnchor}
+                open={Boolean(responseModeAnchor)}
+                onClose={() => setResponseModeAnchor(null)}
+              >
+                {RESPONSE_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === responseMode}
+                    onClick={() => {
+                      setResponseMode(option.value);
+                      setResponseModeAnchor(null);
+                    }}
+                  >
+                    <ListItemText
+                      primary={option.label}
+                      secondary={option.description}
+                    />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
+
+            <Box>
+              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
+                Answer purpose
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(event) => setAnswerModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+              >
+                {getOptionLabel(ANSWER_MODE_OPTIONS, answerMode)}
+              </Button>
+              <Menu
+                anchorEl={answerModeAnchor}
+                open={Boolean(answerModeAnchor)}
+                onClose={() => setAnswerModeAnchor(null)}
+              >
+                {ANSWER_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === answerMode}
+                    onClick={() => {
+                      setAnswerMode(option.value);
+                      setAnswerModeAnchor(null);
+                    }}
+                  >
+                    <ListItemText
+                      primary={option.label}
+                      secondary={option.description}
+                    />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
           </Box>
 
           {/* Chat Form */}

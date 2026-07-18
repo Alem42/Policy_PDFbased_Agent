@@ -211,7 +211,12 @@ export function getDocumentPages(documentId) {
   return request(`/documents/${encodeURIComponent(documentId)}/pages`);
 }
 
-export function askQuestion(question, documentIds, responseMode = "researcher") {
+export function askQuestion(
+  question,
+  documentIds,
+  responseMode = "researcher",
+  answerMode = "analysis",
+) {
   return request("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -219,6 +224,7 @@ export function askQuestion(question, documentIds, responseMode = "researcher") 
       question,
       document_ids: documentIds,
       response_mode: responseMode,
+      answer_mode: answerMode,
     }),
   });
 }

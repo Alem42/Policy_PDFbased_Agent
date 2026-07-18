@@ -8,7 +8,7 @@ from app.modules.chat.rag.graph.nodes import (
     retrieve_context_node,
     route_after_evidence_check,
 )
-from app.modules.chat.rag.graph.state import PDFQAState, ResponseMode
+from app.modules.chat.rag.graph.state import AnswerMode, PDFQAState, ResponseMode
 
 
 def build_pdf_qa_graph():
@@ -47,6 +47,7 @@ def run_pdf_qa(
     filenames: list[str] | None = None,
     model: str | None = None,
     response_mode: ResponseMode = "researcher",
+    answer_mode: AnswerMode = "analysis",
     top_k: int = 8,
     include_restricted: bool = False,
 ) -> dict:
@@ -58,6 +59,7 @@ def run_pdf_qa(
             "filenames": filenames or [],
             "model": model,
             "response_mode": response_mode,
+            "answer_mode": answer_mode,
             "top_k": top_k,
             "include_restricted": include_restricted,
         }

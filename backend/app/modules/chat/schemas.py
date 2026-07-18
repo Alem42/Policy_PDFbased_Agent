@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 ResponseMode = Literal["researcher", "student"]
+AnswerMode = Literal["analysis", "chat"]
 
 
 class ChatFilters(BaseModel):
@@ -23,6 +24,7 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=6, ge=1, le=20)
     model: str | None = None
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
 
 
 class Citation(BaseModel):
@@ -40,6 +42,7 @@ class ChatResponse(BaseModel):
     truncated: bool = False
     evidence_sufficient: bool = True
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
 
 
 class DocumentChunkRead(BaseModel):

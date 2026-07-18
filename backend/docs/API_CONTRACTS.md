@@ -202,13 +202,21 @@ Example request:
     "published_year_to": null
   },
   "top_k": 6,
-  "model": null
+  "model": null,
+  "response_mode": "researcher",
+  "answer_mode": "analysis"
 }
 ```
 
+`response_mode` accepts `researcher` or `student` (writing style).
+`answer_mode` accepts `analysis` (selected documents only) or `chat`
+(open discussion that may use general knowledge). Defaults are
+`researcher` and `analysis`.
+
 At least one `document_id` or `filename` is required. `top_k` must be between 1
 and 20. Model-provider failures return `502`; missing documents return `404`.
-The response contains `answer`, `citations`, and a `truncated` flag.
+The response contains `answer`, `citations`, `truncated`, `evidence_sufficient`,
+`response_mode`, and `answer_mode`.
 
 ## Persistence contract
 

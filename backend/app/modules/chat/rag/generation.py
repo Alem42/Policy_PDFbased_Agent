@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
-from app.modules.chat.rag.prompts import ResponseMode, get_system_prompt
+from app.modules.chat.rag.prompts import AnswerMode, ResponseMode, get_system_prompt
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
 
 
@@ -40,15 +38,16 @@ def generate_answer(
     context: str,
     model: str | None = None,
     response_mode: ResponseMode = "researcher",
+    answer_mode: AnswerMode = "analysis",
 ) -> str:
     api_key, _ = get_llm_api_key()
     if not api_key:
         raise ValueError("LLM_API_KEY is not configured.")
 
-    if not context:
+    if not context and answer_mode == "analysis":
         raise ValueError("No extractable text was found in the selected PDFs.")
 
-    system_prompt = get_system_prompt(response_mode)
+    system_prompt = get_system_prompt(response_mode, answer_mode)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -63,4 +62,9 @@ def generate_answer(
         extra_body={"thinking": {"type": "disabled"}},
     )
     chain = prompt | llm | StrOutputParser()
-    return chain.invoke({"question": question, "context": context})
+    return chain.invoke(
+        {
+            "question": question,
+            "context": context or "(No relevant excerpts were retrieved from the selected documents.)",
+        }
+    )
