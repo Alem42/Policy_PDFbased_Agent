@@ -210,7 +210,18 @@ export function getDocumentPages(documentId) {
   return request(`/documents/${encodeURIComponent(documentId)}/pages`);
 }
 
-export function askQuestion(question, documentIds, responseMode = "researcher") {
+// Maximum number of prior conversation turns to send to the backend.
+// Each turn = one user message + one assistant reply.
+// Increase this value if users need longer memory; decrease to save tokens.
+const MAX_HISTORY_TURNS = 5;
+
+export function askQuestion(question, documentIds, responseMode = "researcher", history = []) {
+  // Trim to the last MAX_HISTORY_TURNS turns (user + assistant pairs = * 2 messages).
+  const trimmedHistory = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
   return request("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -218,6 +229,7 @@ export function askQuestion(question, documentIds, responseMode = "researcher") 
       question,
       document_ids: documentIds,
       response_mode: responseMode,
+      history: trimmedHistory,
     }),
   });
 }

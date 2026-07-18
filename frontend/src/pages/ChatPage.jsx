@@ -12,12 +12,67 @@ import {
   ToggleButton,
   IconButton,
   CircularProgress,
+  Drawer,
+  Divider,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { askQuestion } from "../api";
+
+// Splits a text node on citation markers and wraps each in a clickable <sup>.
+// Handles: [1]  [1-3]  [1, 2]  [1,2,3]
+// For ranges [N-M]: opens the drawer focused on N.
+// For multi [N, M]: opens the drawer focused on N.
+const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
+
+function renderWithCitations(children, citations, onOpen) {
+  return (Array.isArray(children) ? children : [children]).map((child, outerIdx) => {
+    if (typeof child !== "string") return child;
+    const parts = child.split(CITATION_RE);
+    if (parts.length === 1) return child;
+    return parts.map((part, i) => {
+      if (!CITATION_RE.test(part)) return part;
+      // Extract all numbers from the marker, e.g. "[1-3]" → [1,2,3], "[7, 14]" → [7,14]
+      const nums = [...part.matchAll(/\d+/g)].map((m) => parseInt(m[0], 10));
+      if (!nums.length) return part;
+      // Use the first number to determine the primary citation index (0-based)
+      const primaryIdx = nums[0] - 1;
+      if (primaryIdx < 0 || primaryIdx >= (citations || []).length) return part;
+      return (
+        <sup key={`${outerIdx}-${i}`}>
+          <button
+            onClick={() => onOpen(citations, primaryIdx)}
+            title={`Source: ${citations[primaryIdx]?.title || part}`}
+            style={{
+              cursor: "pointer",
+              color: "#214f42",
+              fontWeight: 700,
+              background: "none",
+              border: "none",
+              padding: "0 1px",
+              fontSize: "0.75em",
+              lineHeight: 1,
+              fontFamily: "inherit",
+              textDecoration: "underline dotted",
+            }}
+          >
+            {part}
+          </button>
+        </sup>
+      );
+    });
+  });
+}
+
+// Returns react-markdown `components` that intercept p and li to inject citation buttons.
+function makeMarkdownComponents(citations, onOpen) {
+  return {
+    p: ({ children }) => <p>{renderWithCitations(children, citations, onOpen)}</p>,
+    li: ({ children }) => <li>{renderWithCitations(children, citations, onOpen)}</li>,
+  };
+}
 
 export default function ChatPage({
   documents,
@@ -61,6 +116,31 @@ export default function ChatPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // { open: bool, citations: Citation[], focusIndex: number }
+  // focusIndex: which citation was clicked — the drawer highlights and displays it first.
+  const [citationDrawer, setCitationDrawer] = useState({
+    open: false,
+    citations: [],
+    focusIndex: 0,
+  });
+
+  // Deduplicate and cap citations for display so large page-fallback arrays
+  // (one entry per page) don't overwhelm the drawer.
+  // When focusIndex is set, always show that entry at the top.
+  function drawerCitations(citations, focusIndex) {
+    if (!citations || citations.length === 0) return [];
+    // For large arrays (page fallback), only show the clicked citation + a few neighbours.
+    if (citations.length > 12) {
+      const start = Math.max(0, focusIndex - 1);
+      const end = Math.min(citations.length, focusIndex + 4);
+      return citations.slice(start, end).map((c, i) => ({
+        ...c,
+        _displayIndex: start + i + 1,
+      }));
+    }
+    return citations.map((c, i) => ({ ...c, _displayIndex: i + 1 }));
+  }
+
   useEffect(() => {
     setSelected((current) => {
       const stillSelected = current.filter((id) => contextSourceIds.includes(id));
@@ -79,6 +159,10 @@ export default function ChatPage({
     );
   }
 
+  function openCitationDrawer(citations, focusIndex = 0) {
+    setCitationDrawer({ open: true, citations: citations || [], focusIndex });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const cleanQuestion = question.trim();
@@ -90,12 +174,15 @@ export default function ChatPage({
     setError("");
 
     try {
-      const result = await askQuestion(cleanQuestion, selected, responseMode);
+      // Pass current messages as history so the LLM can follow up on prior answers.
+      // MAX_HISTORY_TURNS trimming is also enforced server-side.
+      const result = await askQuestion(cleanQuestion, selected, responseMode, messages);
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
           content: result.answer,
+          citations: result.citations || [],
           truncated: result.truncated,
           evidenceSufficient: result.evidence_sufficient,
           responseMode: result.response_mode || responseMode,
@@ -230,6 +317,27 @@ export default function ChatPage({
                       {message.responseMode === "student" ? "Student mode" : "Policy researcher mode"}
                     </Typography>
                   )}
+                  {/* Citation count badge — click to open source drawer */}
+                  {message.role === "assistant" &&
+                    message.citations?.length > 0 && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => openCitationDrawer(message.citations)}
+                        sx={{
+                          ml: "auto",
+                          fontSize: "0.72em",
+                          color: "#214f42",
+                          textTransform: "none",
+                          minWidth: 0,
+                          px: 1,
+                          py: 0,
+                        }}
+                      >
+                        {message.citations.length} source
+                        {message.citations.length !== 1 ? "s" : ""}
+                      </Button>
+                    )}
                 </Box>
                 {message.role === "assistant" ? (
                   <Box
@@ -271,7 +379,13 @@ export default function ChatPage({
                       "& a": { color: "#214f42" },
                     }}
                   >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={makeMarkdownComponents(
+                        message.citations || [],
+                        openCitationDrawer,
+                      )}
+                    >
                       {message.content}
                     </ReactMarkdown>
                   </Box>
@@ -350,6 +464,88 @@ export default function ChatPage({
           </Box>
         </Card>
       </Box>
+
+      {/* Citation Drawer — slides in from the right when [N] is clicked */}
+      <Drawer
+        anchor="right"
+        open={citationDrawer.open}
+        onClose={() => setCitationDrawer((s) => ({ ...s, open: false }))}
+        PaperProps={{
+          sx: { width: { xs: "100%", sm: 380 }, p: 3, boxSizing: "border-box" },
+        }}
+      >
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+          <Typography variant="h6" sx={{ fontFamily: "Georgia, serif" }}>
+            Sources
+          </Typography>
+          <IconButton
+            onClick={() => setCitationDrawer((s) => ({ ...s, open: false }))}
+            size="small"
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <Divider sx={{ mb: 2 }} />
+
+        {citationDrawer.citations.length === 0 ? (
+          <Typography variant="body2" sx={{ color: "text.secondary" }}>
+            No citation details available for this answer.
+          </Typography>
+        ) : (
+          drawerCitations(citationDrawer.citations, citationDrawer.focusIndex).map((c, i) => (
+            <Box
+              key={i}
+              sx={{
+                mb: 2,
+                pb: 2,
+                borderBottom: "1px solid #e2e5df",
+                ...(c._displayIndex === citationDrawer.focusIndex + 1 && {
+                  background: "#f0f5f2",
+                  borderRadius: 1,
+                  px: 1.5,
+                  pt: 1,
+                }),
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.25 }}>
+                [{c._displayIndex}] {c.title}
+              </Typography>
+              {c.page && (
+                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 0.5 }}>
+                  Page {c.page}
+                </Typography>
+              )}
+              {c.quote && (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "#63706a",
+                    fontStyle: "italic",
+                    fontSize: "0.82em",
+                    lineHeight: 1.55,
+                    mb: 1,
+                  }}
+                >
+                  &ldquo;
+                  {c.quote.length > 240 ? c.quote.slice(0, 240) + "…" : c.quote}
+                  &rdquo;
+                </Typography>
+              )}
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => {
+                  setCitationDrawer((s) => ({ ...s, open: false }));
+                  onNavigate("library");
+                }}
+                sx={{ fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
+              >
+                View in Library →
+              </Button>
+            </Box>
+          ))
+        )}
+      </Drawer>
     </Box>
   );
 }

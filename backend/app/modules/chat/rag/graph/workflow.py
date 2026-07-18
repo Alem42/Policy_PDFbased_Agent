@@ -49,6 +49,7 @@ def run_pdf_qa(
     response_mode: ResponseMode = "researcher",
     top_k: int = 8,
     include_restricted: bool = False,
+    history: list[dict] | None = None,
 ) -> dict:
     """Invoke the compiled graph and return its final state."""
     return pdf_qa_graph.invoke(
@@ -60,5 +61,6 @@ def run_pdf_qa(
             "response_mode": response_mode,
             "top_k": top_k,
             "include_restricted": include_restricted,
+            "history": history or [],
         }
     )

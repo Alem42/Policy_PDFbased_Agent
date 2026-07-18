@@ -47,16 +47,30 @@ def retrieve_context_node(state: PDFQAState) -> dict:
             "used_vector_retrieval": used_vector_retrieval,
         }
 
-    citations = [
-        {
-            "document_id": chunk["document_id"],
-            "title": chunk["file"],
-            "chunk_id": chunk["chunk_id"],
-            "page": chunk["page_start"],
-            "quote": chunk["text"][:500],
-        }
-        for chunk in relevant_chunks
-    ]
+    if used_vector_retrieval:
+        # Vector path: one citation per retrieved chunk (has document_id and quote).
+        citations = [
+            {
+                "document_id": chunk["document_id"],
+                "title": chunk["file"],
+                "chunk_id": chunk["chunk_id"],
+                "page": chunk["page_start"],
+                "quote": chunk["text"][:500],
+            }
+            for chunk in relevant_chunks
+        ]
+    else:
+        # Page-level fallback: one citation per page so the [N] markers the LLM
+        # writes for page N map to citations[N-1] in the drawer.
+        # Pages don't carry document_id, so that field is omitted (optional in schema).
+        citations = [
+            {
+                "title": p["file"],
+                "page": p.get("page"),
+                "quote": (p.get("text") or "")[:300],
+            }
+            for p in state["pages"]
+        ]
     return {
         "context": context,
         "truncated": truncated,
@@ -101,6 +115,8 @@ def generate_answer_node(state: PDFQAState) -> dict:
             context=state["context"],
             model=state.get("model"),
             response_mode=_response_mode(state),
+            history=state.get("history", []),
+            citations=state.get("citations", []),
         )
     }
 

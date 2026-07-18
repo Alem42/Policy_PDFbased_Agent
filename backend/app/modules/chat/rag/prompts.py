@@ -4,6 +4,21 @@ from typing import Literal
 
 ResponseMode = Literal["researcher", "student"]
 
+# Injected into the system prompt when numbered citations are available.
+# {source_list} is filled with one "[N] title, page X" line per retrieved chunk.
+CITATION_INSTRUCTION = (
+    "Cite sources inline using numbered markers [1], [2], etc.\n"
+    "Place each marker immediately after the sentence that uses that source, before any punctuation.\n"
+    'Example: "Emissions fell 30 % by 2030 [1] and further reductions are projected [2]."\n'
+    "Rules for markers:\n"
+    "- Use exactly ONE number per marker: [1], [2], not [1-2] or [1, 2].\n"
+    "- Use only numbers from the list below — do not invent page numbers.\n"
+    "- Do not add a reference list at the end.\n"
+    "\n"
+    "Numbered sources available to you:\n"
+    "{source_list}"
+)
+
 RESEARCHER_SYSTEM_PROMPT = """You are a policy research assistant supporting
 evidence-based analysis.
 Answer using only the supplied policy document excerpts.
@@ -18,7 +33,7 @@ Structure your answer with these markdown headings
 ## Practical Recommendations
 
 Rules:
-- Ground every substantive claim in the excerpts. Mention source file and page when useful.
+- Ground every substantive claim in the excerpts. {citation_instruction}
 - Distinguish reported findings in the sources from your synthesis.
 - Use precise, professional policy language suitable for researchers and practitioners.
 - If excerpts only partially address the question, say what is supported and what remains unclear.
@@ -34,7 +49,7 @@ Reply in the same language as the user's question.
 Explain ideas in clear, beginner-friendly language.
 Avoid unnecessary jargon; when a technical term is needed, briefly define it.
 Use short paragraphs and simple examples drawn only from the excerpts.
-Mention which source file and page you are drawing from when it helps verification.
+{citation_instruction}
 If the excerpts only partially address the question, say what you can explain
 and what would need more sources.
 

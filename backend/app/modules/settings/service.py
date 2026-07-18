@@ -1,4 +1,5 @@
 from app.core.config import get_settings
+from app.core.llm_providers import DEFAULT_PROVIDER
 from app.modules.settings.repository import settings_repository
 
 
@@ -34,6 +35,11 @@ def mask_api_key(api_key: str | None) -> str | None:
     return f"{api_key[:4]}...{api_key[-4:]}"
 
 
+def get_llm_provider() -> str:
+    runtime = settings_repository.load()
+    return runtime.llm_provider or DEFAULT_PROVIDER
+
+
 def get_public_settings() -> dict:
     api_key, api_key_source = get_llm_api_key()
     model, model_source = get_llm_chat_model()
@@ -44,12 +50,14 @@ def get_public_settings() -> dict:
         "llm_chat_model": model,
         "llm_chat_model_source": model_source,
         "llm_base_url": get_settings().llm_base_url,
+        "llm_provider": get_llm_provider(),
     }
 
 
 def update_public_settings(
     llm_api_key: str | None = None,
     llm_chat_model: str | None = None,
+    llm_provider: str | None = None,
 ) -> dict:
     runtime = settings_repository.load()
     if llm_api_key is not None:
@@ -58,5 +66,7 @@ def update_public_settings(
     if llm_chat_model is not None:
         runtime.llm_chat_model = llm_chat_model.strip() or None
         runtime.deepseek_chat_model = None
+    if llm_provider is not None:
+        runtime.llm_provider = llm_provider.strip() or None
     settings_repository.save(runtime)
     return get_public_settings()
