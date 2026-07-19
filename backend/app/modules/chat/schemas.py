@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 ResponseMode = Literal["researcher", "student"]
+AnswerMode = Literal["analysis", "chat"]
 
 # Maximum number of prior conversation turns sent to the LLM for context.
 # Each turn = one user message + one assistant reply (2 messages).
@@ -34,6 +35,7 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=6, ge=1, le=20)
     model: str | None = None
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
     # When session_id is provided the backend reads history from the DB directly.
     # When None a new session is created automatically.
     session_id: UUID | None = None
@@ -57,6 +59,7 @@ class ChatResponse(BaseModel):
     truncated: bool = False
     evidence_sufficient: bool = True
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
     session_id: UUID | None = None
 
 

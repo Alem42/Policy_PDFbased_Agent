@@ -1,6 +1,7 @@
 from typing import Literal, NotRequired, TypedDict
 
 ResponseMode = Literal["researcher", "student"]
+AnswerMode = Literal["analysis", "chat"]
 
 
 class PDFQAState(TypedDict):
@@ -11,6 +12,7 @@ class PDFQAState(TypedDict):
     filenames: NotRequired[list[str]]
     model: str | None
     response_mode: NotRequired[ResponseMode]
+    answer_mode: NotRequired[AnswerMode]
     top_k: NotRequired[int]
     include_restricted: NotRequired[bool]
     history: NotRequired[list[dict]]  # [{"role": "user"|"assistant", "content": str}, ...]

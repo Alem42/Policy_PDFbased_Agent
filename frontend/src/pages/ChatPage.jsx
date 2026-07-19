@@ -9,23 +9,24 @@ import {
   FormControlLabel,
   TextField,
   Alert,
-  ToggleButtonGroup,
-  ToggleButton,
   IconButton,
   CircularProgress,
   Drawer,
   Divider,
+  Menu,
+  MenuItem,
+  ListItemText,
 } from "@mui/material";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { askQuestion, getChatSession } from "../api";
+import { askQuestion, getChatSession, openDocumentFile } from "../api";
+import CitationList from "../components/CitationList";
 
 // Splits a text node on citation markers and wraps each in a clickable <sup>.
 // Handles: [1]  [1-3]  [1, 2]  [1,2,3]
-// For ranges [N-M]: opens the drawer focused on N.
-// For multi [N, M]: opens the drawer focused on N.
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
 
 function renderWithCitations(children, citations, onOpen) {
@@ -35,10 +36,8 @@ function renderWithCitations(children, citations, onOpen) {
     if (parts.length === 1) return child;
     return parts.map((part, i) => {
       if (!CITATION_RE.test(part)) return part;
-      // Extract all numbers from the marker, e.g. "[1-3]" → [1,2,3], "[7, 14]" → [7,14]
       const nums = [...part.matchAll(/\d+/g)].map((m) => parseInt(m[0], 10));
       if (!nums.length) return part;
-      // Use the first number to determine the primary citation index (0-based)
       const primaryIdx = nums[0] - 1;
       if (primaryIdx < 0 || primaryIdx >= (citations || []).length) return part;
       return (
@@ -67,12 +66,41 @@ function renderWithCitations(children, citations, onOpen) {
   });
 }
 
-// Returns react-markdown `components` that intercept p and li to inject citation buttons.
 function makeMarkdownComponents(citations, onOpen) {
   return {
     p: ({ children }) => <p>{renderWithCitations(children, citations, onOpen)}</p>,
     li: ({ children }) => <li>{renderWithCitations(children, citations, onOpen)}</li>,
   };
+}
+
+const RESPONSE_MODE_OPTIONS = [
+  {
+    value: "researcher",
+    label: "Policy Researcher",
+    description: "Dense, specialist language for practitioners",
+  },
+  {
+    value: "student",
+    label: "Student",
+    description: "Plain language with short explanations",
+  },
+];
+
+const ANSWER_MODE_OPTIONS = [
+  {
+    value: "analysis",
+    label: "Document Analysis",
+    description: "Answer only from selected documents",
+  },
+  {
+    value: "chat",
+    label: "Open Discussion",
+    description: "Discuss with general knowledge allowed",
+  },
+];
+
+function getOptionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label || value;
 }
 
 export default function ChatPage({
@@ -114,10 +142,14 @@ export default function ChatPage({
       </Box>
     );
   }
+
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [responseMode, setResponseMode] = useState("researcher");
+  const [answerMode, setAnswerMode] = useState("analysis");
+  const [responseModeAnchor, setResponseModeAnchor] = useState(null);
+  const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // Persisted session ID — null means the next message will create a new session.
@@ -135,9 +167,10 @@ export default function ChatPage({
           detail.messages.map((m) => ({
             role: m.role,
             content: m.content,
-            citations: m.citations || [],
+            citations: Array.isArray(m.citations) ? m.citations : [],
             evidenceSufficient: m.evidence_sufficient,
             responseMode: m.response_mode,
+            answerMode: m.answer_mode,
           })),
         );
         if (detail.response_mode) setResponseMode(detail.response_mode);
@@ -150,19 +183,14 @@ export default function ChatPage({
   }, [resumeSessionId]);
 
   // { open: bool, citations: Citation[], focusIndex: number }
-  // focusIndex: which citation was clicked — the drawer highlights and displays it first.
   const [citationDrawer, setCitationDrawer] = useState({
     open: false,
     citations: [],
     focusIndex: 0,
   });
 
-  // Deduplicate and cap citations for display so large page-fallback arrays
-  // (one entry per page) don't overwhelm the drawer.
-  // When focusIndex is set, always show that entry at the top.
   function drawerCitations(citations, focusIndex) {
     if (!citations || citations.length === 0) return [];
-    // For large arrays (page fallback), only show the clicked citation + a few neighbours.
     if (citations.length > 12) {
       const start = Math.max(0, focusIndex - 1);
       const end = Math.min(citations.length, focusIndex + 4);
@@ -209,7 +237,9 @@ export default function ChatPage({
     try {
       // session_id is sent so the server reads history from DB.
       // On the first message sessionId is null → server creates a new session.
-      const result = await askQuestion(cleanQuestion, selected, responseMode, messages, sessionId);
+      const result = await askQuestion(
+        cleanQuestion, selected, responseMode, answerMode, messages, sessionId,
+      );
 
       // Lock in the session for all subsequent turns in this conversation.
       if (!sessionId && result.session_id) {
@@ -221,10 +251,11 @@ export default function ChatPage({
         {
           role: "assistant",
           content: result.answer,
-          citations: result.citations || [],
+          citations: Array.isArray(result.citations) ? result.citations : [],
           truncated: result.truncated,
           evidenceSufficient: result.evidence_sufficient,
           responseMode: result.response_mode || responseMode,
+          answerMode: result.answer_mode || answerMode,
         },
       ]);
     } catch (chatError) {
@@ -238,6 +269,15 @@ export default function ChatPage({
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
+  }
+
+  async function handleOpenCitation(citation) {
+    setError("");
+    try {
+      await openDocumentFile(citation.document_id, citation.page);
+    } catch (sourceError) {
+      setError(sourceError.message);
+    }
   }
 
   return (
@@ -315,7 +355,7 @@ export default function ChatPage({
               variant="outlined"
               onClick={() => {
                 setMessages([]);
-                setSessionId(null);  // next question starts a fresh session
+                setSessionId(null);
                 setError("");
               }}
             >
@@ -348,36 +388,37 @@ export default function ChatPage({
                   <Typography variant="body2" sx={{ fontWeight: 800 }}>
                     {message.role === "user" ? "You" : "Assistant"}
                   </Typography>
-                  {message.role === "assistant" && message.responseMode && (
+                  {message.role === "assistant" && (message.responseMode || message.answerMode) && (
                     <Typography
                       component="small"
                       variant="caption"
                       sx={{ color: "text.secondary" }}
                     >
-                      {message.responseMode === "student" ? "Student mode" : "Policy researcher mode"}
+                      {[
+                        message.responseMode === "student" ? "Student" : "Policy Researcher",
+                        message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
+                      ].join(" · ")}
                     </Typography>
                   )}
-                  {/* Citation count badge — click to open source drawer */}
-                  {message.role === "assistant" &&
-                    message.citations?.length > 0 && (
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => openCitationDrawer(message.citations)}
-                        sx={{
-                          ml: "auto",
-                          fontSize: "0.72em",
-                          color: "#214f42",
-                          textTransform: "none",
-                          minWidth: 0,
-                          px: 1,
-                          py: 0,
-                        }}
-                      >
-                        {message.citations.length} source
-                        {message.citations.length !== 1 ? "s" : ""}
-                      </Button>
-                    )}
+                  {message.role === "assistant" && message.citations?.length > 0 && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => openCitationDrawer(message.citations)}
+                      sx={{
+                        ml: "auto",
+                        fontSize: "0.72em",
+                        color: "#214f42",
+                        textTransform: "none",
+                        minWidth: 0,
+                        px: 1,
+                        py: 0,
+                      }}
+                    >
+                      {message.citations.length} source
+                      {message.citations.length !== 1 ? "s" : ""}
+                    </Button>
+                  )}
                 </Box>
                 {message.role === "assistant" ? (
                   <Box
@@ -434,12 +475,24 @@ export default function ChatPage({
                     {message.content}
                   </Typography>
                 )}
+                {message.role === "assistant" && message.evidenceSufficient !== false && (
+                  <CitationList
+                    citations={message.citations}
+                    onOpenSource={handleOpenCitation}
+                  />
+                )}
                 {message.truncated && (
                   <Typography variant="caption" sx={{ color: "warning.main" }}>
                     The combined PDF text was truncated.
                   </Typography>
                 )}
-                {message.evidenceSufficient === false && (
+                {message.evidenceSufficient === false && message.answerMode === "chat" && (
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                    Selected documents provided limited evidence; this answer may include
+                    general knowledge beyond the excerpts.
+                  </Typography>
+                )}
+                {message.evidenceSufficient === false && message.answerMode !== "chat" && (
                   <Typography variant="caption" sx={{ color: "text.secondary" }}>
                     Answer withheld because evidence was insufficient.
                   </Typography>
@@ -458,21 +511,69 @@ export default function ChatPage({
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-          {/* Mode Toggle */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 800, mb: 1 }}>
-              Response mode
-            </Typography>
-            <ToggleButtonGroup
-              value={responseMode}
-              exclusive
-              onChange={(_, newMode) => newMode && setResponseMode(newMode)}
-              disabled={busy}
-              size="small"
-            >
-              <ToggleButton value="researcher">Policy Researcher</ToggleButton>
-              <ToggleButton value="student">Student</ToggleButton>
-            </ToggleButtonGroup>
+          {/* Mode selectors */}
+          <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
+            <Box>
+              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
+                Writing style
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(event) => setResponseModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+              >
+                {getOptionLabel(RESPONSE_MODE_OPTIONS, responseMode)}
+              </Button>
+              <Menu
+                anchorEl={responseModeAnchor}
+                open={Boolean(responseModeAnchor)}
+                onClose={() => setResponseModeAnchor(null)}
+              >
+                {RESPONSE_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === responseMode}
+                    onClick={() => { setResponseMode(option.value); setResponseModeAnchor(null); }}
+                  >
+                    <ListItemText primary={option.label} secondary={option.description} />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
+
+            <Box>
+              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
+                Answer purpose
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                endIcon={<ArrowDropDownIcon />}
+                onClick={(event) => setAnswerModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+              >
+                {getOptionLabel(ANSWER_MODE_OPTIONS, answerMode)}
+              </Button>
+              <Menu
+                anchorEl={answerModeAnchor}
+                open={Boolean(answerModeAnchor)}
+                onClose={() => setAnswerModeAnchor(null)}
+              >
+                {ANSWER_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === answerMode}
+                    onClick={() => { setAnswerMode(option.value); setAnswerModeAnchor(null); }}
+                  >
+                    <ListItemText primary={option.label} secondary={option.description} />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
           </Box>
 
           {/* Chat Form */}

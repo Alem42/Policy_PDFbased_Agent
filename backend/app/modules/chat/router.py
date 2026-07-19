@@ -61,6 +61,7 @@ async def chat(
             document_ids=identifiers,
             model=payload.model,
             response_mode=payload.response_mode,
+            answer_mode=payload.answer_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
             history=history,
@@ -88,6 +89,7 @@ async def chat(
             truncated=result.get("truncated", False),
             evidence_sufficient=evidence_sufficient,
             response_mode=payload.response_mode,
+            answer_mode=payload.answer_mode,
             session_id=UUID(session_id),
         )
     except FileNotFoundError as exc:
