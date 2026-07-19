@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -33,8 +34,11 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=6, ge=1, le=20)
     model: str | None = None
     response_mode: ResponseMode = "researcher"
-    # Last MAX_HISTORY_TURNS turns of conversation (user + assistant pairs).
-    # The backend trims to MAX_HISTORY_TURNS * 2 messages even if more are sent.
+    # When session_id is provided the backend reads history from the DB directly.
+    # When None a new session is created automatically.
+    session_id: UUID | None = None
+    # Kept for backwards-compat with clients that still send history inline.
+    # DB history takes precedence when session_id is set.
     history: list[ChatMessage] = Field(default_factory=list)
 
 
@@ -53,6 +57,44 @@ class ChatResponse(BaseModel):
     truncated: bool = False
     evidence_sufficient: bool = True
     response_mode: ResponseMode = "researcher"
+    session_id: UUID | None = None
+
+
+# ----- Chat history schemas -----
+
+class SessionSummary(BaseModel):
+    id: UUID
+    title: str
+    document_ids: list[str]
+    response_mode: ResponseMode
+    last_message_preview: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SessionMessage(BaseModel):
+    id: UUID
+    session_id: UUID
+    role: Literal["user", "assistant"]
+    content: str
+    citations: list[Citation] = Field(default_factory=list)
+    evidence_sufficient: bool | None = None
+    response_mode: ResponseMode | None = None
+    created_at: datetime
+
+
+class SessionDetail(BaseModel):
+    id: UUID
+    title: str
+    document_ids: list[str]
+    response_mode: ResponseMode
+    messages: list[SessionMessage]
+    created_at: datetime
+    updated_at: datetime
+
+
+class SessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
 
 
 class DocumentChunkRead(BaseModel):

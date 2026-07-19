@@ -698,3 +698,56 @@ ALTER TABLE "public"."document_pages" ADD CONSTRAINT "document_pages_document_id
 -- Foreign Keys structure for table processing_jobs
 -- ----------------------------
 ALTER TABLE "public"."processing_jobs" ADD CONSTRAINT "processing_jobs_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- ----------------------------
+-- Table structure for chat_sessions
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."chat_sessions" (
+  "id"            uuid        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"       uuid        NOT NULL,
+  "title"         text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT '',
+  "document_ids"  text[]      COLLATE "pg_catalog"."default" NOT NULL DEFAULT '{}',
+  "response_mode" text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'researcher',
+  "created_at"    timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at"    timestamptz(6) NOT NULL DEFAULT now()
+);
+
+ALTER TABLE "public"."chat_sessions" ADD CONSTRAINT "chat_sessions_pkey" PRIMARY KEY ("id");
+
+CREATE INDEX IF NOT EXISTS "idx_chat_sessions_user_updated"
+  ON "public"."chat_sessions" USING btree ("user_id", "updated_at" DESC);
+
+ALTER TABLE "public"."chat_sessions"
+  ADD CONSTRAINT "chat_sessions_user_id_fkey"
+  FOREIGN KEY ("user_id") REFERENCES "public"."app_users" ("id") ON DELETE CASCADE;
+
+ALTER TABLE "public"."chat_sessions"
+  ADD CONSTRAINT "chat_sessions_response_mode_check"
+  CHECK (response_mode IN ('researcher', 'student'));
+
+-- ----------------------------
+-- Table structure for chat_messages
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
+  "id"                  uuid        NOT NULL DEFAULT gen_random_uuid(),
+  "session_id"          uuid        NOT NULL,
+  "role"                text        COLLATE "pg_catalog"."default" NOT NULL,
+  "content"             text        COLLATE "pg_catalog"."default" NOT NULL,
+  "citations_json"      jsonb       NOT NULL DEFAULT '[]',
+  "evidence_sufficient" bool,
+  "response_mode"       text        COLLATE "pg_catalog"."default",
+  "created_at"          timestamptz(6) NOT NULL DEFAULT now()
+);
+
+ALTER TABLE "public"."chat_messages" ADD CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id");
+
+CREATE INDEX IF NOT EXISTS "idx_chat_messages_session_created"
+  ON "public"."chat_messages" USING btree ("session_id", "created_at" ASC);
+
+ALTER TABLE "public"."chat_messages"
+  ADD CONSTRAINT "chat_messages_session_id_fkey"
+  FOREIGN KEY ("session_id") REFERENCES "public"."chat_sessions" ("id") ON DELETE CASCADE;
+
+ALTER TABLE "public"."chat_messages"
+  ADD CONSTRAINT "chat_messages_role_check"
+  CHECK (role IN ('user', 'assistant'));

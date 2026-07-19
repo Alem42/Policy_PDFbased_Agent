@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Box,
   Card,
@@ -19,7 +20,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { askQuestion } from "../api";
+import { askQuestion, getChatSession } from "../api";
 
 // Splits a text node on citation markers and wraps each in a clickable <sup>.
 // Handles: [1]  [1-3]  [1, 2]  [1,2,3]
@@ -81,6 +82,10 @@ export default function ChatPage({
   contextSourceIds = [],
   onRemoveSource,
 }) {
+  // Read session ID passed via router navigation state (from HistoryPage).
+  const location = useLocation();
+  const resumeSessionId = location.state?.sessionId ?? null;
+
   if (!user) {
     return (
       <Box
@@ -115,6 +120,34 @@ export default function ChatPage({
   const [responseMode, setResponseMode] = useState("researcher");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Persisted session ID — null means the next message will create a new session.
+  const [sessionId, setSessionId] = useState(resumeSessionId);
+
+  // When navigated here from HistoryPage with a session ID, load the past messages.
+  useEffect(() => {
+    if (!resumeSessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await getChatSession(resumeSessionId);
+        if (cancelled) return;
+        setMessages(
+          detail.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            citations: m.citations || [],
+            evidenceSufficient: m.evidence_sufficient,
+            responseMode: m.response_mode,
+          })),
+        );
+        if (detail.response_mode) setResponseMode(detail.response_mode);
+      } catch {
+        // Non-fatal — user can still continue chatting
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeSessionId]);
 
   // { open: bool, citations: Citation[], focusIndex: number }
   // focusIndex: which citation was clicked — the drawer highlights and displays it first.
@@ -174,9 +207,15 @@ export default function ChatPage({
     setError("");
 
     try {
-      // Pass current messages as history so the LLM can follow up on prior answers.
-      // MAX_HISTORY_TURNS trimming is also enforced server-side.
-      const result = await askQuestion(cleanQuestion, selected, responseMode, messages);
+      // session_id is sent so the server reads history from DB.
+      // On the first message sessionId is null → server creates a new session.
+      const result = await askQuestion(cleanQuestion, selected, responseMode, messages, sessionId);
+
+      // Lock in the session for all subsequent turns in this conversation.
+      if (!sessionId && result.session_id) {
+        setSessionId(result.session_id);
+      }
+
       setMessages((current) => [
         ...current,
         {
@@ -276,6 +315,7 @@ export default function ChatPage({
               variant="outlined"
               onClick={() => {
                 setMessages([]);
+                setSessionId(null);  // next question starts a fresh session
                 setError("");
               }}
             >

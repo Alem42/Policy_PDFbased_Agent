@@ -2,6 +2,7 @@ export const ROUTES = Object.freeze({
   root: "/",
   home: "/home",
   chat: "/chat",
+  history: "/history",
   library: "/library",
   admin: "/admin",
   settings: "/settings",
@@ -11,6 +12,7 @@ export const ROUTES = Object.freeze({
 export const VIEW_PATHS = Object.freeze({
   home: ROUTES.home,
   chat: ROUTES.chat,
+  history: ROUTES.history,
   library: ROUTES.library,
   admin: ROUTES.admin,
   settings: ROUTES.settings,

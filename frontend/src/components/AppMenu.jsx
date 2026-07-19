@@ -3,6 +3,7 @@ import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Divider } from "@mu
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/HomeOutlined";
 import ChatIcon from "@mui/icons-material/ChatOutlined";
+import HistoryIcon from "@mui/icons-material/HistoryOutlined";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooksOutlined";
 import DashboardIcon from "@mui/icons-material/DashboardOutlined";
 import SettingsIcon from "@mui/icons-material/SettingsOutlined";
@@ -10,6 +11,7 @@ import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 const PUBLIC_ITEMS = [
   // { view: "home", label: "Overview", icon: <HomeIcon fontSize="small" /> },
   { view: "chat", label: "Question & Answer", icon: <ChatIcon fontSize="small" /> },
+  { view: "history", label: "Chat History", icon: <HistoryIcon fontSize="small" /> },
   { view: "library", label: "Document Library", icon: <LibraryBooksIcon fontSize="small" /> },
 ];
 
