@@ -4,26 +4,13 @@ import math
 from collections.abc import Iterable
 from functools import lru_cache
 
-import tiktoken
 from fastembed import TextEmbedding
+from fastembed.common.preprocessor_utils import load_tokenizer
+from tokenizers import Tokenizer
 
 from app.core.config import get_settings, resolve_backend_path
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-
-# cl100k_base is the BPE encoding used by GPT-4 and DeepSeek.
-# Loaded once at module import time; subsequent calls are near-instant.
-_tokenizer = tiktoken.get_encoding("cl100k_base")
-
-
-def estimate_token_count(text: str) -> int:
-    """Return the BPE token count for text using the cl100k_base encoding.
-
-    Replaces the old len(text)//4 heuristic, which severely underestimated
-    CJK text. Error vs. actual model token count is typically <5% for
-    DeepSeek and GPT-4 class models.
-    """
-    return max(1, len(_tokenizer.encode(text)))
 
 
 def get_embedding_model_name() -> str:
@@ -36,6 +23,36 @@ def _load_model(model_name: str) -> TextEmbedding:
     cache_dir = resolve_backend_path(get_settings().model_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
+
+
+@lru_cache(maxsize=4)
+def _load_chunking_tokenizer(model_name: str) -> Tokenizer:
+    """Independent tokenizer instance used only for chunk-sizing counts.
+
+    Loaded from the same on-disk files as the live embedding model but kept
+    separate from _load_model(...)'s tokenizer, whose truncation state is
+    shared with concurrent embed calls and must not be mutated. Truncation
+    is disabled on this copy so counts reflect the true untruncated length
+    instead of being capped at the model's max sequence length.
+    """
+    embedding_model = _load_model(model_name)
+    tokenizer, _ = load_tokenizer(model_dir=embedding_model.model._model_dir)
+    tokenizer.no_truncation()
+    return tokenizer
+
+
+def estimate_token_count(text: str) -> int:
+    """Return the token count using the configured embedding model's own tokenizer.
+
+    Chunk sizing must be measured in the same units the embedding model
+    truncates at (WordPiece for bge-small-en-v1.5, capped at 512 tokens).
+    Counting with a different tokenizer (the old cl100k_base/tiktoken
+    heuristic) silently undercounts relative to WordPiece and lets
+    oversized chunks slip past the budget, get truncated by fastembed at
+    embed time, and end up embedded from incomplete text with no error.
+    """
+    tokenizer = _load_chunking_tokenizer(get_settings().embedding_model_name)
+    return max(1, len(tokenizer.encode(text).ids))
 
 
 def _vector_to_list(vector: Iterable[float], expected_dimensions: int) -> list[float]:
