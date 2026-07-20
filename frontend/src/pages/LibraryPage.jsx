@@ -15,6 +15,11 @@ import {
   Divider,
   Pagination,
   Popover,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Autocomplete,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -61,6 +66,19 @@ const SEARCH_PARAM_DEFAULTS = {
 
 const filterSelectSx = { minWidth: 140, "& .MuiSelect-select": { py: "10px" } };
 
+const EMPTY_EDIT_FORM = {
+  title: "",
+  summary: "",
+  source_type: "",
+  source_organisation: "",
+  country_region: "",
+  language: "",
+  publication_date: "",
+  year: "",
+  policy_areas: [],
+  keywords: [],
+};
+
 export default function LibraryPage({
   documents,
   user,
@@ -100,6 +118,7 @@ export default function LibraryPage({
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
   const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null });
+  const [editDialog, setEditDialog] = useState({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
 
   function updateSearchParams(updates, { replace = false } = {}) {
     setSearchParams((current) => {
@@ -236,6 +255,59 @@ export default function LibraryPage({
       setError(updateError.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openEditDialog(document) {
+    setEditDialog({
+      open: true,
+      document,
+      form: {
+        title: document.title || "",
+        summary: document.summary || "",
+        source_type: document.source_type || "",
+        source_organisation: document.source_organisation || "",
+        country_region: document.country_region || "",
+        language: document.language || "",
+        publication_date: document.publication_date ? String(document.publication_date).slice(0, 10) : "",
+        year: document.year ?? "",
+        policy_areas: document.policy_areas || [],
+        keywords: document.keywords || [],
+      },
+      saving: false,
+    });
+  }
+
+  function closeEditDialog() {
+    setEditDialog({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
+  }
+
+  function updateEditField(field, value) {
+    setEditDialog((state) => ({ ...state, form: { ...state.form, [field]: value } }));
+  }
+
+  async function handleSaveEdit() {
+    const { document, form } = editDialog;
+    setEditDialog((state) => ({ ...state, saving: true }));
+    setError("");
+    try {
+      await updateDocument(document.id, {
+        title: form.title,
+        summary: form.summary,
+        source_type: form.source_type,
+        source_organisation: form.source_organisation,
+        country_region: form.country_region,
+        language: form.language,
+        publication_date: form.publication_date || null,
+        year: form.year === "" ? null : Number(form.year),
+        policy_areas: form.policy_areas,
+        keywords: form.keywords,
+      });
+      closeEditDialog();
+      await handleDocumentsChanged();
+    } catch (updateError) {
+      setError(updateError.message);
+      setEditDialog((state) => ({ ...state, saving: false }));
     }
   }
 
@@ -599,6 +671,11 @@ export default function LibraryPage({
                   Details
                 </Button>
                 {user?.role === "admin" && (
+                  <Button size="small" variant="outlined" disabled={busy} onClick={() => openEditDialog(document)}>
+                    Edit
+                  </Button>
+                )}
+                {user?.role === "admin" && (
                   <Button
                     size="small"
                     variant="outlined"
@@ -719,6 +796,122 @@ export default function LibraryPage({
           </Button>
         </Box>
       </Popover>
+
+      {/* Edit document metadata dialog */}
+      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit document</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, pt: 1 }}>
+            <TextField
+              label="Title"
+              fullWidth
+              size="small"
+              value={editDialog.form.title}
+              onChange={(e) => updateEditField("title", e.target.value)}
+            />
+            <TextField
+              label="Summary"
+              fullWidth
+              multiline
+              rows={3}
+              size="small"
+              value={editDialog.form.summary}
+              onChange={(e) => updateEditField("summary", e.target.value)}
+            />
+            <TextField
+              label="Source type"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.source_type}
+              onChange={(e) => updateEditField("source_type", e.target.value)}
+            />
+            <TextField
+              label="Source organisation"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.source_organisation}
+              onChange={(e) => updateEditField("source_organisation", e.target.value)}
+            />
+            <TextField
+              label="Region"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.country_region}
+              onChange={(e) => updateEditField("country_region", e.target.value)}
+            />
+            <TextField
+              label="Language"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.language}
+              onChange={(e) => updateEditField("language", e.target.value)}
+            />
+            <TextField
+              label="Year"
+              type="number"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.year}
+              onChange={(e) => updateEditField("year", e.target.value)}
+            />
+            <TextField
+              label="Publication date"
+              type="date"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              slotProps={{ inputLabel: { shrink: true } }}
+              value={editDialog.form.publication_date}
+              onChange={(e) => updateEditField("publication_date", e.target.value)}
+            />
+            <Autocomplete
+              multiple
+              freeSolo
+              fullWidth
+              size="small"
+              options={policyAreas}
+              value={editDialog.form.policy_areas}
+              onChange={(_, value) => updateEditField("policy_areas", value)}
+              renderValue={(value, getItemProps) =>
+                value.map((option, index) => {
+                  const { key, ...itemProps } = getItemProps({ index });
+                  return <Chip key={key} label={option} size="small" {...itemProps} />;
+                })
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Policy areas" placeholder="Type and press enter" />
+              )}
+              sx={{ width: "100%" }}
+            />
+            <Autocomplete
+              multiple
+              freeSolo
+              fullWidth
+              size="small"
+              options={[]}
+              value={editDialog.form.keywords}
+              onChange={(_, value) => updateEditField("keywords", value)}
+              renderValue={(value, getItemProps) =>
+                value.map((option, index) => {
+                  const { key, ...itemProps } = getItemProps({ index });
+                  return <Chip key={key} label={option} size="small" {...itemProps} />;
+                })
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Keywords" placeholder="Type and press enter" />
+              )}
+              sx={{ width: "100%" }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEditDialog} disabled={editDialog.saving}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSaveEdit} disabled={editDialog.saving}>
+            {editDialog.saving ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <DocumentDrawer
         detail={selected}

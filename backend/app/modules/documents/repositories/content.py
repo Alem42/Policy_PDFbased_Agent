@@ -180,26 +180,50 @@ class DocumentContentRepository:
         ]
 
     def update_metadata(self, identifier: str, payload: dict) -> dict:
+        """Partial metadata update, shared by the admin edit dialog and the
+        optional metadata form fields on upload. Accepts both the current
+        column-matching keys (country_region, year, policy_areas, keywords,
+        ...) and the legacy upload-form keys (country_or_region,
+        published_year, policy_area singular, tags, ...) for compatibility.
+        """
         document = document_repository.get_record(identifier)
+
+        country_region = payload.get("country_region") or payload.get("country_or_region")
+        year = payload.get("year")
+        if year is None:
+            year = payload.get("published_year")
+        policy_areas = payload.get("policy_areas")
+        if policy_areas is None and payload.get("policy_area"):
+            policy_areas = [payload["policy_area"]]
+        keywords = payload.get("keywords")
+        if keywords is None:
+            keywords = payload.get("tags")
+
         with get_connection() as connection:
             connection.execute(
                 """
                 INSERT INTO document_metadata (
-                    document_id, title, summary, source_organisation,
-                    country_region, year, policy_areas, keywords
+                    document_id, title, summary, source_type, source_organisation,
+                    country_region, language, year, publication_date,
+                    policy_areas, keywords
                 )
-                VALUES (%s, %s, %s, %s, %s, %s,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
                     COALESCE(%s::text[], '{}'), COALESCE(%s::text[], '{}'))
                 ON CONFLICT (document_id) DO UPDATE
                 SET title = COALESCE(EXCLUDED.title, document_metadata.title),
                     summary = COALESCE(EXCLUDED.summary, document_metadata.summary),
+                    source_type = COALESCE(EXCLUDED.source_type, document_metadata.source_type),
                     source_organisation = COALESCE(
                         EXCLUDED.source_organisation, document_metadata.source_organisation
                     ),
                     country_region = COALESCE(
                         EXCLUDED.country_region, document_metadata.country_region
                     ),
+                    language = COALESCE(EXCLUDED.language, document_metadata.language),
                     year = COALESCE(EXCLUDED.year, document_metadata.year),
+                    publication_date = COALESCE(
+                        EXCLUDED.publication_date, document_metadata.publication_date
+                    ),
                     policy_areas = CASE WHEN EXCLUDED.policy_areas = '{}'
                         THEN document_metadata.policy_areas ELSE EXCLUDED.policy_areas END,
                     keywords = CASE WHEN EXCLUDED.keywords = '{}'
@@ -210,11 +234,14 @@ class DocumentContentRepository:
                     document["id"],
                     payload.get("title"),
                     payload.get("summary"),
+                    payload.get("source_type"),
                     payload.get("source_organisation"),
-                    payload.get("country_or_region"),
-                    payload.get("published_year"),
-                    [payload["policy_area"]] if payload.get("policy_area") else None,
-                    payload.get("tags"),
+                    country_region,
+                    payload.get("language"),
+                    year,
+                    payload.get("publication_date"),
+                    policy_areas,
+                    keywords,
                 ),
             )
             connection.commit()
