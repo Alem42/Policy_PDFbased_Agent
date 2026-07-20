@@ -14,6 +14,7 @@ import {
   Menu,
   Divider,
   Pagination,
+  Popover,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -66,6 +67,7 @@ export default function LibraryPage({
   onRefresh,
   onRescan,
   onDocumentsChanged,
+  onNavigate,
   contextSourceIds = [],
   onAddSource,
   onRemoveSource,
@@ -97,6 +99,7 @@ export default function LibraryPage({
   const [error, setError] = useState("");
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
+  const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null });
 
   function updateSearchParams(updates, { replace = false } = {}) {
     setSearchParams((current) => {
@@ -287,6 +290,20 @@ export default function LibraryPage({
     setSelected(null);
     setChunks(null);
     setOpenChunkId(null);
+  }
+
+  function handleAddToChat(event, document) {
+    onAddSource(document.id);
+    setAddedPopover({ anchorEl: event.currentTarget, document });
+  }
+
+  function closeAddedPopover() {
+    setAddedPopover({ anchorEl: null, document: null });
+  }
+
+  function handleGoToChat() {
+    closeAddedPopover();
+    onNavigate("chat");
   }
 
   return (
@@ -573,7 +590,7 @@ export default function LibraryPage({
                     size="small"
                     variant="contained"
                     disabled={busy}
-                    onClick={() => onAddSource(document.id)}
+                    onClick={(event) => handleAddToChat(event, document)}
                   >
                     Add to chat
                   </Button>
@@ -683,6 +700,25 @@ export default function LibraryPage({
           </MenuItem>
         )}
       </Menu>
+
+      {/* "Added to chat" confirmation bubble */}
+      <Popover
+        open={Boolean(addedPopover.anchorEl)}
+        anchorEl={addedPopover.anchorEl}
+        onClose={closeAddedPopover}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        transformOrigin={{ vertical: "top", horizontal: "center" }}
+        slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
+      >
+        <Box sx={{ p: 2, maxWidth: 240 }}>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            Added &ldquo;{addedPopover.document?.title || addedPopover.document?.name}&rdquo; to chat context.
+          </Typography>
+          <Button size="small" variant="contained" fullWidth onClick={handleGoToChat}>
+            Go to chat
+          </Button>
+        </Box>
+      </Popover>
 
       <DocumentDrawer
         detail={selected}
