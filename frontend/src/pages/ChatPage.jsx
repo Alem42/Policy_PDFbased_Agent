@@ -457,23 +457,22 @@ export default function ChatPage({
       <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
 
         {/* Left panel: Sources (top) + History (bottom), height split is user-resizable */}
-        <Card
+        <Box
           ref={sidebarRef}
           sx={{
-            p: 0,
             width: { xs: "100%", md: 280 },
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
             height: "100%",
-            overflow: "hidden",
           }}
         >
           {/* ── Sources section ── */}
-          <Box
+          <Card
             sx={{
               height: `${sourcesHeightPct}%`,
               flexShrink: 0,
+              p: 0,
               px: 3,
               pt: 3,
               pb: 1.5,
@@ -542,29 +541,29 @@ export default function ChatPage({
                 + Add more sources
               </Button>
             )}
-          </Box>
+          </Card>
 
-          {/* ── Draggable divider — resizes Sources vs. Recent Chats ── */}
+          {/* ── Draggable handle — resizes Sources vs. Recent Chats ── */}
           <Box
             onMouseDown={handleResizerMouseDown}
             sx={{
               flexShrink: 0,
-              height: 9,
+              height: 16,
               cursor: "row-resize",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              borderTop: "1px solid #e2e5df",
-              borderBottom: "1px solid #e2e5df",
-              bgcolor: "#f9faf7",
-              "&:hover": { bgcolor: "#e8f0ed" },
+              "&:hover .resize-handle-grip": { bgcolor: "#9db3a7" },
             }}
           >
-            <Box sx={{ width: 32, height: 3, borderRadius: 999, bgcolor: "#c8d0cb" }} />
+            <Box
+              className="resize-handle-grip"
+              sx={{ width: 40, height: 4, borderRadius: 999, bgcolor: "#c8d0cb", transition: "background-color 0.15s" }}
+            />
           </Box>
 
           {/* ── History section ── */}
-          <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <Card sx={{ flex: 1, minHeight: 0, p: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Box
             sx={{
               px: 2,
@@ -680,8 +679,8 @@ export default function ChatPage({
               );
             })}
           </Box>
-          </Box>
-        </Card>
+          </Card>
+        </Box>
 
         {/* Chat Panel */}
         <Card sx={{ p: 3, flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
