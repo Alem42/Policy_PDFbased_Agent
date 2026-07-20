@@ -52,7 +52,7 @@ ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
 - Do not use pretrained model knowledge, general common sense, industry norms,
   or information from documents the user did not select.
 - Do not assume facts exist just because they are usually true in the field.
-- Ground every substantive claim in the excerpts. {citation_instruction}
+- Ground every substantive claim in the excerpts. Mention source file and page when useful.
 - If the excerpts only partially address the question, say what is supported and
   what remains unclear. If something is not stated in the excerpts, say so explicitly.
 """
@@ -68,12 +68,14 @@ CHAT_BOUNDARY_PROMPT = """Knowledge boundary (Open Discussion):
 - Do not invent citations for external knowledge. When external knowledge may be
   outdated or uncertain, say so briefly.
 - Prefer a conversational, discussion-oriented tone while remaining accurate.
-- For claims drawn from the excerpts: {citation_instruction}
 """
 
+# {context} filled with numbered document excerpts; {citation_instruction} filled with
+# the [N]-source list when citations are available, otherwise empty string.
 CONTEXT_BLOCK = """Document excerpts:
 {context}
-"""
+
+{citation_instruction}"""
 
 INSUFFICIENT_EVIDENCE_RESEARCHER = """## Insufficient Evidence
 
@@ -107,7 +109,6 @@ def get_system_prompt(
     response_mode: ResponseMode = "researcher",
     answer_mode: AnswerMode = "analysis",
 ) -> str:
-    """Return a prompt template with {context} and {citation_instruction} placeholders."""
     style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
     parts = [BASE_SYSTEM_PROMPT, style]

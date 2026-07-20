@@ -3,6 +3,7 @@ import App from "./App";
 import AdminDashboard from "./pages/AdminDashboard";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
+import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import LibraryPage from "./pages/LibraryPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -31,7 +32,9 @@ function ChatRoute() {
     documents,
     user,
     contextSourceIds,
+    handleAddSource,
     handleRemoveSource,
+    handleSetSources,
     navigateToView,
   } = useOutletContext();
   return (
@@ -40,7 +43,9 @@ function ChatRoute() {
       user={user}
       onNavigate={navigateToView}
       contextSourceIds={contextSourceIds}
+      onAddSource={handleAddSource}
       onRemoveSource={handleRemoveSource}
+      onSetSources={handleSetSources}
     />
   );
 }
@@ -92,6 +97,11 @@ function SettingsRoute() {
   return <SettingsPage user={user} onNavigate={navigateToView} />;
 }
 
+function HistoryRoute() {
+  const { navigateToView } = useOutletContext();
+  return <HistoryPage onNavigate={navigateToView} />;
+}
+
 export const router = createBrowserRouter([
   {
     path: ROUTES.root,
@@ -100,6 +110,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to={ROUTES.chat} replace /> },
       //{ path: ROUTES.home.slice(1), element: <HomeRoute /> },
       { path: ROUTES.chat.slice(1), element: <ChatRoute /> },
+      { path: ROUTES.history.slice(1), element: <HistoryRoute /> },
       { path: ROUTES.library.slice(1), element: <LibraryRoute /> },
       { path: ROUTES.admin.slice(1), element: <AdminRoute /> },
       { path: ROUTES.settings.slice(1), element: <SettingsRoute /> },

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Divider } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import HomeIcon from "@mui/icons-material/HomeOutlined";
 import ChatIcon from "@mui/icons-material/ChatOutlined";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooksOutlined";
 import DashboardIcon from "@mui/icons-material/DashboardOutlined";

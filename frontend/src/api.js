@@ -213,7 +213,6 @@ export function getDocumentPages(documentId) {
 
 // Maximum number of prior conversation turns to send to the backend.
 // Each turn = one user message + one assistant reply.
-// Increase this value if users need longer memory; decrease to save tokens.
 const MAX_HISTORY_TURNS = 5;
 
 export function askQuestion(
@@ -222,23 +221,53 @@ export function askQuestion(
   responseMode = "researcher",
   answerMode = "analysis",
   history = [],
+  sessionId = null,
 ) {
-  // Trim to the last MAX_HISTORY_TURNS turns (user + assistant pairs = * 2 messages).
-  const trimmedHistory = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-  }));
+  const body = {
+    question,
+    document_ids: documentIds,
+    response_mode: responseMode,
+    answer_mode: answerMode,
+    session_id: sessionId,
+  };
+
+  // When no session_id, still send history inline for backwards compat.
+  // When session_id is set the server reads history from DB — inline is ignored.
+  if (!sessionId) {
+    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
 
   return request("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      question,
-      document_ids: documentIds,
-      response_mode: responseMode,
-      answer_mode: answerMode,
-      history: trimmedHistory,
-    }),
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Chat history API ───────────────────────────────────────────────────────
+
+export function getChatSessions() {
+  return request("/chat/sessions");
+}
+
+export function getChatSession(sessionId) {
+  return request(`/chat/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function deleteChatSession(sessionId) {
+  return request(`/chat/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function renameChatSession(sessionId, title) {
+  return request(`/chat/sessions/${encodeURIComponent(sessionId)}/title`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
   });
 }
 

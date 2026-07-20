@@ -6,12 +6,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
 from app.core.llm_providers import get_provider_config
-from app.modules.chat.rag.prompts import (
-    CITATION_INSTRUCTION,
-    AnswerMode,
-    ResponseMode,
-    get_system_prompt,
-)
+from app.modules.chat.rag.prompts import AnswerMode, CITATION_INSTRUCTION, ResponseMode, get_system_prompt
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model, get_llm_provider
 
 
@@ -60,9 +55,9 @@ def generate_answer(
     context: str,
     model: str | None = None,
     response_mode: ResponseMode = "researcher",
-    answer_mode: AnswerMode = "analysis",
     history: list[dict] | None = None,
     citations: list[dict] | None = None,
+    answer_mode: AnswerMode = "analysis",
 ) -> str:
     api_key, _ = get_llm_api_key()
     if not api_key:
@@ -76,15 +71,14 @@ def generate_answer(
 
     citation_instruction = _build_citation_instruction(citations or [])
     system_prompt = get_system_prompt(response_mode, answer_mode).format(
-        context=context
-        or "(No relevant excerpts were retrieved from the selected documents.)",
+        context=context or "(No relevant excerpts were retrieved from the selected documents.)",
         citation_instruction=citation_instruction,
     )
 
     # Build the message list: system → history turns → current question.
     # History is a list of {"role": "user"|"assistant", "content": str} dicts.
     messages: list = [SystemMessage(content=system_prompt)]
-    for msg in history or []:
+    for msg in (history or []):
         if msg.get("role") == "user":
             messages.append(HumanMessage(content=msg["content"]))
         elif msg.get("role") == "assistant":

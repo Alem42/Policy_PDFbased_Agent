@@ -74,12 +74,15 @@ class EmbeddingRepository:
             rows = connection.execute(
                 """
                 SELECT c.id AS chunk_id, c.document_id,
-                    d.original_filename AS file, c.page_start, c.page_end,
+                    d.original_filename AS file,
+                    COALESCE(dm.title, d.original_filename) AS doc_title,
+                    c.page_start, c.page_end,
                     c.text, c.token_count, c.language,
                     e.embedding <=> %s::vector AS distance
                 FROM chunk_embeddings e
                 JOIN document_chunks c ON c.id = e.chunk_id
                 JOIN documents d ON d.id = c.document_id
+                LEFT JOIN document_metadata dm ON dm.document_id = d.id
                 WHERE c.document_id = ANY(%s::uuid[])
                 ORDER BY e.embedding <=> %s::vector LIMIT %s
                 """,

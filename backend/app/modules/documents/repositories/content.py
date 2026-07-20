@@ -173,8 +173,9 @@ class DocumentContentRepository:
                 """,
                 (document["id"],),
             ).fetchall()
+        display_name = document.get("title") or document["original_filename"]
         return [
-            {"file": document["original_filename"], "page": row["page_number"], "text": row["text"]}
+            {"file": document["original_filename"], "title": display_name, "page": row["page_number"], "text": row["text"]}
             for row in rows
         ]
 
