@@ -405,7 +405,10 @@ export default function LibraryPage({
   }
 
   function closeAddedPopover() {
-    setAddedPopover({ anchorEl: null, document: null });
+    // Only clear anchorEl (which drives `open`) -- keep success/error/document
+    // as-is so the content doesn't flip to the "failed" state while the
+    // Popover is still fading out.
+    setAddedPopover((state) => ({ ...state, anchorEl: null }));
   }
 
   function handleGoToChat() {
@@ -844,6 +847,7 @@ export default function LibraryPage({
             variant="contained"
             fullWidth
             onClick={handleGoToChat}
+            sx={{ py: 0.4, fontSize: 12, minHeight: 0 }}
           >
             Go to chat
           </Button>
