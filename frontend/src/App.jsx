@@ -98,13 +98,17 @@ export default function App() {
   }
 
   function handleAddSource(documentId) {
-    setContextSourceIds((prev) => 
+    setContextSourceIds((prev) =>
       prev.includes(documentId) ? prev : [...prev, documentId]
     );
   }
 
   function handleRemoveSource(documentId) {
     setContextSourceIds((prev) => prev.filter((id) => id !== documentId));
+  }
+
+  function handleSetSources(documentIds) {
+    setContextSourceIds(documentIds);
   }
 
   function handleLogout() {
@@ -141,6 +145,7 @@ export default function App() {
           handleRescanDocuments,
           handleAddSource,
           handleRemoveSource,
+          handleSetSources,
           handleAuthenticated,
           navigateToView,
         }}

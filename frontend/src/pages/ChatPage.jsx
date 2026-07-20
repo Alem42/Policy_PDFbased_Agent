@@ -1,32 +1,48 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  Box,
-  Card,
-  Typography,
-  Button,
-  Checkbox,
-  FormControlLabel,
-  TextField,
   Alert,
-  IconButton,
+  Box,
+  Button,
+  Card,
+  Checkbox,
   CircularProgress,
-  Drawer,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  Drawer,
+  FormControlLabel,
+  IconButton,
+  ListItemButton,
+  ListItemText,
   Menu,
   MenuItem,
-  ListItemText,
+  Snackbar,
+  TextField,
+  Tooltip,
+  Typography,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteOutlineIcon from "@mui/icons-material/Delete";
+import EditOutlinedIcon from "@mui/icons-material/Edit";
 import SendIcon from "@mui/icons-material/Send";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { askQuestion, getChatSession, openDocumentFile } from "../api";
+import {
+  askQuestion,
+  deleteChatSession,
+  getChatSession,
+  getChatSessions,
+  openDocumentFile,
+  renameChatSession,
+} from "../api";
 import CitationList from "../components/CitationList";
 
-// Splits a text node on citation markers and wraps each in a clickable <sup>.
-// Handles: [1]  [1-3]  [1, 2]  [1,2,3]
+// Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
 
 function renderWithCitations(children, citations, onOpen) {
@@ -103,22 +119,32 @@ function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
 }
 
+function formatSessionDate(dateStr) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return date.toLocaleDateString(undefined, { weekday: "short" });
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function ChatPage({
   documents,
   user,
   onNavigate,
   contextSourceIds = [],
+  onAddSource,
   onRemoveSource,
+  onSetSources,
 }) {
-  // Read session ID passed via router navigation state (from HistoryPage).
   const location = useLocation();
   const resumeSessionId = location.state?.sessionId ?? null;
 
   if (!user) {
     return (
-      <Box
-        sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 8 }}
-      >
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 8 }}>
         <Card sx={{ p: 4, maxWidth: 420, width: "100%", textAlign: "center" }}>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
             Authentication required
@@ -127,8 +153,8 @@ export default function ChatPage({
             Sign in to use Chat
           </Typography>
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
-            The Q&amp;A chat is only available to registered users. Please log in or create
-            an account to continue.
+            The Q&amp;A chat is only available to registered users. Please log in or create an
+            account to continue.
           </Typography>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <Button variant="contained" onClick={() => onNavigate("auth")}>
@@ -152,10 +178,40 @@ export default function ChatPage({
   const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Persisted session ID — null means the next message will create a new session.
   const [sessionId, setSessionId] = useState(resumeSessionId);
 
-  // When navigated here from HistoryPage with a session ID, load the past messages.
+  // History state
+  const [historySessions, setHistorySessions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: "" });
+  const [renameDialog, setRenameDialog] = useState({ open: false, sessionId: null, title: "" });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, sessionId: null });
+
+  const [citationDrawer, setCitationDrawer] = useState({
+    open: false,
+    citations: [],
+    focusIndex: 0,
+  });
+
+  // Load session list on mount
+  async function loadSessions() {
+    setHistoryLoading(true);
+    try {
+      const sessions = await getChatSessions();
+      setHistorySessions(Array.isArray(sessions) ? sessions : []);
+    } catch {
+      // Non-fatal: history panel just stays empty
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load a prior session when navigated here with a sessionId in router state
   useEffect(() => {
     if (!resumeSessionId) return;
     let cancelled = false;
@@ -163,45 +219,16 @@ export default function ChatPage({
       try {
         const detail = await getChatSession(resumeSessionId);
         if (cancelled) return;
-        setMessages(
-          detail.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-            citations: Array.isArray(m.citations) ? m.citations : [],
-            evidenceSufficient: m.evidence_sufficient,
-            responseMode: m.response_mode,
-            answerMode: m.answer_mode,
-          })),
-        );
-        if (detail.response_mode) setResponseMode(detail.response_mode);
+        restoreSession(detail);
       } catch {
-        // Non-fatal — user can still continue chatting
+        // Non-fatal
       }
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeSessionId]);
 
-  // { open: bool, citations: Citation[], focusIndex: number }
-  const [citationDrawer, setCitationDrawer] = useState({
-    open: false,
-    citations: [],
-    focusIndex: 0,
-  });
-
-  function drawerCitations(citations, focusIndex) {
-    if (!citations || citations.length === 0) return [];
-    if (citations.length > 12) {
-      const start = Math.max(0, focusIndex - 1);
-      const end = Math.min(citations.length, focusIndex + 4);
-      return citations.slice(start, end).map((c, i) => ({
-        ...c,
-        _displayIndex: start + i + 1,
-      }));
-    }
-    return citations.map((c, i) => ({ ...c, _displayIndex: i + 1 }));
-  }
-
+  // Sync selected docs when contextSourceIds changes externally
   useEffect(() => {
     setSelected((current) => {
       const stillSelected = current.filter((id) => contextSourceIds.includes(id));
@@ -209,6 +236,91 @@ export default function ChatPage({
       return [...stillSelected, ...newSources];
     });
   }, [contextSourceIds]);
+
+  function restoreSession(detail) {
+    setMessages(
+      detail.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        citations: Array.isArray(m.citations) ? m.citations : [],
+        evidenceSufficient: m.evidence_sufficient,
+        responseMode: m.response_mode,
+      })),
+    );
+    setSessionId(String(detail.id));
+    if (detail.response_mode) setResponseMode(detail.response_mode);
+
+    // Cross-reference stored document_ids against currently available documents
+    const sessionDocIds = detail.document_ids || [];
+    const found = [];
+    const missing = [];
+    for (const docId of sessionDocIds) {
+      if (documents.some((d) => d.id === docId)) {
+        found.push(docId);
+      } else {
+        missing.push(docId);
+      }
+    }
+    if (onSetSources) onSetSources(found);
+    if (missing.length > 0) {
+      const noun = missing.length === 1 ? "document" : "documents";
+      setSnackbar({
+        open: true,
+        message: `${missing.length} ${noun} from this session could not be found and may have been deleted.`,
+      });
+    }
+  }
+
+  async function handleLoadSession(id) {
+    try {
+      const detail = await getChatSession(id);
+      restoreSession(detail);
+    } catch {
+      setError("Failed to load session.");
+    }
+  }
+
+  function handleNewChat() {
+    setMessages([]);
+    setSessionId(null);
+    setError("");
+  }
+
+  async function handleDeleteSession() {
+    const id = deleteDialog.sessionId;
+    setDeleteDialog({ open: false, sessionId: null });
+    try {
+      await deleteChatSession(id);
+      if (sessionId === id) handleNewChat();
+      setHistorySessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
+    } catch {
+      setSnackbar({ open: true, message: "Failed to delete session." });
+    }
+  }
+
+  async function handleRenameSession() {
+    const { sessionId: id, title } = renameDialog;
+    if (!title.trim()) return;
+    setRenameDialog({ open: false, sessionId: null, title: "" });
+    try {
+      await renameChatSession(id, title.trim());
+      setHistorySessions((prev) =>
+        prev.map((s) => (String(s.id) === String(id) ? { ...s, title: title.trim() } : s)),
+      );
+    } catch {
+      setSnackbar({ open: true, message: "Failed to rename session." });
+    }
+  }
+
+  function drawerCitations(citations, focusIndex) {
+    if (!citations || citations.length === 0) return [];
+    if (citations.length > 12) {
+      const start = Math.max(0, focusIndex - 1);
+      const end = Math.min(citations.length, focusIndex + 4);
+      return citations.slice(start, end).map((c, i) => ({ ...c, _displayIndex: start + i + 1 }));
+    }
+    return citations.map((c, i) => ({ ...c, _displayIndex: i + 1 }));
+  }
 
   const sourceDocs = documents.filter((doc) => contextSourceIds.includes(doc.id));
 
@@ -235,17 +347,14 @@ export default function ChatPage({
     setError("");
 
     try {
-      // session_id is sent so the server reads history from DB.
-      // On the first message sessionId is null → server creates a new session.
       const result = await askQuestion(
         cleanQuestion, selected, responseMode, answerMode, messages, sessionId,
       );
-
-      // Lock in the session for all subsequent turns in this conversation.
       if (!sessionId && result.session_id) {
         setSessionId(result.session_id);
+        // Refresh history list so the new session appears
+        loadSessions();
       }
-
       setMessages((current) => [
         ...current,
         {
@@ -282,84 +391,209 @@ export default function ChatPage({
 
   return (
     <Box component="section">
-      <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" } }}>
-        {/* Source Panel */}
-        <Card sx={{ p: 3, width: { xs: "100%", md: 280 }, flexShrink: 0 }}>
-          <Typography variant="subtitle2">Context</Typography>
-          <Typography variant="h2" sx={{ fontSize: 24 }}>Sources</Typography>
-          <Box sx={{ mt: 2 }}>
+      <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
+
+        {/* Left panel: Sources (top) + History (bottom) */}
+        <Card
+          sx={{
+            p: 0,
+            width: { xs: "100%", md: 280 },
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: { md: 520 },
+          }}
+        >
+          {/* ── Sources section ── */}
+          <Box sx={{ px: 3, pt: 3, pb: 1.5, flexShrink: 0 }}>
+            <Typography variant="subtitle2">Context</Typography>
+            <Typography variant="h2" sx={{ fontSize: 22, mb: 1.5 }}>Sources</Typography>
             {sourceDocs.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: "center" }}>
-                <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
-                  No source files in the context right now.
+              <Box sx={{ py: 2, textAlign: "center" }}>
+                <Typography variant="body2" sx={{ color: "text.secondary", mb: 1.5 }}>
+                  No source files added yet.
                 </Typography>
-                <Button variant="outlined" onClick={() => onNavigate("library")}>
-                  Find relevant files
+                <Button variant="outlined" size="small" onClick={() => onNavigate("library")}>
+                  Find files
                 </Button>
               </Box>
             ) : (
-              sourceDocs.map((document) => (
+              <Box sx={{ maxHeight: 200, overflowY: "auto" }}>
+                {sourceDocs.map((document) => (
+                  <Box
+                    key={document.id || document.name}
+                    sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}
+                  >
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={selected.includes(document.id)}
+                          onChange={() => toggleDocument(document.id)}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ wordBreak: "break-word", fontSize: 13 }}>
+                          {document.title || document.name}
+                        </Typography>
+                      }
+                      sx={{ m: 0, flex: 1 }}
+                    />
+                    <IconButton
+                      size="small"
+                      title="Remove from context"
+                      onClick={() => onRemoveSource(document.id)}
+                      sx={{ color: "#bbb" }}
+                    >
+                      <CloseIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            )}
+            {sourceDocs.length > 0 && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => onNavigate("library")}
+                sx={{ mt: 0.5, fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
+              >
+                + Add more sources
+              </Button>
+            )}
+          </Box>
+
+          <Divider />
+
+          {/* ── History section ── */}
+          <Box
+            sx={{
+              px: 2,
+              pt: 1.5,
+              pb: 1,
+              flexShrink: 0,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontSize: 12, fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Recent Chats
+            </Typography>
+            <Tooltip title="New chat">
+              <IconButton size="small" onClick={handleNewChat} sx={{ color: "#214f42" }}>
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Box sx={{ flex: 1, overflowY: "auto", minHeight: 0, pb: 1 }}>
+            {historyLoading && (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                <CircularProgress size={18} />
+              </Box>
+            )}
+            {!historyLoading && historySessions.length === 0 && (
+              <Typography variant="body2" sx={{ color: "text.secondary", textAlign: "center", py: 2, px: 2, fontSize: 12 }}>
+                No previous chats
+              </Typography>
+            )}
+            {historySessions.map((session) => {
+              const isActive = String(session.id) === String(sessionId);
+              return (
                 <Box
-                  key={document.id || document.name}
+                  key={session.id}
                   sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    mb: 1,
+                    position: "relative",
+                    mx: 0.5,
+                    mb: 0.25,
+                    borderRadius: 1.5,
+                    bgcolor: isActive ? "#e8f0ed" : "transparent",
+                    "&:hover": { bgcolor: isActive ? "#e0ece7" : "#f5f5f0" },
+                    "&:hover .session-actions": { opacity: 1 },
                   }}
                 >
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={selected.includes(document.id)}
-                        onChange={() => toggleDocument(document.id)}
-                        size="small"
-                      />
-                    }
-                    label={
-                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-                        {document.title || document.name}
-                      </Typography>
-                    }
-                    sx={{ m: 0, flex: 1 }}
-                  />
-                  <IconButton
-                    size="small"
-                    title="Remove from context"
-                    onClick={() => onRemoveSource(document.id)}
-                    sx={{ color: "#999" }}
+                  <ListItemButton
+                    dense
+                    onClick={() => handleLoadSession(String(session.id))}
+                    sx={{ borderRadius: 1.5, pr: 7, py: 0.75 }}
                   >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
+                    <ListItemText
+                      primary={
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: 13,
+                            fontWeight: isActive ? 700 : 400,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {session.title}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography variant="caption" sx={{ color: "text.secondary", fontSize: 11 }}>
+                          {formatSessionDate(session.updated_at)}
+                        </Typography>
+                      }
+                    />
+                  </ListItemButton>
+                  {/* Action icons — visible on hover */}
+                  <Box
+                    className="session-actions"
+                    sx={{
+                      position: "absolute",
+                      right: 4,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      display: "flex",
+                      gap: 0.25,
+                      opacity: isActive ? 1 : 0,
+                      transition: "opacity 0.15s",
+                    }}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameDialog({ open: true, sessionId: String(session.id), title: session.title });
+                      }}
+                      sx={{ color: "#888", p: 0.5 }}
+                    >
+                      <EditOutlinedIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteDialog({ open: true, sessionId: String(session.id) });
+                      }}
+                      sx={{ color: "#888", p: 0.5 }}
+                    >
+                      <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Box>
                 </Box>
-              ))
-            )}
+              );
+            })}
           </Box>
         </Card>
 
         {/* Chat Panel */}
         <Card sx={{ p: 3, flex: 1, minWidth: 0 }}>
           <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mb: "20px",
-            }}
+            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: "20px" }}
           >
             <Box>
               <Typography variant="subtitle2">Conversation</Typography>
               <Typography variant="h2" sx={{ fontSize: 24 }}>Chat</Typography>
             </Box>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                setMessages([]);
-                setSessionId(null);
-                setError("");
-              }}
-            >
-              Clear Chat
+            <Button variant="outlined" onClick={handleNewChat}>
+              New Chat
             </Button>
           </Box>
 
@@ -379,9 +613,7 @@ export default function ChatPage({
                   borderRadius: 2,
                   bgcolor: message.role === "user" ? "#f0f5f2" : "#fff",
                   border: "1px solid #e2e5df",
-                  ...(message.evidenceSufficient === false && {
-                    borderColor: "#ffcdd2",
-                  }),
+                  ...(message.evidenceSufficient === false && { borderColor: "#ffcdd2" }),
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
@@ -389,11 +621,7 @@ export default function ChatPage({
                     {message.role === "user" ? "You" : "Assistant"}
                   </Typography>
                   {message.role === "assistant" && (message.responseMode || message.answerMode) && (
-                    <Typography
-                      component="small"
-                      variant="caption"
-                      sx={{ color: "text.secondary" }}
-                    >
+                    <Typography component="small" variant="caption" sx={{ color: "text.secondary" }}>
                       {[
                         message.responseMode === "student" ? "Student" : "Policy Researcher",
                         message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
@@ -415,8 +643,7 @@ export default function ChatPage({
                         py: 0,
                       }}
                     >
-                      {message.citations.length} source
-                      {message.citations.length !== 1 ? "s" : ""}
+                      {message.citations.length} source{message.citations.length !== 1 ? "s" : ""}
                     </Button>
                   )}
                 </Box>
@@ -433,27 +660,14 @@ export default function ChatPage({
                       "& ul, & ol": { pl: 2.5, my: 0.75 },
                       "& li": { mb: 0.25 },
                       "& code": {
-                        px: 0.75,
-                        py: 0.25,
-                        borderRadius: 1,
-                        bgcolor: "#f0f3ed",
-                        fontSize: "0.9em",
-                        fontFamily: "monospace",
+                        px: 0.75, py: 0.25, borderRadius: 1,
+                        bgcolor: "#f0f3ed", fontSize: "0.9em", fontFamily: "monospace",
                       },
                       "& pre": {
-                        p: 2,
-                        borderRadius: 2,
-                        bgcolor: "#f5f5f0",
-                        overflow: "auto",
-                        fontSize: "0.85em",
+                        p: 2, borderRadius: 2, bgcolor: "#f5f5f0", overflow: "auto", fontSize: "0.85em",
                         "& code": { p: 0, bgcolor: "transparent" },
                       },
-                      "& blockquote": {
-                        mx: 0,
-                        px: 2,
-                        borderLeft: "3px solid #214f42",
-                        color: "#63706a",
-                      },
+                      "& blockquote": { mx: 0, px: 2, borderLeft: "3px solid #214f42", color: "#63706a" },
                       "& table": { borderCollapse: "collapse", width: "100%", my: 1 },
                       "& th, & td": { border: "1px solid #d9d8d0", px: 1.5, py: 1, textAlign: "left" },
                       "& th": { bgcolor: "#f5f5f0", fontWeight: 800 },
@@ -462,10 +676,7 @@ export default function ChatPage({
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      components={makeMarkdownComponents(
-                        message.citations || [],
-                        openCitationDrawer,
-                      )}
+                      components={makeMarkdownComponents(message.citations || [], openCitationDrawer)}
                     >
                       {message.content}
                     </ReactMarkdown>
@@ -476,10 +687,7 @@ export default function ChatPage({
                   </Typography>
                 )}
                 {message.role === "assistant" && message.evidenceSufficient !== false && (
-                  <CitationList
-                    citations={message.citations}
-                    onOpenSource={handleOpenCitation}
-                  />
+                  <CitationList citations={message.citations} onOpenSource={handleOpenCitation} />
                 )}
                 {message.truncated && (
                   <Typography variant="caption" sx={{ color: "warning.main" }}>
@@ -488,8 +696,8 @@ export default function ChatPage({
                 )}
                 {message.evidenceSufficient === false && message.answerMode === "chat" && (
                   <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                    Selected documents provided limited evidence; this answer may include
-                    general knowledge beyond the excerpts.
+                    Selected documents provided limited evidence; this answer may include general
+                    knowledge beyond the excerpts.
                   </Typography>
                 )}
                 {message.evidenceSufficient === false && message.answerMode !== "chat" && (
@@ -606,28 +814,22 @@ export default function ChatPage({
         </Card>
       </Box>
 
-      {/* Citation Drawer — slides in from the right when [N] is clicked */}
+      {/* Citation Drawer */}
       <Drawer
         anchor="right"
         open={citationDrawer.open}
         onClose={() => setCitationDrawer((s) => ({ ...s, open: false }))}
-        PaperProps={{
-          sx: { width: { xs: "100%", sm: 380 }, p: 3, boxSizing: "border-box" },
-        }}
+        PaperProps={{ sx: { width: { xs: "100%", sm: 380 }, p: 3, boxSizing: "border-box" } }}
       >
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
           <Typography variant="h6" sx={{ fontFamily: "Georgia, serif" }}>
             Sources
           </Typography>
-          <IconButton
-            onClick={() => setCitationDrawer((s) => ({ ...s, open: false }))}
-            size="small"
-          >
+          <IconButton onClick={() => setCitationDrawer((s) => ({ ...s, open: false }))} size="small">
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
         <Divider sx={{ mb: 2 }} />
-
         {citationDrawer.citations.length === 0 ? (
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
             No citation details available for this answer.
@@ -659,17 +861,9 @@ export default function ChatPage({
               {c.quote && (
                 <Typography
                   variant="body2"
-                  sx={{
-                    color: "#63706a",
-                    fontStyle: "italic",
-                    fontSize: "0.82em",
-                    lineHeight: 1.55,
-                    mb: 1,
-                  }}
+                  sx={{ color: "#63706a", fontStyle: "italic", fontSize: "0.82em", lineHeight: 1.55, mb: 1 }}
                 >
-                  &ldquo;
-                  {c.quote.length > 240 ? c.quote.slice(0, 240) + "…" : c.quote}
-                  &rdquo;
+                  &ldquo;{c.quote.length > 240 ? c.quote.slice(0, 240) + "…" : c.quote}&rdquo;
                 </Typography>
               )}
               <Button
@@ -687,6 +881,60 @@ export default function ChatPage({
           ))
         )}
       </Drawer>
+
+      {/* Missing documents warning */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={7000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        message={snackbar.message}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
+
+      {/* Rename dialog */}
+      <Dialog
+        open={renameDialog.open}
+        onClose={() => setRenameDialog({ open: false, sessionId: null, title: "" })}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Rename Chat</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            value={renameDialog.title}
+            onChange={(e) => setRenameDialog((s) => ({ ...s, title: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") handleRenameSession(); }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialog({ open: false, sessionId: null, title: "" })}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleRenameSession} disabled={!renameDialog.title.trim()}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, sessionId: null })}
+        maxWidth="xs"
+      >
+        <DialogTitle>Delete chat?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">This will permanently delete the session and all its messages.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog({ open: false, sessionId: null })}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDeleteSession}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -32,7 +32,9 @@ function ChatRoute() {
     documents,
     user,
     contextSourceIds,
+    handleAddSource,
     handleRemoveSource,
+    handleSetSources,
     navigateToView,
   } = useOutletContext();
   return (
@@ -41,7 +43,9 @@ function ChatRoute() {
       user={user}
       onNavigate={navigateToView}
       contextSourceIds={contextSourceIds}
+      onAddSource={handleAddSource}
       onRemoveSource={handleRemoveSource}
+      onSetSources={handleSetSources}
     />
   );
 }
