@@ -200,6 +200,7 @@ export default function ChatPage({
   // Document detail drawer (Sources module) — same drawer used in the Library page
   const [detailDoc, setDetailDoc] = useState(null);
   const [detailChunks, setDetailChunks] = useState(null);
+  const [detailChunksLoading, setDetailChunksLoading] = useState(false);
   const [openChunkId, setOpenChunkId] = useState(null);
 
   // Draggable divider between Sources and Recent Chats sections
@@ -379,22 +380,36 @@ export default function ChatPage({
 
   async function handleShowDocumentDetail(document) {
     setError("");
+    let detail;
     try {
-      const detail = await getDocumentDetail(document.id);
-      setDetailDoc(detail);
-      setDetailChunks(null);
-      setOpenChunkId(null);
-      if (document.status === "ready") {
-        setDetailChunks(await getDocumentChunks(document.id));
-      }
+      detail = await getDocumentDetail(document.id);
     } catch (detailError) {
       setError(detailError.message);
+      return;
+    }
+
+    // Open the drawer with metadata right away; chunks (which can be a much
+    // bigger, slower fetch) load in the background afterwards.
+    setDetailDoc(detail);
+    setDetailChunks(null);
+    setOpenChunkId(null);
+
+    if (document.status === "ready") {
+      setDetailChunksLoading(true);
+      try {
+        setDetailChunks(await getDocumentChunks(document.id));
+      } catch (chunkError) {
+        setError(chunkError.message);
+      } finally {
+        setDetailChunksLoading(false);
+      }
     }
   }
 
   function closeDocumentDetail() {
     setDetailDoc(null);
     setDetailChunks(null);
+    setDetailChunksLoading(false);
     setOpenChunkId(null);
   }
 
@@ -1163,6 +1178,7 @@ export default function ChatPage({
       <DocumentDrawer
         detail={detailDoc}
         chunks={detailChunks}
+        chunksLoading={detailChunksLoading}
         openChunkId={openChunkId}
         onToggleChunk={(chunkId) => setOpenChunkId(openChunkId === chunkId ? null : chunkId)}
         onClose={closeDocumentDetail}

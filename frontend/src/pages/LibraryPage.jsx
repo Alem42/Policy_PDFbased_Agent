@@ -116,6 +116,7 @@ export default function LibraryPage({
   const [searchVersion, setSearchVersion] = useState(0);
   const [selected, setSelected] = useState(null);
   const [chunks, setChunks] = useState(null);
+  const [chunksLoading, setChunksLoading] = useState(false);
   const [openChunkId, setOpenChunkId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -318,18 +319,31 @@ export default function LibraryPage({
   async function handleDetail(document) {
     setBusy(true);
     setError("");
+    let detail;
     try {
-      const detail = await getDocumentDetail(document.id);
-      setSelected(detail);
-      setChunks(null);
-      setOpenChunkId(null);
-      if (document.status === "ready") {
-        setChunks(await getDocumentChunks(document.id));
-      }
+      detail = await getDocumentDetail(document.id);
     } catch (detailError) {
       setError(detailError.message);
-    } finally {
       setBusy(false);
+      return;
+    }
+
+    // Open the drawer with metadata right away; chunks (which can be a much
+    // bigger, slower fetch) load in the background afterwards.
+    setSelected(detail);
+    setChunks(null);
+    setOpenChunkId(null);
+    setBusy(false);
+
+    if (document.status === "ready") {
+      setChunksLoading(true);
+      try {
+        setChunks(await getDocumentChunks(document.id));
+      } catch (chunkError) {
+        setError(chunkError.message);
+      } finally {
+        setChunksLoading(false);
+      }
     }
   }
 
@@ -365,6 +379,7 @@ export default function LibraryPage({
   function closeDrawer() {
     setSelected(null);
     setChunks(null);
+    setChunksLoading(false);
     setOpenChunkId(null);
   }
 
@@ -929,6 +944,7 @@ export default function LibraryPage({
       <DocumentDrawer
         detail={selected}
         chunks={chunks}
+        chunksLoading={chunksLoading}
         openChunkId={openChunkId}
         onToggleChunk={(chunkId) => setOpenChunkId(openChunkId === chunkId ? null : chunkId)}
         onClose={closeDrawer}

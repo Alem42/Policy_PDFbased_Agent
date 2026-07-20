@@ -8,6 +8,7 @@ import {
   AccordionDetails,
   Chip,
   Drawer,
+  Skeleton,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -22,7 +23,7 @@ const METADATA_FIELDS = [
   { key: "publication_date", label: "Publication date", fallback: "Unknown" },
 ];
 
-export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleChunk, onClose }) {
+export default function DocumentDrawer({ detail, chunks, chunksLoading, openChunkId, onToggleChunk, onClose }) {
   const lastDetailRef = useRef(detail);
   const lastChunksRef = useRef(chunks);
 
@@ -32,6 +33,7 @@ export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleCh
   }
   const renderedDetail = detail || lastDetailRef.current;
   const renderedChunks = detail ? chunks : lastChunksRef.current;
+  const renderedChunksLoading = detail ? chunksLoading : false;
 
   return (
     <Drawer
@@ -169,10 +171,19 @@ export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleCh
       </Accordion>
 
       {/* Chunks */}
-      {renderedChunks && (
+      {(renderedChunks || renderedChunksLoading) && (
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Chunks</Typography>
-          {renderedChunks.chunks.map((chunk) => (
+          {renderedChunksLoading && !renderedChunks
+            ? Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rounded"
+                  height={44}
+                  sx={{ mb: 1, borderRadius: 2 }}
+                />
+              ))
+            : renderedChunks.chunks.map((chunk) => (
             <Accordion
               key={chunk.id}
               expanded={openChunkId === chunk.id}
