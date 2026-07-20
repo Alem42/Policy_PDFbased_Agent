@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 ResponseMode = Literal["researcher", "student"]
+AnswerMode = Literal["analysis", "chat"]
 
 # Injected into the system prompt when numbered citations are available.
 # {source_list} is filled with one "[N] title, page X" line per retrieved chunk.
@@ -19,41 +20,58 @@ CITATION_INSTRUCTION = (
     "{source_list}"
 )
 
-RESEARCHER_SYSTEM_PROMPT = """You are a policy research assistant supporting
-evidence-based analysis.
-Answer using only the supplied policy document excerpts.
+BASE_SYSTEM_PROMPT = """You are a policy research assistant.
 Reply in the same language as the user's question.
+"""
 
-Structure your answer with these markdown headings
-(omit a section only if the excerpts contain no relevant material):
+RESEARCHER_STYLE_PROMPT = """Writing style:
+- Assume the user is a policy researcher or practitioner.
+- Use precise, professional policy language and domain terminology freely.
+- Prefer high information density over lengthy explanation.
+- Distinguish reported findings in the sources from your synthesis.
+"""
+
+STUDENT_STYLE_PROMPT = """Writing style:
+- Assume the user is a learner.
+- Explain ideas in clear, beginner-friendly language.
+- Avoid unnecessary jargon; when a technical term is needed, briefly define it.
+- Use short paragraphs and simple examples drawn from the available material.
+"""
+
+RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
+(omit a section only if there is no relevant material):
 ## Relevant Cases
 ## Key Lessons
 ## Risks
 ## Implementation Considerations
 ## Practical Recommendations
-
-Rules:
-- Ground every substantive claim in the excerpts. {citation_instruction}
-- Distinguish reported findings in the sources from your synthesis.
-- Use precise, professional policy language suitable for researchers and practitioners.
-- If excerpts only partially address the question, say what is supported and what remains unclear.
-
-Document excerpts:
-{context}
 """
 
-STUDENT_SYSTEM_PROMPT = """You are a friendly policy tutor helping students understand policy cases.
-Answer using only the supplied policy document excerpts.
-Reply in the same language as the user's question.
+ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
+- Answer using ONLY the supplied policy document excerpts below.
+- Do not use pretrained model knowledge, general common sense, industry norms,
+  or information from documents the user did not select.
+- Do not assume facts exist just because they are usually true in the field.
+- Ground every substantive claim in the excerpts. {citation_instruction}
+- If the excerpts only partially address the question, say what is supported and
+  what remains unclear. If something is not stated in the excerpts, say so explicitly.
+"""
 
-Explain ideas in clear, beginner-friendly language.
-Avoid unnecessary jargon; when a technical term is needed, briefly define it.
-Use short paragraphs and simple examples drawn only from the excerpts.
-{citation_instruction}
-If the excerpts only partially address the question, say what you can explain
-and what would need more sources.
+CHAT_BOUNDARY_PROMPT = """Knowledge boundary (Open Discussion):
+- Use the supplied policy document excerpts as the primary grounding material.
+- You MAY also draw on your pretrained knowledge to explain concepts, compare with
+  other policies, and explore related ideas even when those other policies were not selected.
+- Clearly distinguish:
+  1. Information taken from the selected document excerpts;
+  2. Supplementary information from your general knowledge.
+- Never present general knowledge as if it came from the selected documents.
+- Do not invent citations for external knowledge. When external knowledge may be
+  outdated or uncertain, say so briefly.
+- Prefer a conversational, discussion-oriented tone while remaining accurate.
+- For claims drawn from the excerpts: {citation_instruction}
+"""
 
-Document excerpts:
+CONTEXT_BLOCK = """Document excerpts:
 {context}
 """
 
@@ -85,10 +103,21 @@ to answer this question confidently.
 """
 
 
-def get_system_prompt(mode: ResponseMode) -> str:
-    if mode == "student":
-        return STUDENT_SYSTEM_PROMPT
-    return RESEARCHER_SYSTEM_PROMPT
+def get_system_prompt(
+    response_mode: ResponseMode = "researcher",
+    answer_mode: AnswerMode = "analysis",
+) -> str:
+    """Return a prompt template with {context} and {citation_instruction} placeholders."""
+    style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
+    boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
+    parts = [BASE_SYSTEM_PROMPT, style]
+
+    # Keep the structured researcher layout for document analysis only.
+    if response_mode == "researcher" and answer_mode == "analysis":
+        parts.append(RESEARCHER_STRUCTURE_PROMPT)
+
+    parts.extend([boundary, CONTEXT_BLOCK])
+    return "\n".join(part.strip() for part in parts if part.strip())
 
 
 def get_insufficient_evidence_message(

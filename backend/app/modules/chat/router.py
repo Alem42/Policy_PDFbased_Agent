@@ -36,6 +36,7 @@ async def chat(
             document_ids=identifiers,
             model=payload.model,
             response_mode=payload.response_mode,
+            answer_mode=payload.answer_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
             history=trimmed_history,
@@ -46,6 +47,7 @@ async def chat(
             truncated=result.get("truncated", False),
             evidence_sufficient=result.get("evidence_sufficient", True),
             response_mode=payload.response_mode,
+            answer_mode=payload.answer_mode,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

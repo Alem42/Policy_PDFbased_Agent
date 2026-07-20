@@ -167,14 +167,15 @@ export function getDocumentFileUrl(documentId) {
   return apiPath(`/documents/${encodeURIComponent(documentId)}/file`);
 }
 
-export async function openDocumentFile(documentId) {
+export async function openDocumentFile(documentId, page = null) {
   const token = localStorage.getItem("authToken");
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(getDocumentFileUrl(documentId), { headers });
   if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
   const blob = await response.blob();
-  window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+  const pageFragment = Number.isInteger(page) && page > 0 ? `#page=${page}` : "";
+  window.open(`${URL.createObjectURL(blob)}${pageFragment}`, "_blank", "noopener,noreferrer");
 }
 
 export async function uploadDocuments(files) {
@@ -215,7 +216,13 @@ export function getDocumentPages(documentId) {
 // Increase this value if users need longer memory; decrease to save tokens.
 const MAX_HISTORY_TURNS = 5;
 
-export function askQuestion(question, documentIds, responseMode = "researcher", history = []) {
+export function askQuestion(
+  question,
+  documentIds,
+  responseMode = "researcher",
+  answerMode = "analysis",
+  history = [],
+) {
   // Trim to the last MAX_HISTORY_TURNS turns (user + assistant pairs = * 2 messages).
   const trimmedHistory = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
     role: msg.role,
@@ -229,6 +236,7 @@ export function askQuestion(question, documentIds, responseMode = "researcher", 
       question,
       document_ids: documentIds,
       response_mode: responseMode,
+      answer_mode: answerMode,
       history: trimmedHistory,
     }),
   });

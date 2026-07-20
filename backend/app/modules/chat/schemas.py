@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 ResponseMode = Literal["researcher", "student"]
+AnswerMode = Literal["analysis", "chat"]
 
 # Maximum number of prior conversation turns sent to the LLM for context.
 # Each turn = one user message + one assistant reply (2 messages).
@@ -33,6 +34,7 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=6, ge=1, le=20)
     model: str | None = None
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
     # Last MAX_HISTORY_TURNS turns of conversation (user + assistant pairs).
     # The backend trims to MAX_HISTORY_TURNS * 2 messages even if more are sent.
     history: list[ChatMessage] = Field(default_factory=list)
@@ -53,6 +55,7 @@ class ChatResponse(BaseModel):
     truncated: bool = False
     evidence_sufficient: bool = True
     response_mode: ResponseMode = "researcher"
+    answer_mode: AnswerMode = "analysis"
 
 
 class DocumentChunkRead(BaseModel):
