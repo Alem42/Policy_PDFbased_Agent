@@ -24,6 +24,7 @@ const METADATA_FIELDS = [
 ];
 
 export default function DocumentDrawer({
+  open,
   detail,
   detailLoading,
   chunks,
@@ -39,17 +40,16 @@ export default function DocumentDrawer({
     lastDetailRef.current = detail;
     lastChunksRef.current = chunks;
   }
-  const isOpen = !!detail || !!detailLoading;
   // While a new detail fetch is in flight, don't fall back to the previous
   // document's cached data -- that would mislabel it as the new one.
   const renderedDetail = detail || (detailLoading ? null : lastDetailRef.current);
-  const renderedChunks = detail ? chunks : (isOpen ? null : lastChunksRef.current);
+  const renderedChunks = detail ? chunks : (open ? null : lastChunksRef.current);
   const renderedChunksLoading = detail ? chunksLoading : false;
 
   return (
     <Drawer
       anchor="right"
-      open={isOpen}
+      open={open}
       onClose={onClose}
       transitionDuration={{ enter: 280, exit: 220 }}
       slotProps={{

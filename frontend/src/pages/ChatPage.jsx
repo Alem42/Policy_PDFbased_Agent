@@ -198,6 +198,7 @@ export default function ChatPage({
   });
 
   // Document detail drawer (Sources module) — same drawer used in the Library page
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [detailDoc, setDetailDoc] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailChunks, setDetailChunks] = useState(null);
@@ -382,11 +383,15 @@ export default function ChatPage({
   async function handleShowDocumentDetail(document) {
     setError("");
     // Open the drawer immediately with a skeleton; metadata and chunks both
-    // fill in afterwards once their fetches resolve.
+    // fill in afterwards once their fetches resolve. `detailDrawerOpen` is a
+    // single dedicated flag set once here and only cleared by
+    // closeDocumentDetail(), so the drawer never flickers shut while
+    // `detailDoc`/`detailLoading` are updating in between.
     setDetailDoc(null);
     setDetailChunks(null);
     setOpenChunkId(null);
     setDetailLoading(true);
+    setDetailDrawerOpen(true);
 
     let detail;
     try {
@@ -413,6 +418,7 @@ export default function ChatPage({
   }
 
   function closeDocumentDetail() {
+    setDetailDrawerOpen(false);
     setDetailDoc(null);
     setDetailLoading(false);
     setDetailChunks(null);
@@ -1183,6 +1189,7 @@ export default function ChatPage({
 
       {/* Document detail drawer — opened from the Sources module */}
       <DocumentDrawer
+        open={detailDrawerOpen}
         detail={detailDoc}
         detailLoading={detailLoading}
         chunks={detailChunks}

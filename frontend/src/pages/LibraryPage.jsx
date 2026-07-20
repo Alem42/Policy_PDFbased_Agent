@@ -114,6 +114,7 @@ export default function LibraryPage({
   const [pageData, setPageData] = useState({ items: [], total: 0, pages: 0 });
   const [searchLoading, setSearchLoading] = useState(true);
   const [searchVersion, setSearchVersion] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [chunks, setChunks] = useState(null);
@@ -320,11 +321,15 @@ export default function LibraryPage({
   async function handleDetail(document) {
     setError("");
     // Open the drawer immediately with a skeleton; metadata and chunks both
-    // fill in afterwards once their fetches resolve.
+    // fill in afterwards once their fetches resolve. `drawerOpen` is a single
+    // dedicated flag set once here and only cleared by closeDrawer(), so the
+    // drawer never flickers shut while `selected`/`detailLoading` are
+    // updating in between.
     setSelected(null);
     setChunks(null);
     setOpenChunkId(null);
     setDetailLoading(true);
+    setDrawerOpen(true);
 
     let detail;
     try {
@@ -380,6 +385,7 @@ export default function LibraryPage({
   }
 
   function closeDrawer() {
+    setDrawerOpen(false);
     setSelected(null);
     setDetailLoading(false);
     setChunks(null);
@@ -946,6 +952,7 @@ export default function LibraryPage({
       </Dialog>
 
       <DocumentDrawer
+        open={drawerOpen}
         detail={selected}
         detailLoading={detailLoading}
         chunks={chunks}
