@@ -23,6 +23,10 @@ import {
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import dayjs from "dayjs";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { useSearchParams } from "react-router-dom";
 import {
   deleteDocument,
@@ -653,7 +657,7 @@ export default function LibraryPage({
                     variant="outlined"
                     disabled={busy}
                     onClick={() => onRemoveSource(document.id)}
-                    sx={{ color: "error.main", borderColor: "error.main" }}
+                    sx={{ color: "error.main", borderColor: "error.main", minWidth: 108 }}
                   >
                     Remove
                   </Button>
@@ -663,6 +667,7 @@ export default function LibraryPage({
                     variant="contained"
                     disabled={busy}
                     onClick={(event) => handleAddToChat(event, document)}
+                    sx={{ minWidth: 108 }}
                   >
                     Add to chat
                   </Button>
@@ -670,11 +675,6 @@ export default function LibraryPage({
                 <Button size="small" variant="outlined" disabled={busy} onClick={() => handleDetail(document)}>
                   Details
                 </Button>
-                {user?.role === "admin" && (
-                  <Button size="small" variant="outlined" disabled={busy} onClick={() => openEditDialog(document)}>
-                    Edit
-                  </Button>
-                )}
                 {user?.role === "admin" && (
                   <Button
                     size="small"
@@ -759,6 +759,9 @@ export default function LibraryPage({
         <MenuItem onClick={() => runMoreAction(handleOpenSource)}>Open source</MenuItem>
         {user?.role === "admin" && <Divider />}
         {user?.role === "admin" && (
+          <MenuItem onClick={() => runMoreAction(openEditDialog)}>Edit</MenuItem>
+        )}
+        {user?.role === "admin" && (
           <MenuItem
             onClick={() =>
               runMoreAction((document) =>
@@ -787,18 +790,24 @@ export default function LibraryPage({
         transformOrigin={{ vertical: "top", horizontal: "center" }}
         slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
       >
-        <Box sx={{ p: 2, maxWidth: 240 }}>
-          <Typography variant="body2" sx={{ mb: 1.5 }}>
-            Added &ldquo;{addedPopover.document?.title || addedPopover.document?.name}&rdquo; to chat context.
+        <Box sx={{ px: 1.5, py: 0.75, display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="caption" sx={{ color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }}>
+            Added to chat
           </Typography>
-          <Button size="small" variant="contained" fullWidth onClick={handleGoToChat}>
+          <Button
+            size="small"
+            variant="text"
+            onClick={handleGoToChat}
+            sx={{ minWidth: 0, px: 1, py: 0.25, fontSize: 12, textTransform: "none" }}
+          >
             Go to chat
           </Button>
         </Box>
       </Popover>
 
       {/* Edit document metadata dialog */}
-      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="sm" fullWidth>
+      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="md" fullWidth>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
         <DialogTitle>Edit document</DialogTitle>
         <DialogContent>
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, pt: 1 }}>
@@ -854,14 +863,17 @@ export default function LibraryPage({
               value={editDialog.form.year}
               onChange={(e) => updateEditField("year", e.target.value)}
             />
-            <TextField
+            <DatePicker
               label="Publication date"
-              type="date"
-              size="small"
+              value={editDialog.form.publication_date ? dayjs(editDialog.form.publication_date) : null}
+              onChange={(newValue) =>
+                updateEditField(
+                  "publication_date",
+                  newValue && newValue.isValid() ? newValue.format("YYYY-MM-DD") : "",
+                )
+              }
+              slotProps={{ textField: { size: "small" } }}
               sx={{ flex: "1 1 45%" }}
-              slotProps={{ inputLabel: { shrink: true } }}
-              value={editDialog.form.publication_date}
-              onChange={(e) => updateEditField("publication_date", e.target.value)}
             />
             <Autocomplete
               multiple
@@ -911,6 +923,7 @@ export default function LibraryPage({
             {editDialog.saving ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
+      </LocalizationProvider>
       </Dialog>
 
       <DocumentDrawer
