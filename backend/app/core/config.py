@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     default_embedding_dimensions: int = 384
     max_context_characters: int = 120_000
 
+    # Pages whose native (non-OCR) extracted text is shorter than this are
+    # treated as scanned/image-only and re-read via OCR.
+    ocr_min_text_chars: int = Field(default=20, ge=0)
+    # Tesseract language pack(s), e.g. "eng", "chi_sim", or "eng+chi_sim".
+    ocr_languages: str = "eng"
+    # Explicit path to the tesseract binary. Leave unset to auto-detect via
+    # PATH (Linux/Docker) or common Windows install locations.
+    ocr_tesseract_cmd: str | None = None
+
     llm_base_url: str = "https://api.deepseek.com"
     default_llm_chat_model: str = "deepseek-v4-flash"
     llm_api_key: str | None = None
