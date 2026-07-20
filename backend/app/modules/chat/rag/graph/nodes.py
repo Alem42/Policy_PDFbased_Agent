@@ -57,7 +57,7 @@ def retrieve_context_node(state: PDFQAState) -> dict:
         citations = [
             {
                 "document_id": chunk["document_id"],
-                "title": chunk["file"],
+                "title": chunk.get("doc_title") or chunk["file"],
                 "chunk_id": chunk["chunk_id"],
                 "page": chunk["page_start"],
                 "quote": chunk["text"][:500],
@@ -70,7 +70,7 @@ def retrieve_context_node(state: PDFQAState) -> dict:
         # Pages don't carry document_id, so that field is omitted (optional in schema).
         citations = [
             {
-                "title": p["file"],
+                "title": p.get("title") or p["file"],
                 "page": p.get("page"),
                 "quote": (p.get("text") or "")[:300],
             }

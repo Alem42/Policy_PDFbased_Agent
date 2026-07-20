@@ -686,7 +686,7 @@ export default function ChatPage({
                     {message.content}
                   </Typography>
                 )}
-                {message.role === "assistant" && message.evidenceSufficient !== false && (
+                {message.role === "assistant" && message.evidenceSufficient !== false && message.citations?.length > 0 && (
                   <CitationList citations={message.citations} onOpenSource={handleOpenCitation} />
                 )}
                 {message.truncated && (
@@ -819,67 +819,186 @@ export default function ChatPage({
         anchor="right"
         open={citationDrawer.open}
         onClose={() => setCitationDrawer((s) => ({ ...s, open: false }))}
-        PaperProps={{ sx: { width: { xs: "100%", sm: 380 }, p: 3, boxSizing: "border-box" } }}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", sm: 420 },
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            bgcolor: "#fafaf8",
+          },
+        }}
       >
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-          <Typography variant="h6" sx={{ fontFamily: "Georgia, serif" }}>
-            Sources
-          </Typography>
-          <IconButton onClick={() => setCitationDrawer((s) => ({ ...s, open: false }))} size="small">
+        {/* Drawer header */}
+        <Box
+          sx={{
+            px: 3,
+            py: 2,
+            bgcolor: "#fff",
+            borderBottom: "1px solid #e2e5df",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ fontFamily: "Georgia, serif", fontSize: 18, lineHeight: 1.2 }}>
+              Sources
+            </Typography>
+            {citationDrawer.citations.length > 0 && (
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                {citationDrawer.citations.length} source{citationDrawer.citations.length !== 1 ? "s" : ""} retrieved
+              </Typography>
+            )}
+          </Box>
+          <IconButton
+            onClick={() => setCitationDrawer((s) => ({ ...s, open: false }))}
+            size="small"
+            sx={{ color: "#888" }}
+          >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
-        <Divider sx={{ mb: 2 }} />
-        {citationDrawer.citations.length === 0 ? (
-          <Typography variant="body2" sx={{ color: "text.secondary" }}>
-            No citation details available for this answer.
-          </Typography>
-        ) : (
-          drawerCitations(citationDrawer.citations, citationDrawer.focusIndex).map((c, i) => (
-            <Box
-              key={i}
-              sx={{
-                mb: 2,
-                pb: 2,
-                borderBottom: "1px solid #e2e5df",
-                ...(c._displayIndex === citationDrawer.focusIndex + 1 && {
-                  background: "#f0f5f2",
-                  borderRadius: 1,
-                  px: 1.5,
-                  pt: 1,
-                }),
-              }}
-            >
-              <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.25 }}>
-                [{c._displayIndex}] {c.title}
+
+        {/* Citations list */}
+        <Box sx={{ flex: 1, overflowY: "auto", p: 2 }}>
+          {citationDrawer.citations.length === 0 ? (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                No citation details available.
               </Typography>
-              {c.page && (
-                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 0.5 }}>
-                  Page {c.page}
-                </Typography>
-              )}
-              {c.quote && (
-                <Typography
-                  variant="body2"
-                  sx={{ color: "#63706a", fontStyle: "italic", fontSize: "0.82em", lineHeight: 1.55, mb: 1 }}
-                >
-                  &ldquo;{c.quote.length > 240 ? c.quote.slice(0, 240) + "…" : c.quote}&rdquo;
-                </Typography>
-              )}
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => {
-                  setCitationDrawer((s) => ({ ...s, open: false }));
-                  onNavigate("library");
-                }}
-                sx={{ fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
-              >
-                View in Library →
-              </Button>
             </Box>
-          ))
-        )}
+          ) : (
+            drawerCitations(citationDrawer.citations, citationDrawer.focusIndex).map((c, i) => {
+              const isFocused = c._displayIndex === citationDrawer.focusIndex + 1;
+              return (
+                <Box
+                  key={i}
+                  sx={{
+                    mb: 1.5,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: isFocused ? "#214f42" : "#dfe4de",
+                    bgcolor: "#fff",
+                    overflow: "hidden",
+                    boxShadow: isFocused ? "0 0 0 2px rgba(33,79,66,0.12)" : "none",
+                    transition: "box-shadow 0.2s, border-color 0.2s",
+                  }}
+                >
+                  {/* Card header */}
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 1.25,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 1.25,
+                      borderBottom: c.quote ? "1px solid #eef0ec" : "none",
+                      bgcolor: isFocused ? "#f0f7f4" : "#fff",
+                    }}
+                  >
+                    {/* Citation number badge */}
+                    <Box
+                      sx={{
+                        flexShrink: 0,
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        bgcolor: isFocused ? "#214f42" : "#e4ece9",
+                        color: isFocused ? "#fff" : "#214f42",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 800,
+                        fontSize: 11,
+                        mt: 0.1,
+                      }}
+                    >
+                      {c._displayIndex}
+                    </Box>
+
+                    {/* Title + page */}
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 700, fontSize: 13, lineHeight: 1.35, mb: 0.25 }}
+                      >
+                        {c.title || "Unknown source"}
+                      </Typography>
+                      {c.page != null && (
+                        <Box
+                          component="span"
+                          sx={{
+                            display: "inline-block",
+                            px: 0.75,
+                            py: 0.1,
+                            borderRadius: 1,
+                            bgcolor: "#eef0ec",
+                            fontSize: 11,
+                            color: "#4a5a54",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Page {c.page}
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Quote */}
+                  {c.quote && (
+                    <Box sx={{ px: 2, pt: 1.25, pb: c.document_id ? 1 : 1.5 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontSize: 12.5,
+                          lineHeight: 1.65,
+                          color: "#4a5a54",
+                          fontStyle: "italic",
+                          pl: 1.5,
+                          borderLeft: "2px solid #c8d9d4",
+                        }}
+                      >
+                        &ldquo;
+                        {c.quote.length > 300 ? c.quote.slice(0, 300) + "…" : c.quote}
+                        &rdquo;
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Open PDF action */}
+                  {c.document_id && (
+                    <Box sx={{ px: 2, pb: 1.25, pt: c.quote ? 0.5 : 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={async () => {
+                          try {
+                            await openDocumentFile(c.document_id, c.page);
+                          } catch {
+                            setError("Could not open the source document.");
+                          }
+                        }}
+                        sx={{
+                          fontSize: 11,
+                          textTransform: "none",
+                          borderColor: "#c8d9d4",
+                          color: "#214f42",
+                          py: 0.4,
+                          px: 1.25,
+                          "&:hover": { borderColor: "#214f42", bgcolor: "#f0f7f4" },
+                        }}
+                      >
+                        Open PDF{c.page != null ? ` at page ${c.page}` : ""}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              );
+            })
+          )}
+        </Box>
       </Drawer>
 
       {/* Missing documents warning */}
