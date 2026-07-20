@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# tesseract-ocr: OCR engine used to read scanned/image-only PDF pages.
+RUN apt-get update && apt-get install --no-install-recommends -y tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY app ./app
 COPY database ./database
