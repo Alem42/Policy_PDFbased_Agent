@@ -124,7 +124,7 @@ export default function LibraryPage({
   const [error, setError] = useState("");
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
-  const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null });
+  const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
   const [editDialog, setEditDialog] = useState({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
 
   function updateSearchParams(updates, { replace = false } = {}) {
@@ -394,8 +394,12 @@ export default function LibraryPage({
   }
 
   function handleAddToChat(event, document) {
-    onAddSource(document.id);
-    setAddedPopover({ anchorEl: event.currentTarget, document });
+    try {
+      onAddSource(document.id);
+      setAddedPopover({ anchorEl: event.currentTarget, document, success: true });
+    } catch (addError) {
+      setAddedPopover({ anchorEl: event.currentTarget, document, success: false, error: addError.message });
+    }
   }
 
   function closeAddedPopover() {
@@ -815,15 +819,18 @@ export default function LibraryPage({
         transformOrigin={{ vertical: "top", horizontal: "center" }}
         slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
       >
-        <Box sx={{ px: 1.5, py: 0.75, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.25 }}>
-          <Typography variant="caption" sx={{ color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }}>
-            Added to chat
+        <Box sx={{ px: 1.5, py: 1, display: "flex", flexDirection: "column", gap: 0.75, minWidth: 160 }}>
+          <Typography
+            variant="caption"
+            sx={{ color: addedPopover.success ? "success.main" : "error.main", fontWeight: 700, whiteSpace: "nowrap" }}
+          >
+            {addedPopover.success ? "Added to chat" : addedPopover.error || "Failed to add"}
           </Typography>
           <Button
             size="small"
-            variant="text"
+            variant="contained"
+            fullWidth
             onClick={handleGoToChat}
-            sx={{ minWidth: 0, px: 0, py: 0, fontSize: 12, textTransform: "none" }}
           >
             Go to chat
           </Button>
