@@ -815,7 +815,7 @@ export default function LibraryPage({
         transformOrigin={{ vertical: "top", horizontal: "center" }}
         slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
       >
-        <Box sx={{ px: 1.5, py: 0.75, display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ px: 1.5, py: 0.75, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.25 }}>
           <Typography variant="caption" sx={{ color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }}>
             Added to chat
           </Typography>
@@ -823,7 +823,7 @@ export default function LibraryPage({
             size="small"
             variant="text"
             onClick={handleGoToChat}
-            sx={{ minWidth: 0, px: 1, py: 0.25, fontSize: 12, textTransform: "none" }}
+            sx={{ minWidth: 0, px: 0, py: 0, fontSize: 12, textTransform: "none" }}
           >
             Go to chat
           </Button>
