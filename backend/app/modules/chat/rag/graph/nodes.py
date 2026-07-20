@@ -123,9 +123,9 @@ def generate_answer_node(state: PDFQAState) -> dict:
             context=state["context"],
             model=state.get("model"),
             response_mode=_response_mode(state),
+            answer_mode=_answer_mode(state),
             history=state.get("history", []),
             citations=state.get("citations", []),
-            answer_mode=_answer_mode(state),
         )
     }
 
