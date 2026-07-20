@@ -2,12 +2,8 @@ import re
 
 from app.modules.documents.embeddings import estimate_token_count
 
-# Must stay safely under the embedding model's real limit (512 WordPiece
-# tokens for bge-small-en-v1.5) since estimate_token_count now counts in
-# that tokenizer's own units. The margin below 512 covers [CLS]/[SEP] and
-# rounding from sentence-level splitting.
 MAX_CHUNK_TOKENS = 480
-CHUNK_OVERLAP_TOKENS = 72
+CHUNK_OVERLAP_TOKENS = 120
 
 # Any single paragraph-level item (natural paragraph, sentence-split piece,
 # or hard-sliced fragment) must leave room for CHUNK_OVERLAP_TOKENS worth of
@@ -75,6 +71,9 @@ class DocumentChunker:
                         {"page": page["page"], "text": clean, "token_count": token_count}
                     )
                 else:
+                    # >>> paragraph-splitting entry point: a single natural
+                    # paragraph (no blank-line break) is too big on its own
+                    # and would otherwise be emitted as one oversized chunk.
                     paragraphs.extend(_split_oversized_paragraph(page["page"], clean))
         return paragraphs
 
@@ -137,6 +136,9 @@ def _hard_slice(page: int, text: str) -> list[dict]:
         )
         remaining = remaining[cut:].strip()
     return pieces
+
+
+# <<< end oversized-paragraph splitting
 
 
 document_chunker = DocumentChunker()
