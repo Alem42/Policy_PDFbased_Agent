@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Container, Alert } from "@mui/material";
+import { Box, Container, Alert } from "@mui/material";
 import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
 import { getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
@@ -122,34 +122,56 @@ export default function App() {
     setUser(nextUser);
   }
 
+  // The chat view fills the full viewport height with fixed, internally
+  // scrolling panels (like ChatGPT/DeepSeek); every other view keeps the
+  // normal document flow where the whole page scrolls. Width is untouched
+  // either way — only this view's vertical layout behaves differently.
+  const isChatView = activeView === "chat";
+
   return (
-    <Container maxWidth="lg" sx={{ pb: 8 }}>
-      <AppHeader
-        currentView={activeView}
-        documentCount={documentCount}
-        user={user}
-        onLogout={handleLogout}
-        onNavigate={navigateToView}
-      />
+    <Container
+      maxWidth="lg"
+      sx={
+        isChatView
+          ? { height: "100vh", display: "flex", flexDirection: "column", pb: 0 }
+          : { pb: 8 }
+      }
+    >
+      <Box sx={{ flexShrink: 0 }}>
+        <AppHeader
+          currentView={activeView}
+          documentCount={documentCount}
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={navigateToView}
+        />
+        {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
+      </Box>
 
-      {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
-
-      <Outlet
-        context={{
-          documents,
-          loading,
-          user,
-          contextSourceIds,
-          loadDocuments,
-          handleDocumentsChanged,
-          handleRescanDocuments,
-          handleAddSource,
-          handleRemoveSource,
-          handleSetSources,
-          handleAuthenticated,
-          navigateToView,
-        }}
-      />
+      <Box
+        sx={
+          isChatView
+            ? { flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", pt: 2 }
+            : undefined
+        }
+      >
+        <Outlet
+          context={{
+            documents,
+            loading,
+            user,
+            contextSourceIds,
+            loadDocuments,
+            handleDocumentsChanged,
+            handleRescanDocuments,
+            handleAddSource,
+            handleRemoveSource,
+            handleSetSources,
+            handleAuthenticated,
+            navigateToView,
+          }}
+        />
+      </Box>
     </Container>
   );
 }

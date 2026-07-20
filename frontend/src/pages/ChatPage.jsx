@@ -423,8 +423,8 @@ export default function ChatPage({
   }
 
   return (
-    <Box component="section">
-      <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
+    <Box component="section" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
 
         {/* Left panel: Sources (top) + History (bottom) */}
         <Card
@@ -434,7 +434,8 @@ export default function ChatPage({
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
-            minHeight: { md: 520 },
+            height: "100%",
+            overflow: "hidden",
           }}
         >
           {/* ── Sources section ── */}
@@ -622,9 +623,9 @@ export default function ChatPage({
         </Card>
 
         {/* Chat Panel */}
-        <Card sx={{ p: 3, flex: 1, minWidth: 0 }}>
+        <Card sx={{ p: 3, flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Box
-            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: "20px" }}
+            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: "20px", flexShrink: 0 }}
           >
             <Box>
               <Typography variant="subtitle2">Conversation</Typography>
@@ -636,7 +637,7 @@ export default function ChatPage({
           </Box>
 
           {/* Messages */}
-          <Box sx={{ mb: 3, minHeight: 200 }}>
+          <Box sx={{ mb: 3, flex: 1, minHeight: 0, overflowY: "auto" }}>
             {messages.length === 0 && (
               <Typography sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
                 Ask a question to start a conversation.
@@ -775,10 +776,10 @@ export default function ChatPage({
             )}
           </Box>
 
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mb: 2, flexShrink: 0 }}>{error}</Alert>}
 
           {/* Mode selectors */}
-          <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
+          <Box sx={{ mb: 2, flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
             <Box>
               <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
                 Writing style
@@ -843,7 +844,7 @@ export default function ChatPage({
           </Box>
 
           {/* Chat Form */}
-          <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", gap: 1 }}>
+          <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
             <TextField
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
