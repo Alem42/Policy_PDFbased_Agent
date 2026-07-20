@@ -23,6 +23,8 @@ import {
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
 import dayjs from "dayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -820,12 +822,23 @@ export default function LibraryPage({
         slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
       >
         <Box sx={{ px: 1.5, py: 1, display: "flex", flexDirection: "column", gap: 0.75, minWidth: 160 }}>
-          <Typography
-            variant="caption"
-            sx={{ color: addedPopover.success ? "success.main" : "error.main", fontWeight: 700, whiteSpace: "nowrap" }}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              color: addedPopover.success ? "success.main" : "error.main",
+            }}
           >
-            {addedPopover.success ? "Added to chat" : addedPopover.error || "Failed to add"}
-          </Typography>
+            {addedPopover.success ? (
+              <CheckCircleIcon sx={{ fontSize: 16 }} />
+            ) : (
+              <ErrorIcon sx={{ fontSize: 16 }} />
+            )}
+            <Typography variant="caption" sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+              {addedPopover.success ? "Added to chat" : addedPopover.error || "Failed to add"}
+            </Typography>
+          </Box>
           <Button
             size="small"
             variant="contained"
