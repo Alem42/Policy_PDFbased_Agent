@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   Alert,
@@ -11,7 +11,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Drawer,
   IconButton,
   ListItemButton,
@@ -202,6 +201,37 @@ export default function ChatPage({
   const [detailDoc, setDetailDoc] = useState(null);
   const [detailChunks, setDetailChunks] = useState(null);
   const [openChunkId, setOpenChunkId] = useState(null);
+
+  // Draggable divider between Sources and Recent Chats sections
+  const sidebarRef = useRef(null);
+  const dragCleanupRef = useRef(null);
+  const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
+
+  useEffect(() => {
+    return () => dragCleanupRef.current?.();
+  }, []);
+
+  function handleResizerMouseDown(event) {
+    event.preventDefault();
+    const handleMove = (moveEvent) => {
+      if (!sidebarRef.current) return;
+      const rect = sidebarRef.current.getBoundingClientRect();
+      const pct = ((moveEvent.clientY - rect.top) / rect.height) * 100;
+      setSourcesHeightPct(Math.min(80, Math.max(15, pct)));
+    };
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      dragCleanupRef.current = null;
+    };
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    dragCleanupRef.current = handleUp;
+  }
 
   // Load session list on mount
   async function loadSessions() {
@@ -426,8 +456,9 @@ export default function ChatPage({
     <Box component="section" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
 
-        {/* Left panel: Sources (top) + History (bottom) */}
+        {/* Left panel: Sources (top) + History (bottom), height split is user-resizable */}
         <Card
+          ref={sidebarRef}
           sx={{
             p: 0,
             width: { xs: "100%", md: 280 },
@@ -439,9 +470,20 @@ export default function ChatPage({
           }}
         >
           {/* ── Sources section ── */}
-          <Box sx={{ px: 3, pt: 3, pb: 1.5, flexShrink: 0 }}>
-            <Typography variant="subtitle2">Context</Typography>
-            <Typography variant="h2" sx={{ fontSize: 22, mb: 1.5 }}>Sources</Typography>
+          <Box
+            sx={{
+              height: `${sourcesHeightPct}%`,
+              flexShrink: 0,
+              px: 3,
+              pt: 3,
+              pb: 1.5,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ flexShrink: 0 }}>Context</Typography>
+            <Typography variant="h2" sx={{ fontSize: 22, mb: 1.5, flexShrink: 0 }}>Sources</Typography>
             {sourceDocs.length === 0 ? (
               <Box sx={{ py: 2, textAlign: "center" }}>
                 <Typography variant="body2" sx={{ color: "text.secondary", mb: 1.5 }}>
@@ -452,7 +494,7 @@ export default function ChatPage({
                 </Button>
               </Box>
             ) : (
-              <Box sx={{ maxHeight: 200, overflowY: "auto" }}>
+              <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {sourceDocs.map((document) => (
                   <Box
                     key={document.id || document.name}
@@ -495,16 +537,34 @@ export default function ChatPage({
                 size="small"
                 variant="text"
                 onClick={() => onNavigate("library")}
-                sx={{ mt: 0.5, fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
+                sx={{ mt: 0.5, flexShrink: 0, fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
               >
                 + Add more sources
               </Button>
             )}
           </Box>
 
-          <Divider />
+          {/* ── Draggable divider — resizes Sources vs. Recent Chats ── */}
+          <Box
+            onMouseDown={handleResizerMouseDown}
+            sx={{
+              flexShrink: 0,
+              height: 9,
+              cursor: "row-resize",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderTop: "1px solid #e2e5df",
+              borderBottom: "1px solid #e2e5df",
+              bgcolor: "#f9faf7",
+              "&:hover": { bgcolor: "#e8f0ed" },
+            }}
+          >
+            <Box sx={{ width: 32, height: 3, borderRadius: 999, bgcolor: "#c8d0cb" }} />
+          </Box>
 
           {/* ── History section ── */}
+          <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Box
             sx={{
               px: 2,
@@ -619,6 +679,7 @@ export default function ChatPage({
                 </Box>
               );
             })}
+          </Box>
           </Box>
         </Card>
 
