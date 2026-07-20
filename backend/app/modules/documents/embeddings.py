@@ -6,6 +6,8 @@ from functools import lru_cache
 
 import tiktoken
 from fastembed import TextEmbedding
+from fastembed.common.preprocessor_utils import load_tokenizer
+from tokenizers import Tokenizer
 
 from app.core.config import get_settings, resolve_backend_path
 
@@ -36,6 +38,21 @@ def _load_model(model_name: str) -> TextEmbedding:
     cache_dir = resolve_backend_path(get_settings().model_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
+
+
+@lru_cache(maxsize=4)
+def _load_chunking_tokenizer(model_name: str) -> Tokenizer:
+    """Load an untruncated tokenizer dedicated to model-aware chunk sizing."""
+    embedding_model = _load_model(model_name)
+    tokenizer, _ = load_tokenizer(model_dir=embedding_model.model._model_dir)
+    tokenizer.no_truncation()
+    return tokenizer
+
+
+def estimate_embedding_token_count(text: str) -> int:
+    """Count tokens with the configured embedding model's own tokenizer."""
+    tokenizer = _load_chunking_tokenizer(get_settings().embedding_model_name)
+    return max(1, len(tokenizer.encode(text).ids))
 
 
 def _vector_to_list(vector: Iterable[float], expected_dimensions: int) -> list[float]:

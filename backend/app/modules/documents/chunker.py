@@ -1,6 +1,12 @@
 import re
+from collections.abc import Callable
 
-from app.modules.documents.embeddings import estimate_token_count
+from app.modules.documents.embeddings import (
+    estimate_embedding_token_count,
+    estimate_token_count,
+)
+
+TokenCounter = Callable[[str], int]
 
 MAX_CHUNK_TOKENS = 480
 CHUNK_OVERLAP_TOKENS = 120
@@ -16,6 +22,9 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+")
 
 class DocumentChunker:
     """Builds overlapping, paragraph-aligned retrieval chunks."""
+
+    def __init__(self, token_counter: TokenCounter = estimate_token_count) -> None:
+        self._token_counter = token_counter
 
     def chunk(self, pages: list[dict]) -> list[dict]:
         paragraphs = self._paragraphs(pages)
@@ -35,7 +44,7 @@ class DocumentChunker:
                     "page_end": current[-1]["page"],
                     "section_title": None,
                     "text": text,
-                    "token_count": estimate_token_count(text),
+                    "token_count": self._token_counter(text),
                 }
             )
             overlap: list[dict] = []
@@ -57,15 +66,14 @@ class DocumentChunker:
             flush()
         return chunks
 
-    @staticmethod
-    def _paragraphs(pages: list[dict]) -> list[dict]:
+    def _paragraphs(self, pages: list[dict]) -> list[dict]:
         paragraphs: list[dict] = []
         for page in pages:
             for raw_paragraph in re.split(r"\n\s*\n+", page["text"]):
                 clean = re.sub(r"\s+", " ", raw_paragraph).strip()
                 if not clean:
                     continue
-                token_count = estimate_token_count(clean)
+                token_count = self._token_counter(clean)
                 if token_count <= _ITEM_BUDGET:
                     paragraphs.append(
                         {"page": page["page"], "text": clean, "token_count": token_count}
@@ -74,11 +82,13 @@ class DocumentChunker:
                     # >>> paragraph-splitting entry point: a single natural
                     # paragraph (no blank-line break) is too big on its own
                     # and would otherwise be emitted as one oversized chunk.
-                    paragraphs.extend(_split_oversized_paragraph(page["page"], clean))
+                    paragraphs.extend(
+                        _split_oversized_paragraph(page["page"], clean, self._token_counter)
+                    )
         return paragraphs
 
 
-def _split_oversized_paragraph(page: int, text: str) -> list[dict]:
+def _split_oversized_paragraph(page: int, text: str, token_counter: TokenCounter) -> list[dict]:
     """Break a paragraph that exceeds _ITEM_BUDGET into smaller pieces.
 
     Splits on sentence boundaries first; a "sentence" that is still too long
@@ -99,10 +109,10 @@ def _split_oversized_paragraph(page: int, text: str) -> list[dict]:
         sentence = sentence.strip()
         if not sentence:
             continue
-        sentence_tokens = estimate_token_count(sentence)
+        sentence_tokens = token_counter(sentence)
         if sentence_tokens > _ITEM_BUDGET:
             flush_piece()
-            pieces.extend(_hard_slice(page, sentence))
+            pieces.extend(_hard_slice(page, sentence, token_counter))
             continue
         if piece_text and piece_tokens + sentence_tokens > _ITEM_BUDGET:
             flush_piece()
@@ -112,33 +122,44 @@ def _split_oversized_paragraph(page: int, text: str) -> list[dict]:
     return pieces
 
 
-def _hard_slice(page: int, text: str) -> list[dict]:
+def _hard_slice(page: int, text: str, token_counter: TokenCounter) -> list[dict]:
     """Cut unpunctuated text into _ITEM_BUDGET-sized pieces via binary search."""
     pieces: list[dict] = []
     remaining = text
     while remaining:
-        if estimate_token_count(remaining) <= _ITEM_BUDGET:
+        if token_counter(remaining) <= _ITEM_BUDGET:
             pieces.append(
-                {"page": page, "text": remaining, "token_count": estimate_token_count(remaining)}
+                {"page": page, "text": remaining, "token_count": token_counter(remaining)}
             )
             break
         low, high = 1, len(remaining)
         while low < high:
             mid = (low + high + 1) // 2
-            if estimate_token_count(remaining[:mid]) <= _ITEM_BUDGET:
+            if token_counter(remaining[:mid]) <= _ITEM_BUDGET:
                 low = mid
             else:
                 high = mid - 1
         cut = max(low, 1)
         piece_text = remaining[:cut].strip()
-        pieces.append(
-            {"page": page, "text": piece_text, "token_count": estimate_token_count(piece_text)}
-        )
+        pieces.append({"page": page, "text": piece_text, "token_count": token_counter(piece_text)})
         remaining = remaining[cut:].strip()
     return pieces
 
 
-# <<< end oversized-paragraph splitting
+class TiktokenDocumentChunker(DocumentChunker):
+    """Chunk documents using the legacy cl100k_base tokenizer."""
+
+    def __init__(self) -> None:
+        super().__init__(estimate_token_count)
 
 
-document_chunker = DocumentChunker()
+class EmbeddingModelDocumentChunker(DocumentChunker):
+    """Chunk documents using the configured embedding model's tokenizer."""
+
+    def __init__(self) -> None:
+        super().__init__(estimate_embedding_token_count)
+
+
+# Legacy fallback retained for a possible future tokenizer/model change.
+# document_chunker = TiktokenDocumentChunker()
+document_chunker = EmbeddingModelDocumentChunker()
