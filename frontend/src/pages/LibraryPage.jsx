@@ -115,6 +115,7 @@ export default function LibraryPage({
   const [searchLoading, setSearchLoading] = useState(true);
   const [searchVersion, setSearchVersion] = useState(0);
   const [selected, setSelected] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [chunks, setChunks] = useState(null);
   const [chunksLoading, setChunksLoading] = useState(false);
   const [openChunkId, setOpenChunkId] = useState(null);
@@ -317,23 +318,25 @@ export default function LibraryPage({
   }
 
   async function handleDetail(document) {
-    setBusy(true);
     setError("");
+    // Open the drawer immediately with a skeleton; metadata and chunks both
+    // fill in afterwards once their fetches resolve.
+    setSelected(null);
+    setChunks(null);
+    setOpenChunkId(null);
+    setDetailLoading(true);
+
     let detail;
     try {
       detail = await getDocumentDetail(document.id);
     } catch (detailError) {
       setError(detailError.message);
-      setBusy(false);
+      setDetailLoading(false);
       return;
     }
 
-    // Open the drawer with metadata right away; chunks (which can be a much
-    // bigger, slower fetch) load in the background afterwards.
     setSelected(detail);
-    setChunks(null);
-    setOpenChunkId(null);
-    setBusy(false);
+    setDetailLoading(false);
 
     if (document.status === "ready") {
       setChunksLoading(true);
@@ -378,6 +381,7 @@ export default function LibraryPage({
 
   function closeDrawer() {
     setSelected(null);
+    setDetailLoading(false);
     setChunks(null);
     setChunksLoading(false);
     setOpenChunkId(null);
@@ -943,6 +947,7 @@ export default function LibraryPage({
 
       <DocumentDrawer
         detail={selected}
+        detailLoading={detailLoading}
         chunks={chunks}
         chunksLoading={chunksLoading}
         openChunkId={openChunkId}
