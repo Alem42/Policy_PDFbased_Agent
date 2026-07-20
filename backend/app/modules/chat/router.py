@@ -88,6 +88,7 @@ async def chat(
             citations=citations,
             truncated=result.get("truncated", False),
             evidence_sufficient=evidence_sufficient,
+            evidence_reason=result.get("evidence_reason"),
             response_mode=payload.response_mode,
             answer_mode=payload.answer_mode,
             session_id=UUID(session_id),

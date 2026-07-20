@@ -58,6 +58,7 @@ class ChatResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     truncated: bool = False
     evidence_sufficient: bool = True
+    evidence_reason: str | None = None
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"
     session_id: UUID | None = None

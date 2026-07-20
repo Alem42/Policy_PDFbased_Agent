@@ -1,4 +1,4 @@
-from app.modules.chat.rag.evidence import MAX_VECTOR_DISTANCE, assess_evidence_sufficiency
+from app.modules.chat.rag.evidence import MAX_VECTOR_DISTANCE, assess_evidence_sufficiency  # noqa: F401 (MAX_VECTOR_DISTANCE used below)
 from app.modules.chat.rag.generation import format_context, generate_answer
 from app.modules.chat.rag.graph.state import AnswerMode, PDFQAState, ResponseMode
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
@@ -31,28 +31,32 @@ def load_documents_node(state: PDFQAState) -> dict:
 
 def retrieve_context_node(state: PDFQAState) -> dict:
     """Build model context from vector retrieval or page-level fallback."""
-    chunks = retrieve_relevant_chunks(
+    raw_chunks = retrieve_relevant_chunks(
         question=state["question"],
         identifiers=_identifiers(state),
         limit=state.get("top_k", 8),
         include_restricted=state.get("include_restricted", False),
     )
-    # Only treat as vector retrieval when at least one chunk meets the distance threshold.
-    # Avoids blocking generic questions when embeddings are weak or non-semantic.
-    relevant_chunks = [c for c in chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE]
-    used_vector_retrieval = bool(relevant_chunks)
+    # has_embeddings: True when the document has been indexed (chunks exist in the DB).
+    # This determines which evidence-assessment branch to use.
+    has_embeddings = bool(raw_chunks)
+
+    # Only use chunks that are actually close to the query.
+    relevant_chunks = [c for c in raw_chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE]
     context_source = relevant_chunks or state["pages"]
     context, truncated = format_context(context_source)
+
     if not context:
         return {
             "context": "",
             "truncated": truncated,
             "chunks": relevant_chunks,
+            "raw_chunks": raw_chunks,
             "citations": [],
-            "used_vector_retrieval": used_vector_retrieval,
+            "used_vector_retrieval": has_embeddings,
         }
 
-    if used_vector_retrieval:
+    if relevant_chunks:
         # Vector path: one citation per retrieved chunk (has document_id and quote).
         citations = [
             {
@@ -65,9 +69,7 @@ def retrieve_context_node(state: PDFQAState) -> dict:
             for chunk in relevant_chunks
         ]
     else:
-        # Page-level fallback: one citation per page so the [N] markers the LLM
-        # writes for page N map to citations[N-1] in the drawer.
-        # Pages don't carry document_id, so that field is omitted (optional in schema).
+        # Page-level fallback (no relevant chunks found): cite per page.
         citations = [
             {
                 "title": p.get("title") or p["file"],
@@ -80,8 +82,9 @@ def retrieve_context_node(state: PDFQAState) -> dict:
         "context": context,
         "truncated": truncated,
         "chunks": relevant_chunks,
+        "raw_chunks": raw_chunks,
         "citations": citations,
-        "used_vector_retrieval": used_vector_retrieval,
+        "used_vector_retrieval": has_embeddings,
     }
 
 
@@ -89,10 +92,10 @@ def check_evidence_node(state: PDFQAState) -> dict:
     """Decide whether retrieved material is strong enough for generation."""
     sufficient, reason = assess_evidence_sufficiency(
         question=state["question"],
-        chunks=state.get("chunks", []),
+        raw_chunks=state.get("raw_chunks", []),
         pages=state.get("pages", []),
         context=state.get("context", ""),
-        used_vector_retrieval=state.get("used_vector_retrieval", False),
+        has_embeddings=state.get("used_vector_retrieval", False),
     )
     return {
         "evidence_sufficient": sufficient,

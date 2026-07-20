@@ -45,7 +45,7 @@ import CitationList from "../components/CitationList";
 // Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
 
-function renderWithCitations(children, citations, onOpen) {
+function renderWithCitations(children, citations, onOpen, lowEvidence = false) {
   return (Array.isArray(children) ? children : [children]).map((child, outerIdx) => {
     if (typeof child !== "string") return child;
     const parts = child.split(CITATION_RE);
@@ -63,11 +63,12 @@ function renderWithCitations(children, citations, onOpen) {
             title={`Source: ${citations[primaryIdx]?.title || part}`}
             style={{
               cursor: "pointer",
-              color: "#214f42",
+              color: lowEvidence ? "#d84315" : "#214f42",
               fontWeight: 700,
-              background: "none",
+              background: lowEvidence ? "rgba(216,67,21,0.08)" : "none",
               border: "none",
-              padding: "0 1px",
+              borderRadius: "3px",
+              padding: "0 2px",
               fontSize: "0.75em",
               lineHeight: 1,
               fontFamily: "inherit",
@@ -82,10 +83,10 @@ function renderWithCitations(children, citations, onOpen) {
   });
 }
 
-function makeMarkdownComponents(citations, onOpen) {
+function makeMarkdownComponents(citations, onOpen, lowEvidence = false) {
   return {
-    p: ({ children }) => <p>{renderWithCitations(children, citations, onOpen)}</p>,
-    li: ({ children }) => <li>{renderWithCitations(children, citations, onOpen)}</li>,
+    p: ({ children }) => <p>{renderWithCitations(children, citations, onOpen, lowEvidence)}</p>,
+    li: ({ children }) => <li>{renderWithCitations(children, citations, onOpen, lowEvidence)}</li>,
   };
 }
 
@@ -191,6 +192,8 @@ export default function ChatPage({
     open: false,
     citations: [],
     focusIndex: 0,
+    evidenceSufficient: true,
+    evidenceReason: null,
   });
 
   // Load session list on mount
@@ -244,6 +247,7 @@ export default function ChatPage({
         content: m.content,
         citations: Array.isArray(m.citations) ? m.citations : [],
         evidenceSufficient: m.evidence_sufficient,
+        evidenceReason: null,
         responseMode: m.response_mode,
       })),
     );
@@ -332,8 +336,8 @@ export default function ChatPage({
     );
   }
 
-  function openCitationDrawer(citations, focusIndex = 0) {
-    setCitationDrawer({ open: true, citations: citations || [], focusIndex });
+  function openCitationDrawer(citations, focusIndex = 0, evidenceSufficient = true, evidenceReason = null) {
+    setCitationDrawer({ open: true, citations: citations || [], focusIndex, evidenceSufficient: evidenceSufficient !== false, evidenceReason: evidenceReason || null });
   }
 
   async function handleSubmit(event) {
@@ -363,6 +367,7 @@ export default function ChatPage({
           citations: Array.isArray(result.citations) ? result.citations : [],
           truncated: result.truncated,
           evidenceSufficient: result.evidence_sufficient,
+          evidenceReason: result.evidence_reason || null,
           responseMode: result.response_mode || responseMode,
           answerMode: result.answer_mode || answerMode,
         },
@@ -604,109 +609,129 @@ export default function ChatPage({
                 Ask a question to start a conversation.
               </Typography>
             )}
-            {messages.map((message, index) => (
-              <Box
-                key={`${message.role}-${index}`}
-                sx={{
-                  mb: 2,
-                  p: 2,
-                  borderRadius: 2,
-                  bgcolor: message.role === "user" ? "#f0f5f2" : "#fff",
-                  border: "1px solid #e2e5df",
-                  ...(message.evidenceSufficient === false && { borderColor: "#ffcdd2" }),
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                    {message.role === "user" ? "You" : "Assistant"}
-                  </Typography>
-                  {message.role === "assistant" && (message.responseMode || message.answerMode) && (
-                    <Typography component="small" variant="caption" sx={{ color: "text.secondary" }}>
-                      {[
-                        message.responseMode === "student" ? "Student" : "Policy Researcher",
-                        message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
-                      ].join(" · ")}
+            {messages.map((message, index) => {
+              const isLowEvidence = message.evidenceSufficient === false;
+              const isChatMode = message.answerMode === "chat";
+              return (
+                <Box
+                  key={`${message.role}-${index}`}
+                  sx={{
+                    mb: 2,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: message.role === "user" ? "#f0f5f2" : "#fff",
+                    border: "1px solid",
+                    borderColor: isLowEvidence ? "#ffcdd2" : "#e2e5df",
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                      {message.role === "user" ? "You" : "Assistant"}
                     </Typography>
+                    {message.role === "assistant" && (message.responseMode || message.answerMode) && (
+                      <Typography component="small" variant="caption" sx={{ color: "text.secondary" }}>
+                        {[
+                          message.responseMode === "student" ? "Student" : "Policy Researcher",
+                          message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
+                        ].join(" · ")}
+                      </Typography>
+                    )}
+                    {message.role === "assistant" && message.citations?.length > 0 && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => openCitationDrawer(message.citations, 0, message.evidenceSufficient, message.evidenceReason)}
+                        sx={{
+                          ml: "auto",
+                          fontSize: "0.72em",
+                          color: isLowEvidence ? "#d84315" : "#214f42",
+                          textTransform: "none",
+                          minWidth: 0,
+                          px: 1,
+                          py: 0,
+                        }}
+                      >
+                        {isLowEvidence && "⚠ "}
+                        {message.citations.length} source{message.citations.length !== 1 ? "s" : ""}
+                      </Button>
+                    )}
+                  </Box>
+
+                  {/* Low evidence banner — analysis mode: error (answer was withheld) */}
+                  {message.role === "assistant" && isLowEvidence && !isChatMode && (
+                    <Alert severity="error" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>Insufficient Evidence</strong> — The selected documents do not contain passages closely related to this question. The answer has been withheld to avoid hallucination.
+                    </Alert>
                   )}
-                  {message.role === "assistant" && message.citations?.length > 0 && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => openCitationDrawer(message.citations)}
+
+                  {/* Low evidence banner — chat mode: warning (answer produced but weak) */}
+                  {message.role === "assistant" && isLowEvidence && isChatMode && (
+                    <Alert severity="warning" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>Low-confidence answer</strong> — The selected documents contain limited relevant evidence. This response may draw on general knowledge beyond the provided documents.
+                    </Alert>
+                  )}
+
+                  {message.role === "assistant" ? (
+                    <Box
                       sx={{
-                        ml: "auto",
-                        fontSize: "0.72em",
-                        color: "#214f42",
-                        textTransform: "none",
-                        minWidth: 0,
-                        px: 1,
-                        py: 0,
+                        fontSize: "14px",
+                        lineHeight: 1.7,
+                        "& h1, & h2, & h3": { fontFamily: "Georgia, serif", mt: 2, mb: 1, lineHeight: 1.2 },
+                        "& h1": { fontSize: "1.4em" },
+                        "& h2": { fontSize: "1.2em" },
+                        "& h3": { fontSize: "1.05em" },
+                        "& p": { my: 0.75 },
+                        "& ul, & ol": { pl: 2.5, my: 0.75 },
+                        "& li": { mb: 0.25 },
+                        "& code": {
+                          px: 0.75, py: 0.25, borderRadius: 1,
+                          bgcolor: "#f0f3ed", fontSize: "0.9em", fontFamily: "monospace",
+                        },
+                        "& pre": {
+                          p: 2, borderRadius: 2, bgcolor: "#f5f5f0", overflow: "auto", fontSize: "0.85em",
+                          "& code": { p: 0, bgcolor: "transparent" },
+                        },
+                        "& blockquote": { mx: 0, px: 2, borderLeft: "3px solid #214f42", color: "#63706a" },
+                        "& table": { borderCollapse: "collapse", width: "100%", my: 1 },
+                        "& th, & td": { border: "1px solid #d9d8d0", px: 1.5, py: 1, textAlign: "left" },
+                        "& th": { bgcolor: "#f5f5f0", fontWeight: 800 },
+                        "& a": { color: "#214f42" },
                       }}
                     >
-                      {message.citations.length} source{message.citations.length !== 1 ? "s" : ""}
-                    </Button>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={makeMarkdownComponents(
+                          message.citations || [],
+                          (cits, idx) => openCitationDrawer(cits, idx, message.evidenceSufficient, message.evidenceReason),
+                          isLowEvidence,
+                        )}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                      {message.content}
+                    </Typography>
+                  )}
+
+                  {/* CitationList only appears for low-evidence chat-mode responses */}
+                  {message.role === "assistant" && isLowEvidence && isChatMode && message.citations?.length > 0 && (
+                    <CitationList
+                      citations={message.citations}
+                      onOpenSource={handleOpenCitation}
+                      lowEvidence={true}
+                    />
+                  )}
+
+                  {message.truncated && (
+                    <Typography variant="caption" sx={{ color: "warning.main" }}>
+                      The combined PDF text was truncated.
+                    </Typography>
                   )}
                 </Box>
-                {message.role === "assistant" ? (
-                  <Box
-                    sx={{
-                      fontSize: "14px",
-                      lineHeight: 1.7,
-                      "& h1, & h2, & h3": { fontFamily: "Georgia, serif", mt: 2, mb: 1, lineHeight: 1.2 },
-                      "& h1": { fontSize: "1.4em" },
-                      "& h2": { fontSize: "1.2em" },
-                      "& h3": { fontSize: "1.05em" },
-                      "& p": { my: 0.75 },
-                      "& ul, & ol": { pl: 2.5, my: 0.75 },
-                      "& li": { mb: 0.25 },
-                      "& code": {
-                        px: 0.75, py: 0.25, borderRadius: 1,
-                        bgcolor: "#f0f3ed", fontSize: "0.9em", fontFamily: "monospace",
-                      },
-                      "& pre": {
-                        p: 2, borderRadius: 2, bgcolor: "#f5f5f0", overflow: "auto", fontSize: "0.85em",
-                        "& code": { p: 0, bgcolor: "transparent" },
-                      },
-                      "& blockquote": { mx: 0, px: 2, borderLeft: "3px solid #214f42", color: "#63706a" },
-                      "& table": { borderCollapse: "collapse", width: "100%", my: 1 },
-                      "& th, & td": { border: "1px solid #d9d8d0", px: 1.5, py: 1, textAlign: "left" },
-                      "& th": { bgcolor: "#f5f5f0", fontWeight: 800 },
-                      "& a": { color: "#214f42" },
-                    }}
-                  >
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={makeMarkdownComponents(message.citations || [], openCitationDrawer)}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
-                  </Box>
-                ) : (
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                    {message.content}
-                  </Typography>
-                )}
-                {message.role === "assistant" && message.evidenceSufficient !== false && message.citations?.length > 0 && (
-                  <CitationList citations={message.citations} onOpenSource={handleOpenCitation} />
-                )}
-                {message.truncated && (
-                  <Typography variant="caption" sx={{ color: "warning.main" }}>
-                    The combined PDF text was truncated.
-                  </Typography>
-                )}
-                {message.evidenceSufficient === false && message.answerMode === "chat" && (
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                    Selected documents provided limited evidence; this answer may include general
-                    knowledge beyond the excerpts.
-                  </Typography>
-                )}
-                {message.evidenceSufficient === false && message.answerMode !== "chat" && (
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                    Answer withheld because evidence was insufficient.
-                  </Typography>
-                )}
-              </Box>
-            ))}
+              );
+            })}
             {busy && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
                 <CircularProgress size={20} />
@@ -821,7 +846,7 @@ export default function ChatPage({
         onClose={() => setCitationDrawer((s) => ({ ...s, open: false }))}
         PaperProps={{
           sx: {
-            width: { xs: "100%", sm: 420 },
+            width: { xs: "100%", sm: 440 },
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
@@ -834,8 +859,9 @@ export default function ChatPage({
           sx={{
             px: 3,
             py: 2,
-            bgcolor: "#fff",
-            borderBottom: "1px solid #e2e5df",
+            bgcolor: citationDrawer.evidenceSufficient === false ? "#fff3e0" : "#fff",
+            borderBottom: "1px solid",
+            borderColor: citationDrawer.evidenceSufficient === false ? "#ffe0b2" : "#e2e5df",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -843,12 +869,20 @@ export default function ChatPage({
           }}
         >
           <Box>
-            <Typography variant="h6" sx={{ fontFamily: "Georgia, serif", fontSize: 18, lineHeight: 1.2 }}>
-              Sources
+            <Typography
+              variant="h6"
+              sx={{
+                fontFamily: "Georgia, serif",
+                fontSize: 18,
+                lineHeight: 1.2,
+                color: citationDrawer.evidenceSufficient === false ? "#bf360c" : "inherit",
+              }}
+            >
+              {citationDrawer.evidenceSufficient === false ? "⚠ Sources (Low Confidence)" : "Sources"}
             </Typography>
             {citationDrawer.citations.length > 0 && (
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                {citationDrawer.citations.length} source{citationDrawer.citations.length !== 1 ? "s" : ""} retrieved
+                {citationDrawer.citations.length} passage{citationDrawer.citations.length !== 1 ? "s" : ""} retrieved
               </Typography>
             )}
           </Box>
@@ -861,6 +895,23 @@ export default function ChatPage({
           </IconButton>
         </Box>
 
+        {/* Low-evidence warning banner in drawer */}
+        {citationDrawer.evidenceSufficient === false && (
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              bgcolor: "#fbe9e7",
+              borderBottom: "1px solid #ffccbc",
+              flexShrink: 0,
+            }}
+          >
+            <Typography variant="body2" sx={{ fontSize: 12.5, color: "#bf360c", lineHeight: 1.6 }}>
+              <strong>Evidence quality is low.</strong> The passages below were the closest matches found, but they may not be directly relevant to the question. Treat this answer with caution.
+            </Typography>
+          </Box>
+        )}
+
         {/* Citations list */}
         <Box sx={{ flex: 1, overflowY: "auto", p: 2 }}>
           {citationDrawer.citations.length === 0 ? (
@@ -872,41 +923,46 @@ export default function ChatPage({
           ) : (
             drawerCitations(citationDrawer.citations, citationDrawer.focusIndex).map((c, i) => {
               const isFocused = c._displayIndex === citationDrawer.focusIndex + 1;
+              const isLow = citationDrawer.evidenceSufficient === false;
+              const accentColor = isLow ? "#d84315" : "#214f42";
+              const accentLight = isLow ? "#fbe9e7" : "#f0f7f4";
+              const borderFocused = isLow ? "#d84315" : "#214f42";
+              const badgeBg = isFocused ? accentColor : (isLow ? "#ffccbc" : "#e4ece9");
+              const badgeColor = isFocused ? "#fff" : accentColor;
               return (
                 <Box
                   key={i}
                   sx={{
-                    mb: 1.5,
+                    mb: 2,
                     borderRadius: 2,
                     border: "1px solid",
-                    borderColor: isFocused ? "#214f42" : "#dfe4de",
+                    borderColor: isFocused ? borderFocused : (isLow ? "#ffccbc" : "#dfe4de"),
                     bgcolor: "#fff",
                     overflow: "hidden",
-                    boxShadow: isFocused ? "0 0 0 2px rgba(33,79,66,0.12)" : "none",
+                    boxShadow: isFocused ? `0 0 0 2px ${accentColor}22` : "none",
                     transition: "box-shadow 0.2s, border-color 0.2s",
                   }}
                 >
-                  {/* Card header */}
+                  {/* Card header: badge + title */}
                   <Box
                     sx={{
                       px: 2,
-                      py: 1.25,
+                      pt: 1.5,
+                      pb: 1,
                       display: "flex",
                       alignItems: "flex-start",
                       gap: 1.25,
-                      borderBottom: c.quote ? "1px solid #eef0ec" : "none",
-                      bgcolor: isFocused ? "#f0f7f4" : "#fff",
+                      bgcolor: isFocused ? accentLight : "#fff",
                     }}
                   >
-                    {/* Citation number badge */}
                     <Box
                       sx={{
                         flexShrink: 0,
                         width: 26,
                         height: 26,
                         borderRadius: "50%",
-                        bgcolor: isFocused ? "#214f42" : "#e4ece9",
-                        color: isFocused ? "#fff" : "#214f42",
+                        bgcolor: badgeBg,
+                        color: badgeColor,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -917,59 +973,67 @@ export default function ChatPage({
                     >
                       {c._displayIndex}
                     </Box>
-
-                    {/* Title + page */}
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700, fontSize: 13, lineHeight: 1.35, mb: 0.25 }}
-                      >
-                        {c.title || "Unknown source"}
-                      </Typography>
-                      {c.page != null && (
-                        <Box
-                          component="span"
-                          sx={{
-                            display: "inline-block",
-                            px: 0.75,
-                            py: 0.1,
-                            borderRadius: 1,
-                            bgcolor: "#eef0ec",
-                            fontSize: 11,
-                            color: "#4a5a54",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Page {c.page}
-                        </Box>
-                      )}
-                    </Box>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 700, fontSize: 13, lineHeight: 1.4, flex: 1 }}
+                    >
+                      {c.title || "Unknown source"}
+                    </Typography>
                   </Box>
+
+                  {/* Page badge */}
+                  {c.page != null && (
+                    <Box sx={{ px: 2, pb: 1 }}>
+                      <Box
+                        component="span"
+                        sx={{
+                          display: "inline-block",
+                          px: 0.75,
+                          py: 0.15,
+                          borderRadius: 1,
+                          bgcolor: isLow ? "#ffccbc" : "#eef0ec",
+                          fontSize: 11,
+                          color: isLow ? "#bf360c" : "#4a5a54",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Page {c.page}
+                      </Box>
+                    </Box>
+                  )}
 
                   {/* Quote */}
                   {c.quote && (
-                    <Box sx={{ px: 2, pt: 1.25, pb: c.document_id ? 1 : 1.5 }}>
+                    <Box
+                      sx={{
+                        mx: 2,
+                        mb: 1.5,
+                        px: 1.5,
+                        py: 1,
+                        borderLeft: `3px solid ${isLow ? "#ff8a65" : "#c8d9d4"}`,
+                        bgcolor: isLow ? "#fff8f5" : "#f8fbf9",
+                        borderRadius: "0 4px 4px 0",
+                      }}
+                    >
                       <Typography
                         variant="body2"
                         sx={{
                           fontSize: 12.5,
-                          lineHeight: 1.65,
-                          color: "#4a5a54",
+                          lineHeight: 1.7,
+                          color: isLow ? "#5d2b1e" : "#4a5a54",
                           fontStyle: "italic",
-                          pl: 1.5,
-                          borderLeft: "2px solid #c8d9d4",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
                         }}
                       >
-                        &ldquo;
-                        {c.quote.length > 300 ? c.quote.slice(0, 300) + "…" : c.quote}
-                        &rdquo;
+                        &ldquo;{c.quote.length > 400 ? c.quote.slice(0, 400) + "…" : c.quote}&rdquo;
                       </Typography>
                     </Box>
                   )}
 
                   {/* Open PDF action */}
                   {c.document_id && (
-                    <Box sx={{ px: 2, pb: 1.25, pt: c.quote ? 0.5 : 1 }}>
+                    <Box sx={{ px: 2, pb: 1.5 }}>
                       <Button
                         size="small"
                         variant="outlined"
@@ -983,11 +1047,11 @@ export default function ChatPage({
                         sx={{
                           fontSize: 11,
                           textTransform: "none",
-                          borderColor: "#c8d9d4",
-                          color: "#214f42",
+                          borderColor: isLow ? "#ffab91" : "#c8d9d4",
+                          color: accentColor,
                           py: 0.4,
                           px: 1.25,
-                          "&:hover": { borderColor: "#214f42", bgcolor: "#f0f7f4" },
+                          "&:hover": { borderColor: accentColor, bgcolor: accentLight },
                         }}
                       >
                         Open PDF{c.page != null ? ` at page ${c.page}` : ""}
