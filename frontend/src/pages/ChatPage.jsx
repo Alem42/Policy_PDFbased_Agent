@@ -13,7 +13,6 @@ import {
   DialogTitle,
   Divider,
   Drawer,
-  FormControlLabel,
   IconButton,
   ListItemButton,
   ListItemText,
@@ -37,10 +36,13 @@ import {
   deleteChatSession,
   getChatSession,
   getChatSessions,
+  getDocumentChunks,
+  getDocumentDetail,
   openDocumentFile,
   renameChatSession,
 } from "../api";
 import CitationList from "../components/CitationList";
+import DocumentDrawer from "../components/DocumentDrawer";
 
 // Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
@@ -196,6 +198,11 @@ export default function ChatPage({
     evidenceReason: null,
   });
 
+  // Document detail drawer (Sources module) — same drawer used in the Library page
+  const [detailDoc, setDetailDoc] = useState(null);
+  const [detailChunks, setDetailChunks] = useState(null);
+  const [openChunkId, setOpenChunkId] = useState(null);
+
   // Load session list on mount
   async function loadSessions() {
     setHistoryLoading(true);
@@ -340,6 +347,27 @@ export default function ChatPage({
     setCitationDrawer({ open: true, citations: citations || [], focusIndex, evidenceSufficient: evidenceSufficient !== false, evidenceReason: evidenceReason || null });
   }
 
+  async function handleShowDocumentDetail(document) {
+    setError("");
+    try {
+      const detail = await getDocumentDetail(document.id);
+      setDetailDoc(detail);
+      setDetailChunks(null);
+      setOpenChunkId(null);
+      if (document.status === "ready") {
+        setDetailChunks(await getDocumentChunks(document.id));
+      }
+    } catch (detailError) {
+      setError(detailError.message);
+    }
+  }
+
+  function closeDocumentDetail() {
+    setDetailDoc(null);
+    setDetailChunks(null);
+    setOpenChunkId(null);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const cleanQuestion = question.trim();
@@ -429,21 +457,26 @@ export default function ChatPage({
                     key={document.id || document.name}
                     sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}
                   >
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={selected.includes(document.id)}
-                          onChange={() => toggleDocument(document.id)}
-                          size="small"
-                        />
-                      }
-                      label={
-                        <Typography variant="body2" sx={{ wordBreak: "break-word", fontSize: 13 }}>
-                          {document.title || document.name}
-                        </Typography>
-                      }
-                      sx={{ m: 0, flex: 1 }}
-                    />
+                    <Box sx={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+                      <Checkbox
+                        checked={selected.includes(document.id)}
+                        onChange={() => toggleDocument(document.id)}
+                        size="small"
+                      />
+                      <Typography
+                        variant="body2"
+                        onClick={() => handleShowDocumentDetail(document)}
+                        title="View document details"
+                        sx={{
+                          wordBreak: "break-word",
+                          fontSize: 13,
+                          cursor: "pointer",
+                          "&:hover": { textDecoration: "underline", color: "#214f42" },
+                        }}
+                      >
+                        {document.title || document.name}
+                      </Typography>
+                    </Box>
                     <IconButton
                       size="small"
                       title="Remove from context"
@@ -1064,6 +1097,15 @@ export default function ChatPage({
           )}
         </Box>
       </Drawer>
+
+      {/* Document detail drawer — opened from the Sources module */}
+      <DocumentDrawer
+        detail={detailDoc}
+        chunks={detailChunks}
+        openChunkId={openChunkId}
+        onToggleChunk={(chunkId) => setOpenChunkId(openChunkId === chunkId ? null : chunkId)}
+        onClose={closeDocumentDetail}
+      />
 
       {/* Missing documents warning */}
       <Snackbar
