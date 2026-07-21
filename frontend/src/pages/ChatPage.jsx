@@ -540,30 +540,52 @@ export default function ChatPage({
     let assistantAdded = false;
 
     try {
-      // Streaming (askQuestionStream) doesn't support per-message model
-      // selection yet -- using the non-streaming endpoint until it does.
-      const result = await askQuestion(
+      for await (const evt of askQuestionStream(
         cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
-      );
-
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: result.answer,
-          citations: Array.isArray(result.citations) ? result.citations : [],
-          truncated: result.truncated,
-          evidenceSufficient: result.evidence_sufficient,
-          evidenceReason: result.evidence_reason || null,
-          responseMode: result.response_mode || responseMode,
-          answerMode: result.answer_mode || answerMode,
-          model: result.model || null,
-        },
-      ]);
-
-      if (result.session_id && !sessionId) {
-        setSessionId(String(result.session_id));
-        loadSessions();
+      )) {
+        if (evt.type === "thinking") {
+          assistantAdded = true;
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: "", streaming: true, responseMode, answerMode },
+          ]);
+        } else if (evt.type === "token") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + evt.value };
+            return next;
+          });
+        } else if (evt.type === "citations") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            next[next.length - 1] = {
+              ...last,
+              citations: Array.isArray(evt.data) ? evt.data : [],
+              evidenceSufficient: evt.evidence_sufficient,
+              evidenceReason: evt.evidence_reason || null,
+              responseMode: evt.response_mode || responseMode,
+              answerMode: evt.answer_mode || answerMode,
+              model: evt.model || null,
+            };
+            return next;
+          });
+          if (evt.session_id && !sessionId) {
+            setSessionId(String(evt.session_id));
+            loadSessions();
+          }
+        } else if (evt.type === "error") {
+          throw new Error(evt.message);
+        } else if (evt.type === "done") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            if (!last?.streaming) return current;
+            next[next.length - 1] = { ...last, streaming: false };
+            return next;
+          });
+        }
       }
     } catch (chatError) {
       setError(chatError.message);

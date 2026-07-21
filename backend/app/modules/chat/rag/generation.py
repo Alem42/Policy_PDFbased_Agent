@@ -57,6 +57,50 @@ def _build_citation_instruction(citations: list[dict]) -> str:
     return CITATION_INSTRUCTION.format(source_list="\n".join(lines))
 
 
+def _build_messages(
+    system_prompt: str,
+    history: list[dict] | None,
+    question: str,
+) -> list:
+    # Build the message list: system → history turns → current question.
+    # History is a list of {"role": "user"|"assistant", "content": str} dicts.
+    messages: list = [SystemMessage(content=system_prompt)]
+    for msg in history or []:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg.get("role") == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+    messages.append(HumanMessage(content=question))
+    return messages
+
+
+def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
+    """Resolve (provider, selected_model, provider_config) for a chat request.
+
+    `model` may carry an explicit "<provider>/<model-id>" prefix chosen
+    per-message from the chat UI; otherwise falls back to the admin-configured
+    default provider/model. Shared by generate_answer and
+    generate_answer_streaming so both agree on which model ultimately answers,
+    and by the /chat/stream router so it knows what to persist/report before
+    generation has actually produced anything.
+    """
+    default_provider = get_llm_provider()
+    provider, requested_model = resolve_provider_and_model(model, default_provider)
+    config = get_provider_config(provider)
+
+    # The global "default chat model" override only applies when no explicit
+    # per-message provider was requested — it wouldn't make sense to apply an
+    # e.g. DeepSeek model override to a message that explicitly asked for OpenAI.
+    if provider == default_provider:
+        selected_model = requested_model or get_llm_chat_model()[0] or config["default_model"]
+    else:
+        selected_model = requested_model or config["default_model"]
+    if not selected_model:
+        raise ValueError(f"No model specified for provider '{provider}'.")
+
+    return provider, selected_model, config
+
+
 def generate_answer(
     question: str,
     context: str,
@@ -70,11 +114,7 @@ def generate_answer(
     resolved_model is "<provider>/<model-id>", persisted per-message so chat
     history can show which model actually answered.
     """
-    default_provider = get_llm_provider()
-    # `model` may carry an explicit "<provider>/<model-id>" prefix chosen
-    # per-message from the chat UI; otherwise fall back to the admin default.
-    provider, requested_model = resolve_provider_and_model(model, default_provider)
-    config = get_provider_config(provider)
+    provider, selected_model, config = resolve_generation_target(model)
 
     api_key, _ = get_llm_api_key(provider)
     if not api_key:
@@ -88,26 +128,7 @@ def generate_answer(
         context=context or "(No relevant excerpts were retrieved from the selected documents.)",
         citation_instruction=citation_instruction,
     )
-
-    # Build the message list: system → history turns → current question.
-    # History is a list of {"role": "user"|"assistant", "content": str} dicts.
-    messages: list = [SystemMessage(content=system_prompt)]
-    for msg in history or []:
-        if msg.get("role") == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        elif msg.get("role") == "assistant":
-            messages.append(AIMessage(content=msg["content"]))
-    messages.append(HumanMessage(content=question))
-
-    # The global "default chat model" override only applies when no explicit
-    # per-message provider was requested — it wouldn't make sense to apply an
-    # e.g. DeepSeek model override to a message that explicitly asked for OpenAI.
-    if provider == default_provider:
-        selected_model = requested_model or get_llm_chat_model()[0] or config["default_model"]
-    else:
-        selected_model = requested_model or config["default_model"]
-    if not selected_model:
-        raise ValueError(f"No model specified for provider '{provider}'.")
+    messages = _build_messages(system_prompt, history, question)
 
     base_url = config["base_url"] or get_settings().llm_base_url
 
@@ -136,35 +157,28 @@ async def generate_answer_streaming(
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields raw text chunks from the LLM as they arrive.
 
-    Does not yet support per-message provider/model selection like
-    generate_answer does -- always uses the admin-configured default.
+    Supports the same per-message provider/model selection as generate_answer
+    (see resolve_generation_target) — the caller (chat_stream router) resolves
+    the target once up front to know what to persist/report, and this
+    function resolves it again (cheap, deterministic) to build its own client.
     """
-    api_key, _ = get_llm_api_key()
+    provider, selected_model, config = resolve_generation_target(model)
+
+    api_key, _ = get_llm_api_key(provider)
     if not api_key:
-        raise ValueError("LLM_API_KEY is not configured.")
+        raise ValueError(f"No API key is configured for provider '{provider}'.")
 
     if not context and answer_mode == "analysis":
         raise ValueError("No extractable text was found in the selected PDFs.")
-
-    provider = get_llm_provider()
-    config = get_provider_config(provider)
 
     citation_instruction = _build_citation_instruction(citations or [])
     system_prompt = get_system_prompt(response_mode, answer_mode).format(
         context=context or "(No relevant excerpts were retrieved from the selected documents.)",
         citation_instruction=citation_instruction,
     )
-
-    messages: list = [SystemMessage(content=system_prompt)]
-    for msg in history or []:
-        if msg.get("role") == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        elif msg.get("role") == "assistant":
-            messages.append(AIMessage(content=msg["content"]))
-    messages.append(HumanMessage(content=question))
+    messages = _build_messages(system_prompt, history, question)
 
     base_url = config["base_url"] or get_settings().llm_base_url
-    selected_model = model or get_llm_chat_model()[0] or config["default_model"]
 
     llm = ChatOpenAI(
         api_key=api_key,

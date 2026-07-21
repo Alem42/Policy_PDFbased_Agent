@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from app.core.llm_providers import PROVIDER_CONFIGS
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.history_repository import chat_history_repository
-from app.modules.chat.rag.generation import generate_answer_streaming
+from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
@@ -214,6 +214,7 @@ async def chat_stream(
         citations: list[dict] = []
         evidence_sufficient = True
         evidence_reason: str | None = None
+        resolved_model: str | None = None
 
         try:
             await asyncio.to_thread(
@@ -250,6 +251,11 @@ async def chat_stream(
 
             if should_generate:
                 yield _sse({"type": "thinking"})
+                # Resolved once up front (cheap, deterministic) so we know what
+                # to persist/report even though generate_answer_streaming
+                # resolves the same target again internally to build its client.
+                provider, selected_model, _config = resolve_generation_target(payload.model)
+                resolved_model = f"{provider}/{selected_model}"
                 async for token in generate_answer_streaming(
                     question=payload.question,
                     context=state.get("context", ""),
@@ -281,6 +287,7 @@ async def chat_stream(
                 evidence_sufficient,
                 payload.response_mode,
                 payload.answer_mode,
+                resolved_model,
             )
             await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -293,6 +300,7 @@ async def chat_stream(
                     "response_mode": payload.response_mode,
                     "answer_mode": effective_answer_mode,
                     "session_id": session_id,
+                    "model": resolved_model,
                 }
             )
             yield _sse({"type": "done"})

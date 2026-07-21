@@ -263,6 +263,7 @@ export async function* askQuestionStream(
   answerMode = "analysis",
   history = [],
   sessionId = null,
+  model = null,
 ) {
   const token = localStorage.getItem("authToken");
   const body = {
@@ -272,6 +273,7 @@ export async function* askQuestionStream(
     answer_mode: answerMode,
     session_id: sessionId,
   };
+  if (model) body.model = model;
   if (!sessionId) {
     body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
       role: msg.role,
