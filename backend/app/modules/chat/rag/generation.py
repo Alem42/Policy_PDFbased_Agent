@@ -25,6 +25,10 @@ REASON_LLM_JUDGED_INSUFFICIENT = (
     "information that answers your question."
 )
 
+# Keep the judge's "reason" short enough to read as one clause inside the
+# refusal template's "**Why the system stopped:** {reason}" line.
+MAX_JUDGE_REASON_LENGTH = 200
+
 
 def format_context(pages: list[dict]) -> tuple[str, bool]:
     sections: list[str] = []
@@ -110,6 +114,22 @@ def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
     return provider, selected_model, config
 
 
+def _sanitize_judge_reason(reason: str) -> str:
+    """Force the judge's reason into one clean, bounded line.
+
+    The refusal message is built by substituting {reason} into a fixed
+    template (see prompts.py's INSUFFICIENT_EVIDENCE_* constants) on a single
+    "**Why the system stopped:** {reason}" line. The judge LLM is asked for
+    "one short sentence", but nothing stops a model from ignoring that --
+    collapsing whitespace/newlines and capping length here guarantees the
+    template's structure can never be broken by what the judge returns.
+    """
+    collapsed = " ".join(reason.split()).strip("*#`_ ")
+    if len(collapsed) > MAX_JUDGE_REASON_LENGTH:
+        collapsed = collapsed[: MAX_JUDGE_REASON_LENGTH - 1].rstrip() + "…"
+    return collapsed or REASON_LLM_JUDGED_INSUFFICIENT
+
+
 def _parse_judge_verdict(raw: str) -> tuple[bool, str | None]:
     """Parse the evidence-judge LLM's verdict, tolerating minor formatting slop
     (e.g. a ```json ... ``` fence some models add despite being told not to).
@@ -124,7 +144,8 @@ def _parse_judge_verdict(raw: str) -> tuple[bool, str | None]:
         sufficient = bool(data.get("sufficient", True))
         if sufficient:
             return True, None
-        return False, (data.get("reason") or None) or REASON_LLM_JUDGED_INSUFFICIENT
+        reason = data.get("reason") or None
+        return False, _sanitize_judge_reason(reason) if reason else REASON_LLM_JUDGED_INSUFFICIENT
     except (json.JSONDecodeError, AttributeError, TypeError):
         # Fail open on unparseable output -- don't block a user over a
         # formatting slip in this secondary check; trust the cheap gate.
