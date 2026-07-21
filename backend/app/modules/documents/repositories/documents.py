@@ -14,6 +14,7 @@ class DocumentRepository:
         file_path: str,
         content: bytes,
         checksum: str,
+        mime_type: str = "application/pdf",
         upsert: bool = False,
     ) -> str:
         conflict_sql = (
@@ -22,7 +23,8 @@ class DocumentRepository:
             SET original_filename = EXCLUDED.original_filename,
                 stored_filename = EXCLUDED.stored_filename,
                 file_size = EXCLUDED.file_size,
-                sha256 = EXCLUDED.sha256
+                sha256 = EXCLUDED.sha256,
+                mime_type = EXCLUDED.mime_type
         """
             if upsert
             else ""
@@ -32,9 +34,9 @@ class DocumentRepository:
                 f"""
                 INSERT INTO documents (
                     id, original_filename, stored_filename, file_path,
-                    file_size, sha256, status
+                    file_size, sha256, mime_type, status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, 'uploaded')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded')
                 {conflict_sql}
                 RETURNING id
                 """,
@@ -45,6 +47,7 @@ class DocumentRepository:
                     file_path,
                     len(content),
                     checksum,
+                    mime_type,
                 ),
             ).fetchone()
             connection.commit()

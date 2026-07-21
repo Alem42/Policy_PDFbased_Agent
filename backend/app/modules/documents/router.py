@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app.modules.auth.dependencies import get_optional_user
+from app.modules.documents.file_store import document_file_store
 from app.modules.documents.repositories.catalogue import document_catalogue_repository
 from app.modules.documents.schemas import (
     DocumentAssetRead,
@@ -18,7 +19,7 @@ from app.modules.documents.schemas import (
     DocumentVersionRead,
 )
 from app.modules.documents.service import get_document as get_document_record
-from app.modules.documents.service import resolve_pdf
+from app.modules.documents.service import resolve_document_file
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 OptionalUser = Annotated[dict | None, Depends(get_optional_user)]
@@ -133,7 +134,7 @@ async def get_document_file(document_id: UUID, user: OptionalUser) -> FileRespon
                 include_restricted,
             ),
             asyncio.to_thread(
-                resolve_pdf,
+                resolve_document_file,
                 str(document_id),
                 include_restricted,
             ),
@@ -142,6 +143,6 @@ async def get_document_file(document_id: UUID, user: OptionalUser) -> FileRespon
         raise HTTPException(status_code=404, detail="Document file not found") from exc
     return FileResponse(
         path,
-        media_type="application/pdf",
+        media_type=document_file_store.mime_type_for(document["original_filename"]),
         filename=document["original_filename"],
     )

@@ -21,10 +21,12 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
+
   function selectFiles(fileList) {
     setFiles(
-      Array.from(fileList).filter(
-        (file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"),
+      Array.from(fileList).filter((file) =>
+        ACCEPTED_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)),
       ),
     );
   }
@@ -94,10 +96,10 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
           sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}
         >
           <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={busy}>
-            Browse PDFs
+            Browse Documents
             <VisuallyHiddenInput
               type="file"
-              accept="application/pdf,.pdf"
+              accept="application/pdf,.pdf,.docx,.txt,.md"
               multiple
               onChange={(event) => {
                 selectFiles(event.target.files);
@@ -107,11 +109,13 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
           </Button>
           <Box sx={{ minWidth: 0 }}>
             <Typography component="strong" sx={{ display: "block", fontWeight: 700 }}>
-              {files.length ? `${files.length} PDF${files.length === 1 ? "" : "s"} selected` : "Drop PDF files here"}
+              {files.length ? `${files.length} file${files.length === 1 ? "" : "s"} selected` : "Drop files here"}
             </Typography>
             {!compact && (
               <Typography variant="body2" sx={{ color: "text.secondary" }} noWrap>
-                {files.length ? files.map((file) => file.name).join(", ") : "Text-based PDFs work best."}
+                {files.length
+                  ? files.map((file) => file.name).join(", ")
+                  : "PDF, Word (.docx), TXT, or Markdown."}
               </Typography>
             )}
           </Box>
@@ -122,11 +126,11 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
           type="submit"
           startIcon={<CloudUploadIcon />}
         >
-          {busy ? "Uploading..." : "Upload PDFs"}
+          {busy ? "Uploading..." : "Upload Documents"}
         </Button>
         {files.length > 0 && (
           <Box
-            aria-label="Selected PDF files"
+            aria-label="Selected files"
             sx={{
               gridColumn: "1 / -1",
               display: "flex",

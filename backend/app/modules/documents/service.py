@@ -13,9 +13,9 @@ from app.modules.documents.embeddings import (
     get_embedding_model_name,
     vector_literal,
 )
+from app.modules.documents.extraction import extract_document
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.ingestion.metadata_extractor import generate_document_metadata
-from app.modules.documents.pdf_extractor import pdf_extractor
 from app.modules.documents.repositories.content import document_content_repository
 from app.modules.documents.repositories.documents import document_repository
 from app.modules.documents.repositories.embeddings import embedding_repository
@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 def process_document(document_id: str) -> None:
-    """Orchestrate PDF extraction, enrichment, chunking, and indexing."""
+    """Orchestrate extraction, enrichment, chunking, and indexing."""
     logger.info("Processing started: document_id=%s", document_id)
     job_id = processing_job_repository.start(document_id, "ingest_pdf")
     try:
         document = document_repository.get_record(document_id)
         path = document_file_store.resolve(document["file_path"])
-        pages = pdf_extractor.extract(path)
+        pages = extract_document(path)
         document_content_repository.replace_pages(document_id, pages)
         document_repository.set_status(document_id, "parsed")
 
@@ -83,8 +83,8 @@ def process_document(document_id: str) -> None:
 async def save_upload(upload: UploadFile) -> dict:
     filename = document_file_store.safe_filename(upload.filename or "")
     content = await upload.read()
-    if not document_file_store.is_pdf(content):
-        raise ValueError(f"{filename} is not a valid PDF file.")
+    if not document_file_store.is_valid_content(filename, content):
+        raise ValueError(f"{filename} does not look like a valid file of its type.")
 
     document_id = str(uuid4())
     path = document_file_store.save(filename, content, document_id)
@@ -96,6 +96,7 @@ async def save_upload(upload: UploadFile) -> dict:
             file_path=document_file_store.relative_path(path),
             content=content,
             checksum=document_file_store.checksum(content),
+            mime_type=document_file_store.mime_type_for(filename),
         )
     except Exception:
         document_file_store.delete(path)
@@ -104,14 +105,14 @@ async def save_upload(upload: UploadFile) -> dict:
     return row_to_metadata(document_repository.get_record(document_id))
 
 
-def sync_existing_pdfs() -> None:
+def sync_existing_documents() -> None:
     known_paths = document_repository.known_file_paths()
     for path in document_file_store.discover():
         relative_path = document_file_store.relative_path(path)
         if relative_path in known_paths:
             continue
         content = path.read_bytes()
-        if not document_file_store.is_pdf(content):
+        if not document_file_store.is_valid_content(path.name, content):
             continue
         document_id = document_repository.create(
             document_id=str(uuid4()),
@@ -120,6 +121,7 @@ def sync_existing_pdfs() -> None:
             file_path=relative_path,
             content=content,
             checksum=document_file_store.checksum(content),
+            mime_type=document_file_store.mime_type_for(path.name),
             upsert=True,
         )
         try:
@@ -129,7 +131,7 @@ def sync_existing_pdfs() -> None:
 
 
 def rescan_library(reprocess_existing: bool = True) -> dict:
-    sync_existing_pdfs()
+    sync_existing_documents()
     if not reprocess_existing:
         return {"rescanned": True, "reprocessed": 0}
     document_ids = document_repository.all_document_ids()
@@ -173,7 +175,7 @@ def get_document_chunks(identifier: str, include_restricted: bool = False) -> li
     )
 
 
-def resolve_pdf(identifier: str, include_restricted: bool = False) -> Path:
+def resolve_document_file(identifier: str, include_restricted: bool = False) -> Path:
     document = document_repository.get_record(identifier, include_restricted=include_restricted)
     return document_file_store.resolve(document["file_path"])
 
@@ -204,7 +206,7 @@ def extract_pages(identifier: str, include_restricted: bool = False) -> list[dic
     if pages:
         return pages
     document = document_repository.get_record(identifier, include_restricted=include_restricted)
-    pages = pdf_extractor.extract(document_file_store.resolve(document["file_path"]))
+    pages = extract_document(document_file_store.resolve(document["file_path"]))
     document_content_repository.replace_pages(str(document["id"]), pages)
     return pages
 
@@ -260,7 +262,7 @@ def retrieve_relevant_chunks(
         return candidates[:limit]
 
 
-def copy_pdf_into_library(source_path: Path) -> str:
+def copy_file_into_library(source_path: Path) -> str:
     content = source_path.read_bytes()
     document_id = str(uuid4())
     target = document_file_store.copy(source_path, document_id)
@@ -272,6 +274,7 @@ def copy_pdf_into_library(source_path: Path) -> str:
             file_path=document_file_store.relative_path(target),
             content=content,
             checksum=document_file_store.checksum(content),
+            mime_type=document_file_store.mime_type_for(target.name),
         )
     except Exception:
         document_file_store.delete(target)
