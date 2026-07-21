@@ -204,12 +204,8 @@ async def chat_stream(
             effective_answer_mode = str(state.get("answer_mode", "analysis"))
 
             # Mirror route_after_evidence_check logic
-            should_generate = (
-                evidence_sufficient
-                or (
-                    effective_answer_mode == "chat"
-                    and payload.response_mode != "policymaker"
-                )
+            should_generate = evidence_sufficient or (
+                effective_answer_mode == "chat" and payload.response_mode != "policymaker"
             )
 
             if should_generate:
@@ -248,15 +244,17 @@ async def chat_stream(
             )
             await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
-            yield _sse({
-                "type": "citations",
-                "data": citations,
-                "evidence_sufficient": evidence_sufficient,
-                "evidence_reason": evidence_reason,
-                "response_mode": payload.response_mode,
-                "answer_mode": effective_answer_mode,
-                "session_id": session_id,
-            })
+            yield _sse(
+                {
+                    "type": "citations",
+                    "data": citations,
+                    "evidence_sufficient": evidence_sufficient,
+                    "evidence_reason": evidence_reason,
+                    "response_mode": payload.response_mode,
+                    "answer_mode": effective_answer_mode,
+                    "session_id": session_id,
+                }
+            )
             yield _sse({"type": "done"})
 
         except TimeoutError:
