@@ -5,6 +5,7 @@ import {
   Button,
   Chip,
   Collapse,
+  Fade,
   IconButton,
   LinearProgress,
   Typography,
@@ -49,6 +50,35 @@ const POLL_INTERVAL_MS = 3000;
 // How long an "Indexed" row stays visible before auto-dismissing, unless
 // the user has hovered or clicked it (see pinned/onMouseEnter below).
 const AUTO_DISMISS_DELAY_MS = 6000;
+const COUNTDOWN_TICK_MS = 100;
+
+// Ticking countdown bar shown on a row while its auto-dismiss timer is
+// running -- hidden (via the caller passing deadline=null) whenever the row
+// is hovered, pinned, or fading out, since none of those have a countdown.
+function DismissCountdown({ deadline }) {
+  const [percentRemaining, setPercentRemaining] = useState(100);
+
+  useEffect(() => {
+    if (!deadline) return undefined;
+    function tick() {
+      const remainingMs = deadline - Date.now();
+      setPercentRemaining(Math.max(0, Math.min(100, (remainingMs / AUTO_DISMISS_DELAY_MS) * 100)));
+    }
+    tick();
+    const intervalId = window.setInterval(tick, COUNTDOWN_TICK_MS);
+    return () => window.clearInterval(intervalId);
+  }, [deadline]);
+
+  if (!deadline) return null;
+  return (
+    <LinearProgress
+      variant="determinate"
+      value={percentRemaining}
+      color="success"
+      sx={{ height: 3, "& .MuiLinearProgress-bar": { transition: "none" } }}
+    />
+  );
+}
 
 function ParsedFields({ detail }) {
   return (
@@ -172,6 +202,7 @@ function UploadJobRow({ job, onToggle, onDismiss, onMouseEnter, onMouseLeave }) 
         )}
       </Box>
       {!isTerminal && <LinearProgress variant="indeterminate" />}
+      {job.dismissDeadline && <DismissCountdown deadline={job.dismissDeadline} />}
       {job.status === "failed" && job.error && (
         <Alert severity="error" sx={{ borderRadius: 0 }}>
           {job.error}
@@ -211,17 +242,23 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
 
   function cancelAutoDismiss(jobId) {
     const timerId = dismissTimersRef.current.get(jobId);
-    if (timerId) {
-      window.clearTimeout(timerId);
-      dismissTimersRef.current.delete(jobId);
-    }
+    if (!timerId) return;
+    window.clearTimeout(timerId);
+    dismissTimersRef.current.delete(jobId);
+    setJobs((current) =>
+      current.map((job) => (job.id === jobId ? { ...job, dismissDeadline: null } : job)),
+    );
   }
 
   function scheduleAutoDismiss(jobId) {
     cancelAutoDismiss(jobId);
+    const deadline = Date.now() + AUTO_DISMISS_DELAY_MS;
+    setJobs((current) =>
+      current.map((job) => (job.id === jobId ? { ...job, dismissDeadline: deadline } : job)),
+    );
     const timerId = window.setTimeout(() => {
       dismissTimersRef.current.delete(jobId);
-      dismissJob(jobId);
+      startFadeOut(jobId);
     }, AUTO_DISMISS_DELAY_MS);
     dismissTimersRef.current.set(jobId, timerId);
   }
@@ -229,15 +266,16 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
   // Start the auto-dismiss countdown the moment a row first reaches a
   // successful terminal state, as long as it hasn't been pinned by a click.
   // Re-runs on every `jobs` update (e.g. the parsed-fields fetch completing
-  // shortly after "indexed"), so it must also skip rows currently hovered --
-  // otherwise a later update would blindly re-schedule a fresh countdown
-  // right out from under an in-progress hover.
+  // shortly after "indexed"), so it must also skip rows currently hovered or
+  // fading out -- otherwise a later update would blindly re-schedule a fresh
+  // countdown right out from under an in-progress hover or exit animation.
   useEffect(() => {
     jobs.forEach((job) => {
       const isSuccess = job.status === "indexed" || job.status === "ready";
       if (
         isSuccess &&
         !job.pinned &&
+        !job.fadingOut &&
         !hoveredJobIdsRef.current.has(job.id) &&
         !dismissTimersRef.current.has(job.id)
       ) {
@@ -268,9 +306,19 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
     );
   }
 
+  // Actually removes the row -- only called once its exit transition has
+  // finished (Collapse's onExited below), never directly by a timer/click.
   function dismissJob(jobId) {
     cancelAutoDismiss(jobId);
     setJobs((current) => current.filter((job) => job.id !== jobId));
+  }
+
+  // Starts the fade/collapse-out transition; dismissJob follows once it ends.
+  function startFadeOut(jobId) {
+    cancelAutoDismiss(jobId);
+    setJobs((current) =>
+      current.map((job) => (job.id === jobId ? { ...job, fadingOut: true } : job)),
+    );
   }
 
   function handleRowMouseEnter(jobId) {
@@ -282,7 +330,7 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
     hoveredJobIdsRef.current.delete(jobId);
     const job = jobs.find((item) => item.id === jobId);
     const isSuccess = job && (job.status === "indexed" || job.status === "ready");
-    if (isSuccess && !job.pinned) {
+    if (isSuccess && !job.pinned && !job.fadingOut) {
       scheduleAutoDismiss(jobId);
     }
   }
@@ -351,6 +399,8 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
         detail: null,
         expanded: false,
         pinned: false,
+        fadingOut: false,
+        dismissDeadline: null,
       }));
       setJobs((current) => [...newJobs, ...current]);
       setFiles([]);
@@ -473,14 +523,19 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
       {jobs.length > 0 && (
         <Box aria-label="Upload progress" sx={{ display: "grid", gap: 1, mb: "18px" }}>
           {jobs.map((job) => (
-            <UploadJobRow
-              key={job.id}
-              job={job}
-              onToggle={() => toggleJob(job.id)}
-              onDismiss={() => dismissJob(job.id)}
-              onMouseEnter={() => handleRowMouseEnter(job.id)}
-              onMouseLeave={() => handleRowMouseLeave(job.id)}
-            />
+            <Collapse key={job.id} in={!job.fadingOut} timeout={350} onExited={() => dismissJob(job.id)}>
+              <Fade in={!job.fadingOut} timeout={250}>
+                <Box>
+                  <UploadJobRow
+                    job={job}
+                    onToggle={() => toggleJob(job.id)}
+                    onDismiss={() => startFadeOut(job.id)}
+                    onMouseEnter={() => handleRowMouseEnter(job.id)}
+                    onMouseLeave={() => handleRowMouseLeave(job.id)}
+                  />
+                </Box>
+              </Fade>
+            </Collapse>
           ))}
         </Box>
       )}
