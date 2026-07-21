@@ -36,3 +36,4 @@ class PDFQAState(TypedDict):
     evidence_sufficient: NotRequired[bool]
     evidence_reason: NotRequired[str | None]
     answer: NotRequired[str]
+    resolved_model: NotRequired[str | None]

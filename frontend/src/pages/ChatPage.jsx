@@ -15,6 +15,7 @@ import {
   IconButton,
   ListItemButton,
   ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Snackbar,
@@ -35,6 +36,7 @@ import remarkGfm from "remark-gfm";
 import {
   askQuestionStream,
   deleteChatSession,
+  getChatModels,
   getChatSession,
   getChatSessions,
   getDocumentChunks,
@@ -132,6 +134,23 @@ function getResponseModeLabel(value) {
   return getOptionLabel(RESPONSE_MODE_OPTIONS, value);
 }
 
+// Flattens the /chat/models response ([{provider, provider_label, models}, ...])
+// into a lookup keyed by "<provider>/<model-id>" for display purposes.
+function flattenModelLabels(providerGroups) {
+  const lookup = {};
+  for (const group of providerGroups || []) {
+    for (const model of group.models || []) {
+      lookup[model.id] = `${model.label} (${group.provider_label})`;
+    }
+  }
+  return lookup;
+}
+
+function getModelLabel(modelLookup, modelId) {
+  if (!modelId) return null;
+  return modelLookup[modelId] || modelId;
+}
+
 function formatSessionDate(dateStr) {
   const date = new Date(dateStr);
   const now = new Date();
@@ -162,6 +181,12 @@ export default function ChatPage({
   const [answerMode, setAnswerMode] = useState("analysis");
   const [responseModeAnchor, setResponseModeAnchor] = useState(null);
   const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
+
+  // Per-message model selection: null means "use the workspace default model".
+  const [modelGroups, setModelGroups] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [modelAnchor, setModelAnchor] = useState(null);
+  const modelLabels = flattenModelLabels(modelGroups);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState(resumeSessionId);
@@ -240,6 +265,17 @@ export default function ChatPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const groups = await getChatModels();
+        setModelGroups(Array.isArray(groups) ? groups : []);
+      } catch {
+        // Non-fatal: fall back to the workspace default model.
+      }
+    })();
+  }, []);
+
   // Load a prior session when navigated here with a sessionId in router state
   useEffect(() => {
     if (!resumeSessionId) return;
@@ -315,6 +351,7 @@ export default function ChatPage({
         evidenceReason: null,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
+        model: m.model,
       })),
     );
     setSessionId(String(detail.id));
@@ -503,56 +540,62 @@ export default function ChatPage({
     let assistantAdded = false;
 
     try {
-      const stream = askQuestionStream(
-        cleanQuestion, selected, responseMode, answerMode, messages, sessionId,
-      );
-
-      for await (const event of stream) {
-        if (event.type === "token") {
-          if (!assistantAdded) {
-            assistantAdded = true;
-            setMessages((current) => [
-              ...current,
-              {
-                role: "assistant",
-                content: event.value,
-                citations: [],
-                evidenceSufficient: true,
-                evidenceReason: null,
-                responseMode: responseMode,
-                answerMode: answerMode,
-                streaming: true,
-              },
-            ]);
-          } else {
-            setMessages((current) => {
-              const updated = [...current];
-              const last = updated[updated.length - 1];
-              updated[updated.length - 1] = { ...last, content: last.content + event.value };
-              return updated;
-            });
-          }
-        } else if (event.type === "citations") {
+      for await (const evt of askQuestionStream(
+        cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
+      )) {
+        if (evt.type === "thinking") {
+          assistantAdded = true;
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: "", streaming: true, responseMode, answerMode },
+          ]);
+        } else if (evt.type === "token") {
+          assistantAdded = true;
           setMessages((current) => {
-            const updated = [...current];
-            const last = updated[updated.length - 1];
-            updated[updated.length - 1] = {
-              ...last,
-              citations: Array.isArray(event.data) ? event.data : [],
-              evidenceSufficient: event.evidence_sufficient ?? true,
-              evidenceReason: event.evidence_reason ?? null,
-              responseMode: event.response_mode || responseMode,
-              answerMode: event.answer_mode || answerMode,
-              streaming: false,
-            };
-            return updated;
+            const last = current[current.length - 1];
+            // Normal generation path already added a streaming placeholder on
+            // "thinking" -- append to it. The insufficient-evidence refusal
+            // path skips "thinking" and sends its message as token events
+            // directly, so this first token needs to create the placeholder.
+            if (last?.role === "assistant" && last.streaming) {
+              const next = [...current];
+              next[next.length - 1] = { ...last, content: last.content + evt.value };
+              return next;
+            }
+            return [
+              ...current,
+              { role: "assistant", content: evt.value, streaming: true, responseMode, answerMode },
+            ];
           });
-          if (event.session_id && !sessionId) {
-            setSessionId(String(event.session_id));
+        } else if (evt.type === "citations") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            next[next.length - 1] = {
+              ...last,
+              citations: Array.isArray(evt.data) ? evt.data : [],
+              evidenceSufficient: evt.evidence_sufficient,
+              evidenceReason: evt.evidence_reason || null,
+              responseMode: evt.response_mode || responseMode,
+              answerMode: evt.answer_mode || answerMode,
+              model: evt.model || null,
+            };
+            return next;
+          });
+          if (evt.session_id && !sessionId) {
+            setSessionId(String(evt.session_id));
             loadSessions();
           }
-        } else if (event.type === "error") {
-          throw new Error(event.message);
+        } else if (evt.type === "error") {
+          throw new Error(evt.message);
+        } else if (evt.type === "done") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            if (!last?.streaming) return current;
+            next[next.length - 1] = { ...last, streaming: false };
+            return next;
+          });
         }
       }
     } catch (chatError) {
@@ -855,7 +898,8 @@ export default function ChatPage({
                         {[
                           getResponseModeLabel(message.responseMode || "researcher"),
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
-                        ].join(" · ")}
+                          message.model ? `Answered by ${getModelLabel(modelLabels, message.model)}` : null,
+                        ].filter(Boolean).join(" · ")}
                       </Typography>
                     )}
                     {message.role === "assistant" && (
@@ -1124,6 +1168,65 @@ export default function ChatPage({
                 ))}
               </Menu>
             </Box>
+
+            {modelGroups.length > 0 && (
+              <Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={busy}
+                  onClick={(event) => setModelAnchor(event.currentTarget)}
+                  aria-haspopup="menu"
+                  sx={{
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    py: 0.75,
+                    px: 1.25,
+                    gap: 0,
+                    minWidth: 0,
+                    textTransform: "none",
+                  }}
+                >
+                  <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                    Model
+                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                    <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                      {selectedModel ? getModelLabel(modelLabels, selectedModel) : "Workspace default"}
+                    </Typography>
+                    <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                  </Box>
+                </Button>
+                <Menu
+                  anchorEl={modelAnchor}
+                  open={Boolean(modelAnchor)}
+                  onClose={() => setModelAnchor(null)}
+                  anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                  transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+                >
+                  <MenuItem
+                    selected={!selectedModel}
+                    onClick={() => { setSelectedModel(null); setModelAnchor(null); }}
+                  >
+                    <ListItemText primary="Workspace default" secondary="Use the admin-configured default model" />
+                  </MenuItem>
+                  {modelGroups.map((group) => [
+                    <ListSubheader key={group.provider} sx={{ lineHeight: "32px" }}>
+                      {group.provider_label}
+                    </ListSubheader>,
+                    ...group.models.map((option) => (
+                      <MenuItem
+                        key={option.id}
+                        selected={option.id === selectedModel}
+                        onClick={() => { setSelectedModel(option.id); setModelAnchor(null); }}
+                      >
+                        <ListItemText primary={option.label} />
+                      </MenuItem>
+                    )),
+                  ])}
+                </Menu>
+              </Box>
+            )}
           </Box>
 
           {/* Chat Form */}

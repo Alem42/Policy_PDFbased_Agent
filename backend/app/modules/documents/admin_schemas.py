@@ -15,6 +15,7 @@ class CredibilityLevel(StrEnum):
 class ProcessingStatus(StrEnum):
     QUEUED = "queued"
     EXTRACTING = "extracting"
+    OCR = "ocr"
     CHUNKING = "chunking"
     EMBEDDING = "embedding"
     INDEXED = "indexed"

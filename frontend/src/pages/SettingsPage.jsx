@@ -5,20 +5,44 @@ import {
   Typography,
   Button,
   TextField,
+  MenuItem,
   Alert,
-  CircularProgress,
   Skeleton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/Delete";
 import { getSettings, saveSettings } from "../api";
+
+// Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
+const PROVIDERS = [
+  { id: "deepseek", label: "DeepSeek" },
+  { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic" },
+  { id: "gemini", label: "Gemini" },
+  { id: "custom", label: "Custom / self-hosted" },
+];
 
 export default function SettingsPage({ user, onNavigate }) {
   const [settings, setSettings] = useState(null);
-  const [apiKey, setApiKey] = useState("");
+  const [llmProvider, setLlmProvider] = useState("deepseek");
   const [model, setModel] = useState("");
+  const [providerKeyInputs, setProviderKeyInputs] = useState({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  // "Manage models" dialog — edits the curated model list for one provider at a time.
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelDialogProvider, setModelDialogProvider] = useState("deepseek");
+  const [modelDialogRows, setModelDialogRows] = useState([]);
+  const [modelDialogBusy, setModelDialogBusy] = useState(false);
+  const [modelDialogError, setModelDialogError] = useState("");
 
   async function loadSettings() {
     setLoading(true);
@@ -27,6 +51,8 @@ export default function SettingsPage({ user, onNavigate }) {
       const result = await getSettings();
       setSettings(result);
       setModel(result.llm_chat_model || "");
+      setLlmProvider(result.llm_provider || "deepseek");
+      setProviderKeyInputs({});
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -45,14 +71,20 @@ export default function SettingsPage({ user, onNavigate }) {
     setNotice("");
     setError("");
     try {
+      // Only send keys the admin actually typed — omitted providers keep their saved key.
+      const providerApiKeys = Object.fromEntries(
+        Object.entries(providerKeyInputs).filter(([, value]) => value.trim()),
+      );
       const result = await saveSettings({
-        llm_api_key: apiKey.trim() ? apiKey : null,
         llm_chat_model: model,
+        llm_provider: llmProvider,
+        ...(Object.keys(providerApiKeys).length > 0 ? { provider_api_keys: providerApiKeys } : {}),
       });
       setSettings(result);
       setModel(result.llm_chat_model || "");
-      setApiKey("");
-      setNotice("Token settings saved.");
+      setLlmProvider(result.llm_provider || "deepseek");
+      setProviderKeyInputs({});
+      setNotice("Settings saved.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -60,24 +92,69 @@ export default function SettingsPage({ user, onNavigate }) {
     }
   }
 
-  async function handleClearToken() {
-    if (!window.confirm("Clear the saved token and fall back to .env if present?")) return;
+  async function handleClearProviderKey(providerId) {
+    if (!window.confirm(`Clear the saved key for ${providerId} and fall back to .env if present?`)) return;
 
     setBusy(true);
     setNotice("");
     setError("");
     try {
-      const result = await saveSettings({
-        llm_api_key: "",
-        llm_chat_model: model,
-      });
+      const result = await saveSettings({ provider_api_keys: { [providerId]: "" } });
       setSettings(result);
-      setApiKey("");
-      setNotice("Saved token cleared.");
+      setNotice(`Cleared the saved key for ${providerId}.`);
     } catch (clearError) {
       setError(clearError.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openModelDialog(providerId) {
+    const initialProvider = providerId || llmProvider;
+    setModelDialogProvider(initialProvider);
+    setModelDialogRows((settings?.provider_models?.[initialProvider] || []).map((m) => ({ ...m })));
+    setModelDialogError("");
+    setModelDialogOpen(true);
+  }
+
+  function switchModelDialogProvider(providerId) {
+    setModelDialogProvider(providerId);
+    setModelDialogRows((settings?.provider_models?.[providerId] || []).map((m) => ({ ...m })));
+  }
+
+  function updateModelRow(index, field, value) {
+    setModelDialogRows((rows) => rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  }
+
+  function addModelRow() {
+    setModelDialogRows((rows) => [...rows, { id: "", label: "" }]);
+  }
+
+  function removeModelRow(index) {
+    setModelDialogRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  function resetModelDialogToDefault() {
+    setModelDialogRows(
+      (settings?.default_provider_models?.[modelDialogProvider] || []).map((m) => ({ ...m })),
+    );
+  }
+
+  async function handleSaveModelDialog() {
+    setModelDialogBusy(true);
+    setModelDialogError("");
+    try {
+      const cleanRows = modelDialogRows
+        .map((r) => ({ id: r.id.trim(), label: r.label.trim() || r.id.trim() }))
+        .filter((r) => r.id);
+      const result = await saveSettings({ provider_models: { [modelDialogProvider]: cleanRows } });
+      setSettings(result);
+      setModelDialogOpen(false);
+      setNotice(`Updated the model list for ${modelDialogProvider}.`);
+    } catch (saveError) {
+      setModelDialogError(saveError.message);
+    } finally {
+      setModelDialogBusy(false);
     }
   }
 
@@ -131,10 +208,11 @@ export default function SettingsPage({ user, onNavigate }) {
             "&:hover": { backgroundColor: "#1a3f35" },
           }}
         >
-          API token
+          LLM providers
         </Button>
         <Typography variant="body2" sx={{ color: "text.secondary" }}>
-          Saved values are kept on the backend and override the local .env file.
+          Saved values are kept on the backend and override the local .env file. Each provider
+          needs its own key configured before it appears as a model choice in Chat.
         </Typography>
       </Card>
 
@@ -142,73 +220,26 @@ export default function SettingsPage({ user, onNavigate }) {
       <Card sx={{ flex: 1, p: 3 }}>
         <Box sx={{ mb: "20px" }}>
           <Typography variant="subtitle2">Configuration</Typography>
-          <Typography variant="h2" sx={{ fontSize: 24 }}>API token</Typography>
+          <Typography variant="h2" sx={{ fontSize: 24 }}>LLM providers</Typography>
         </Box>
 
         {loading ? (
           <Box sx={{ py: 2 }}>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr 1fr 1fr" }, gap: 2, mb: 3 }}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Box key={i}>
-                  <Skeleton variant="text" width={60} height={16} />
-                  <Skeleton variant="text" width="80%" height={28} />
-                </Box>
-              ))}
-            </Box>
             <Skeleton variant="text" width="30%" height={20} sx={{ mb: 1 }} />
             <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
             <Skeleton variant="text" width="30%" height={20} sx={{ mb: 1 }} />
             <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Skeleton variant="rounded" width={120} height={40} />
-              <Skeleton variant="rounded" width={80} height={40} />
-              <Skeleton variant="rounded" width={140} height={40} />
-            </Box>
+            <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
+            <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
           </Box>
         ) : (
           <>
-            {/* Status grid */}
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr 1fr 1fr" },
-                gap: 2,
-                mb: 3,
-              }}
-            >
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Status
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_configured ? "Configured" : "Not configured"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Token
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.masked_llm_api_key || "None"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Source
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_api_key_source || "missing"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Model source
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_chat_model_source || "default"}
-                </Typography>
-              </Box>
-            </Box>
+            <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
+              Default provider status:{" "}
+              <strong>{settings?.llm_configured ? "Configured" : "Not configured"}</strong>
+              {" "}({settings?.llm_api_key_source || "missing"}), model{" "}
+              <strong>{settings?.llm_chat_model}</strong> ({settings?.llm_chat_model_source})
+            </Typography>
 
             {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -216,53 +247,204 @@ export default function SettingsPage({ user, onNavigate }) {
             <Box component="form" onSubmit={handleSave} sx={{ display: "grid", gap: 2 }}>
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                  New API key
+                  Default provider
                 </Typography>
                 <TextField
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="Leave blank to keep the current token"
-                  type="password"
-                  autoComplete="off"
+                  select
+                  value={llmProvider}
+                  onChange={(event) => {
+                    const nextProvider = event.target.value;
+                    setLlmProvider(nextProvider);
+                    // Drop a model choice that doesn't exist for the newly selected provider.
+                    const validIds = (settings?.provider_models?.[nextProvider] || []).map((m) => m.id);
+                    if (nextProvider !== "custom" && !validIds.includes(model)) {
+                      setModel("");
+                    }
+                  }}
                   size="small"
-                  fullWidth
-                />
+                  sx={{ maxWidth: 320 }}
+                >
+                  {PROVIDERS.map((provider) => (
+                    <MenuItem key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                  Leave this empty to keep the token currently in use.
+                  Used for chat messages that don't explicitly pick a model.
                 </Typography>
               </Box>
+
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                  Chat model
+                  Default chat model override
                 </Typography>
-                <TextField
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="Enter the chat model name"
-                  size="small"
-                  fullWidth
-                />
+                {llmProvider === "custom" ? (
+                  <TextField
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder="Enter the self-hosted model name"
+                    size="small"
+                    sx={{ maxWidth: 320 }}
+                  />
+                ) : (
+                  <TextField
+                    select
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    size="small"
+                    sx={{ maxWidth: 320 }}
+                  >
+                    <MenuItem value="">
+                      <em>Use provider's built-in default</em>
+                    </MenuItem>
+                    {/* Keep a saved value visible even if it predates this curated list. */}
+                    {model && !(settings?.provider_models?.[llmProvider] || []).some((m) => m.id === model) && (
+                      <MenuItem value={model}>{model}</MenuItem>
+                    )}
+                    {(settings?.provider_models?.[llmProvider] || []).map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Only applies to the default provider above.
+                </Typography>
               </Box>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                  Provider API keys
+                </Typography>
+                <Button size="small" variant="outlined" onClick={() => openModelDialog()}>
+                  Manage models
+                </Button>
+              </Box>
+              {PROVIDERS.map((provider) => (
+                <Box
+                  key={provider.id}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "140px 1fr auto" },
+                    gap: 1,
+                    alignItems: "center",
+                    p: 1.5,
+                    border: "1px solid #e2e5df",
+                    borderRadius: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{provider.label}</Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      {settings?.masked_provider_keys?.[provider.id] || "Not configured"}
+                    </Typography>
+                  </Box>
+                  <TextField
+                    value={providerKeyInputs[provider.id] || ""}
+                    onChange={(event) =>
+                      setProviderKeyInputs((current) => ({
+                        ...current,
+                        [provider.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Leave blank to keep the current key"
+                    type="password"
+                    autoComplete="off"
+                    size="small"
+                    fullWidth
+                  />
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    disabled={busy || !settings?.masked_provider_keys?.[provider.id]}
+                    onClick={() => handleClearProviderKey(provider.id)}
+                  >
+                    Clear
+                  </Button>
+                </Box>
+              ))}
+
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
                 <Button variant="contained" disabled={busy} type="submit">
                   {busy ? "Saving..." : "Save settings"}
                 </Button>
                 <Button variant="outlined" disabled={busy} onClick={loadSettings}>
                   Reload
                 </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  disabled={busy}
-                  onClick={handleClearToken}
-                >
-                  Clear saved token
-                </Button>
               </Box>
             </Box>
           </>
         )}
       </Card>
+
+      {/* Manage models dialog */}
+      <Dialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Manage models</DialogTitle>
+        <DialogContent sx={{ display: "grid", gap: 2 }}>
+          <TextField
+            select
+            label="Provider"
+            value={modelDialogProvider}
+            onChange={(event) => switchModelDialogProvider(event.target.value)}
+            size="small"
+            sx={{ maxWidth: 280, mt: 1 }}
+          >
+            {PROVIDERS.map((provider) => (
+              <MenuItem key={provider.id} value={provider.id}>
+                {provider.label}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          {modelDialogError && <Alert severity="error">{modelDialogError}</Alert>}
+
+          <Box sx={{ display: "grid", gap: 1 }}>
+            {modelDialogRows.length === 0 && (
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                No models configured for this provider yet.
+              </Typography>
+            )}
+            {modelDialogRows.map((row, index) => (
+              <Box key={index} sx={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 1 }}>
+                <TextField
+                  value={row.id}
+                  onChange={(event) => updateModelRow(index, "id", event.target.value)}
+                  placeholder="Model id (e.g. gpt-4o)"
+                  size="small"
+                />
+                <TextField
+                  value={row.label}
+                  onChange={(event) => updateModelRow(index, "label", event.target.value)}
+                  placeholder="Display label (e.g. GPT-4o)"
+                  size="small"
+                />
+                <IconButton size="small" onClick={() => removeModelRow(index)} sx={{ color: "#888" }}>
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+            <Button size="small" variant="text" startIcon={<AddIcon />} onClick={addModelRow} sx={{ justifySelf: "start" }}>
+              Add model
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
+          <Button size="small" onClick={resetModelDialogToDefault} disabled={modelDialogBusy}>
+            Reset to default
+          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button onClick={() => setModelDialogOpen(false)} disabled={modelDialogBusy}>
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={handleSaveModelDialog} disabled={modelDialogBusy}>
+              {modelDialogBusy ? "Saving..." : "Save"}
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
