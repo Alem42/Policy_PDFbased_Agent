@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -15,6 +17,13 @@ from app.modules.chat.rag.prompts import (
     get_system_prompt,
 )
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model, get_llm_provider
+
+logger = logging.getLogger(__name__)
+
+REASON_LLM_JUDGED_INSUFFICIENT = (
+    "The retrieved excerpts are similar in wording but don't actually contain "
+    "information that answers your question."
+)
 
 
 def format_context(pages: list[dict]) -> tuple[str, bool]:
@@ -99,6 +108,93 @@ def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
         raise ValueError(f"No model specified for provider '{provider}'.")
 
     return provider, selected_model, config
+
+
+def _parse_judge_verdict(raw: str) -> tuple[bool, str | None]:
+    """Parse the evidence-judge LLM's verdict, tolerating minor formatting slop
+    (e.g. a ```json ... ``` fence some models add despite being told not to).
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text[4:] if text.lower().startswith("json") else text
+        text = text.strip()
+    try:
+        data = json.loads(text)
+        sufficient = bool(data.get("sufficient", True))
+        if sufficient:
+            return True, None
+        return False, (data.get("reason") or None) or REASON_LLM_JUDGED_INSUFFICIENT
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        # Fail open on unparseable output -- don't block a user over a
+        # formatting slip in this secondary check; trust the cheap gate.
+        logger.warning("Evidence-judge LLM returned unparseable output: %r", raw[:200])
+        return True, None
+
+
+def check_evidence_sufficiency_llm(
+    question: str,
+    citations: list[dict],
+    model: str | None = None,
+) -> tuple[bool, str | None]:
+    """Second, semantic evidence gate -- runs only after the cheap vector-
+    distance/reranker threshold (see rag/evidence.py) already passed.
+
+    That cheap gate only measures embedding closeness, which can be
+    deceptively high for topically unrelated policy-language text (e.g. a
+    question about Russian policy can score "close enough" against documents
+    about Chile's data centers or financial-AI principles, simply because
+    they share generic policy vocabulary). This asks the LLM itself, using
+    only short excerpt summaries (not the full context) so the call stays
+    small and fast -- this is a non-streaming, short-output request that
+    gates whether the real (streamed) generation call happens at all.
+    """
+    if not citations:
+        return True, None  # Nothing to judge against; trust the cheap gate.
+
+    try:
+        provider, selected_model, config = resolve_generation_target(model)
+        api_key, _ = get_llm_api_key(provider)
+    except ValueError:
+        return True, None  # Fail open -- don't block over a config problem.
+    if not api_key:
+        return True, None
+
+    excerpt_lines = []
+    for i, c in enumerate(citations[:8]):
+        page = f", page {c['page']}" if c.get("page") else ""
+        quote = (c.get("quote") or "").strip().replace("\n", " ")[:200]
+        excerpt_lines.append(f"[{i + 1}] {c.get('title', 'Unknown document')}{page}: {quote}")
+    excerpt_summary = "\n".join(excerpt_lines)
+
+    judge_prompt = (
+        "You are a strict relevance judge for a document Q&A system. Given a "
+        "user question and short excerpts retrieved by a vector search, decide "
+        "whether the excerpts actually contain information that can answer the "
+        "question -- not merely text that is topically or vocabulary-similar.\n\n"
+        f"Question: {question}\n\n"
+        f"Retrieved excerpts:\n{excerpt_summary}\n\n"
+        "Respond with ONLY a compact JSON object and nothing else: "
+        '{"sufficient": true or false, "reason": "one short sentence if false, else null"}'
+    )
+
+    base_url = config["base_url"] or get_settings().llm_base_url
+    llm = ChatOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        model=selected_model,
+        temperature=0,
+        extra_body=config["extra_body"],
+    )
+    try:
+        raw = StrOutputParser().invoke(llm.invoke([HumanMessage(content=judge_prompt)]))
+    except Exception:
+        # Fail open -- an infra hiccup in this secondary check shouldn't block
+        # the user from getting an answer the cheap gate already approved.
+        logger.exception("Evidence-judge LLM call failed; falling back to the cheap gate.")
+        return True, None
+
+    return _parse_judge_verdict(raw)
 
 
 def generate_answer(
