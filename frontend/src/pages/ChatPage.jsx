@@ -550,11 +550,22 @@ export default function ChatPage({
             { role: "assistant", content: "", streaming: true, responseMode, answerMode },
           ]);
         } else if (evt.type === "token") {
+          assistantAdded = true;
           setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, content: last.content + evt.value };
-            return next;
+            const last = current[current.length - 1];
+            // Normal generation path already added a streaming placeholder on
+            // "thinking" -- append to it. The insufficient-evidence refusal
+            // path skips "thinking" and sends its message as token events
+            // directly, so this first token needs to create the placeholder.
+            if (last?.role === "assistant" && last.streaming) {
+              const next = [...current];
+              next[next.length - 1] = { ...last, content: last.content + evt.value };
+              return next;
+            }
+            return [
+              ...current,
+              { role: "assistant", content: evt.value, streaming: true, responseMode, answerMode },
+            ];
           });
         } else if (evt.type === "citations") {
           setMessages((current) => {
