@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
@@ -104,3 +106,53 @@ def generate_answer(
     )
 
     return StrOutputParser().invoke(llm.invoke(messages))
+
+
+async def generate_answer_streaming(
+    question: str,
+    context: str,
+    model: str | None = None,
+    response_mode: ResponseMode = "researcher",
+    history: list[dict] | None = None,
+    citations: list[dict] | None = None,
+    answer_mode: AnswerMode = "analysis",
+) -> AsyncGenerator[str, None]:
+    """Async generator that yields raw text chunks from the LLM as they arrive."""
+    api_key, _ = get_llm_api_key()
+    if not api_key:
+        raise ValueError("LLM_API_KEY is not configured.")
+
+    if not context and answer_mode == "analysis":
+        raise ValueError("No extractable text was found in the selected PDFs.")
+
+    provider = get_llm_provider()
+    config = get_provider_config(provider)
+
+    citation_instruction = _build_citation_instruction(citations or [])
+    system_prompt = get_system_prompt(response_mode, answer_mode).format(
+        context=context or "(No relevant excerpts were retrieved from the selected documents.)",
+        citation_instruction=citation_instruction,
+    )
+
+    messages: list = [SystemMessage(content=system_prompt)]
+    for msg in history or []:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg.get("role") == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+    messages.append(HumanMessage(content=question))
+
+    base_url = config["base_url"] or get_settings().llm_base_url
+    selected_model = model or get_llm_chat_model()[0] or config["default_model"]
+
+    llm = ChatOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        model=selected_model,
+        temperature=0,
+        extra_body=config["extra_body"],
+    )
+
+    async for chunk in llm.astream(messages):
+        if chunk.content:
+            yield str(chunk.content)

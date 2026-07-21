@@ -247,6 +247,80 @@ export function askQuestion(
   });
 }
 
+/**
+ * Streaming version of askQuestion.
+ * Returns an async generator that yields SSE event objects:
+ *   {type:"retrieving"} | {type:"thinking"} | {type:"token",value:str}
+ *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
+ *   | {type:"done"} | {type:"error",message:str}
+ */
+export async function* askQuestionStream(
+  question,
+  documentIds,
+  responseMode = "researcher",
+  answerMode = "analysis",
+  history = [],
+  sessionId = null,
+) {
+  const token = localStorage.getItem("authToken");
+  const body = {
+    question,
+    document_ids: documentIds,
+    response_mode: responseMode,
+    answer_mode: answerMode,
+    session_id: sessionId,
+  };
+  if (!sessionId) {
+    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
+
+  const response = await fetch(apiPath("/chat/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errBody = await response.json();
+      message = errBody.detail || message;
+    } catch { /* keep HTTP fallback */ }
+    throw new Error(message);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by \n\n
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop(); // keep any incomplete trailing fragment
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (payload === "[DONE]") return;
+      try {
+        yield JSON.parse(payload);
+      } catch { /* skip malformed frames */ }
+    }
+  }
+}
+
 // ── Chat history API ───────────────────────────────────────────────────────
 
 export function getChatSessions() {

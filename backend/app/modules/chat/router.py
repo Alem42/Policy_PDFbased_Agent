@@ -1,13 +1,18 @@
 import asyncio
+import json as _json
+from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.history_repository import chat_history_repository
+from app.modules.chat.rag.generation import generate_answer_streaming
 from app.modules.chat.rag.graph.state import normalize_answer_mode
-from app.modules.chat.rag.graph.workflow import run_pdf_qa
+from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
+from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 from app.modules.chat.schemas import MAX_HISTORY_TURNS, ChatRequest, ChatResponse, Citation
 
 router = APIRouter(tags=["rag"])
@@ -117,3 +122,152 @@ async def chat(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    payload: ChatRequest,
+    user: CurrentUser,
+) -> StreamingResponse:
+    """SSE streaming endpoint — yields tokens as they arrive from the LLM.
+
+    Event types:
+      {"type": "retrieving"}                    — retrieval phase started
+      {"type": "thinking"}                      — LLM generation about to start
+      {"type": "token", "value": "..."}         — one text chunk from the LLM
+      {"type": "citations", "data": [...], ...} — final metadata (sent once)
+      {"type": "done"}                          — stream complete
+      {"type": "error", "message": "..."}       — terminal error
+    """
+    doc_ids = [str(d) for d in payload.document_ids]
+    filenames = list(payload.filenames or [])
+    if not doc_ids and not filenames:
+        raise HTTPException(status_code=400, detail="At least one document must be selected.")
+
+    user_id = str(user["id"])
+
+    if payload.session_id is not None:
+        session_id = str(payload.session_id)
+        owns = await asyncio.to_thread(
+            chat_history_repository.session_belongs_to_user, session_id, user_id
+        )
+        if not owns:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+    else:
+        session_id = await asyncio.to_thread(
+            chat_history_repository.create_session,
+            user_id,
+            payload.question[:80],
+            doc_ids or filenames,
+            payload.response_mode,
+        )
+        history = []
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        def _sse(obj: dict) -> str:
+            return f"data: {_json.dumps(obj)}\n\n"
+
+        full_tokens: list[str] = []
+        citations: list[dict] = []
+        evidence_sufficient = True
+        evidence_reason: str | None = None
+
+        try:
+            await asyncio.to_thread(
+                chat_history_repository.add_message, session_id, "user", payload.question
+            )
+
+            yield _sse({"type": "retrieving"})
+
+            state = await asyncio.wait_for(
+                asyncio.to_thread(
+                    run_retrieval,
+                    question=payload.question,
+                    document_ids=doc_ids or None,
+                    filenames=filenames or None,
+                    model=payload.model,
+                    response_mode=payload.response_mode,
+                    answer_mode=payload.answer_mode,
+                    top_k=payload.top_k,
+                    include_restricted=user["role"] == "admin",
+                    history=history,
+                ),
+                timeout=60.0,
+            )
+
+            evidence_sufficient = bool(state.get("evidence_sufficient", False))
+            evidence_reason = state.get("evidence_reason")
+            citations = state.get("citations", [])
+            effective_answer_mode = str(state.get("answer_mode", "analysis"))
+
+            # Mirror route_after_evidence_check logic
+            should_generate = (
+                evidence_sufficient
+                or (
+                    effective_answer_mode == "chat"
+                    and payload.response_mode != "policymaker"
+                )
+            )
+
+            if should_generate:
+                yield _sse({"type": "thinking"})
+                async for token in generate_answer_streaming(
+                    question=payload.question,
+                    context=state.get("context", ""),
+                    model=payload.model,
+                    response_mode=payload.response_mode,
+                    answer_mode=effective_answer_mode,
+                    history=history,
+                    citations=citations,
+                ):
+                    full_tokens.append(token)
+                    yield _sse({"type": "token", "value": token})
+            else:
+                refusal = get_insufficient_evidence_message(
+                    question=payload.question,
+                    reason=evidence_reason or "Too little relevant text was retrieved.",
+                    mode=payload.response_mode,
+                )
+                full_tokens.append(refusal)
+                citations = []
+                yield _sse({"type": "token", "value": refusal})
+
+            complete_answer = "".join(full_tokens)
+            await asyncio.to_thread(
+                chat_history_repository.add_message,
+                session_id,
+                "assistant",
+                complete_answer,
+                citations,
+                evidence_sufficient,
+                payload.response_mode,
+                payload.answer_mode,
+            )
+            await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+
+            yield _sse({
+                "type": "citations",
+                "data": citations,
+                "evidence_sufficient": evidence_sufficient,
+                "evidence_reason": evidence_reason,
+                "response_mode": payload.response_mode,
+                "answer_mode": effective_answer_mode,
+                "session_id": session_id,
+            })
+            yield _sse({"type": "done"})
+
+        except TimeoutError:
+            yield _sse({"type": "error", "message": "Request timed out after 60 s."})
+        except (FileNotFoundError, ValueError) as exc:
+            yield _sse({"type": "error", "message": str(exc)})
+        except Exception as exc:
+            yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
