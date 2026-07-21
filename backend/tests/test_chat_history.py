@@ -179,3 +179,15 @@ def test_get_session_wrong_user_returns_none():
     assert msgs == []
 
     repo.delete_session(session_id, user_id)
+
+
+def test_session_belongs_to_user_requires_owner():
+    repo = _make_repo()
+    user_id = _find_test_user()
+    session_id = repo.create_session(user_id, "Ownership check", [], "researcher")
+
+    wrong = "00000000-0000-0000-0000-000000000000"
+    assert repo.session_belongs_to_user(session_id, user_id) is True
+    assert repo.session_belongs_to_user(session_id, wrong) is False
+
+    repo.delete_session(session_id, user_id)
