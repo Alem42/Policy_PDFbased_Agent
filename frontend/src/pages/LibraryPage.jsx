@@ -691,7 +691,20 @@ export default function LibraryPage({
                   },
                 }}
               >
-                {contextSourceIds.includes(document.id) ? (
+                {!user ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={busy}
+                    onClick={() => window.alert("Log in to add")}
+                    sx={{
+                      bgcolor: "#8a938e",
+                      "&:hover": { bgcolor: "#747d78" },
+                    }}
+                  >
+                    Add to chat
+                  </Button>
+                ) : contextSourceIds.includes(document.id) ? (
                   <Button
                     size="small"
                     variant="outlined"
