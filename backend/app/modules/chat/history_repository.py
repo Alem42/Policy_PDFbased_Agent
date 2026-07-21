@@ -99,6 +99,14 @@ class ChatHistoryRepository:
     # Read
     # ------------------------------------------------------------------
 
+    def session_belongs_to_user(self, session_id: str, user_id: str) -> bool:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM chat_sessions WHERE id = %s AND user_id = %s",
+                (session_id, user_id),
+            ).fetchone()
+        return row is not None
+
     def list_sessions(self, user_id: str, limit: int = 20) -> list[dict]:
         with get_connection() as conn:
             rows = conn.execute(

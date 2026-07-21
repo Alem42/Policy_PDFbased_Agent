@@ -29,6 +29,14 @@ async def chat(
     # ── Session management ──────────────────────────────────────────────
     if payload.session_id is not None:
         session_id = str(payload.session_id)
+        owns_session = await asyncio.to_thread(
+            chat_history_repository.session_belongs_to_user,
+            session_id,
+            user_id,
+        )
+        if not owns_session:
+            raise HTTPException(status_code=404, detail="Session not found.")
+
         # Read history from DB (more reliable than relying on the client to resend it).
         history = await asyncio.to_thread(
             chat_history_repository.get_history_for_llm,
