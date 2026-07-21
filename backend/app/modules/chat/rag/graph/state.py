@@ -1,7 +1,17 @@
 from typing import Literal, NotRequired, TypedDict
 
-ResponseMode = Literal["researcher", "student"]
+ResponseMode = Literal["researcher", "policymaker", "student"]
 AnswerMode = Literal["analysis", "chat"]
+
+
+def normalize_answer_mode(
+    response_mode: ResponseMode,
+    answer_mode: AnswerMode,
+) -> AnswerMode:
+    """Policymaker mode is always grounded in selected documents."""
+    if response_mode == "policymaker":
+        return "analysis"
+    return "chat" if answer_mode == "chat" else "analysis"
 
 
 class PDFQAState(TypedDict):
