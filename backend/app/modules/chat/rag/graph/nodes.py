@@ -10,7 +10,11 @@ from app.modules.chat.rag.graph.state import (
     normalize_answer_mode,
 )
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
-from app.modules.documents.service import read_documents, retrieve_relevant_chunks
+from app.modules.documents.service import (
+    documents_have_embeddings,
+    read_documents,
+    retrieve_relevant_chunks,
+)
 
 
 def _identifiers(state: PDFQAState) -> list[str]:
@@ -47,9 +51,9 @@ def retrieve_context_node(state: PDFQAState) -> dict:
         limit=state.get("top_k", 8),
         include_restricted=state.get("include_restricted", False),
     )
-    # has_embeddings: True when the document has been indexed (chunks exist in the DB).
-    # This determines which evidence-assessment branch to use.
-    has_embeddings = bool(raw_chunks)
+    # Check the DB directly — using bool(raw_chunks) is unreliable because an unusual
+    # query can legitimately return 0 nearest-neighbours even when embeddings exist.
+    has_embeddings = documents_have_embeddings(_identifiers(state))
 
     # Only use chunks that are actually close to the query.
     relevant_chunks = [

@@ -128,6 +128,7 @@ export default function LibraryPage({
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
   const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
   const [editDialog, setEditDialog] = useState({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, document: null });
 
   function updateSearchParams(updates, { replace = false } = {}) {
     setSearchParams((current) => {
@@ -227,8 +228,13 @@ export default function LibraryPage({
     refreshSearch();
   }
 
-  async function handleDelete(document) {
-    if (!window.confirm(`Delete "${document.name}"?`)) return;
+  function handleDelete(document) {
+    setDeleteDialog({ open: true, document });
+  }
+
+  async function handleDeleteConfirm() {
+    const { document } = deleteDialog;
+    setDeleteDialog({ open: false, document: null });
     setBusy(true);
     setError("");
     try {
@@ -973,6 +979,22 @@ export default function LibraryPage({
           </Button>
         </DialogActions>
       </LocalizationProvider>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, document: null })}>
+        <DialogTitle>Delete document?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete &ldquo;{deleteDialog.document?.name}&rdquo;? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog({ open: false, document: null })}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDeleteConfirm}>
+            Delete
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <DocumentDrawer

@@ -85,6 +85,7 @@ class SessionMessage(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     evidence_sufficient: bool | None = None
     response_mode: ResponseMode | None = None
+    answer_mode: AnswerMode | None = None
     created_at: datetime
 
 

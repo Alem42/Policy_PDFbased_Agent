@@ -35,7 +35,14 @@ def assess_evidence_sufficiency(
     """
     clean_context = context.strip()
     if len(clean_context) < MIN_CONTEXT_CHARACTERS:
-        if pages and sum(len(p.get("text", "")) for p in pages) >= MIN_CONTEXT_CHARACTERS:
+        # Page-level bypass only applies to documents that were never indexed.
+        # For indexed documents, short context means no relevant chunks were found —
+        # falling through to the semantic gates is the correct behaviour.
+        if (
+            not has_embeddings
+            and pages
+            and sum(len(p.get("text", "")) for p in pages) >= MIN_CONTEXT_CHARACTERS
+        ):
             return True, None
         return False, REASON_NO_TEXT
 
