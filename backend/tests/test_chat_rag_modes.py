@@ -93,23 +93,17 @@ def test_assess_evidence_accepts_strong_chunks() -> None:
 
 def test_route_after_evidence_check_analysis_blocks_weak_evidence() -> None:
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": True, "answer_mode": "analysis"}
-        )
+        route_after_evidence_check({"evidence_sufficient": True, "answer_mode": "analysis"})
         == "generate_answer"
     )
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": False, "answer_mode": "analysis"}
-        )
+        route_after_evidence_check({"evidence_sufficient": False, "answer_mode": "analysis"})
         == "insufficient_evidence"
     )
 
 
 def test_route_after_evidence_check_chat_allows_weak_evidence() -> None:
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": False, "answer_mode": "chat"}
-        )
+        route_after_evidence_check({"evidence_sufficient": False, "answer_mode": "chat"})
         == "generate_answer"
     )

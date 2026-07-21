@@ -148,8 +148,6 @@ def get_insufficient_evidence_message(
     mode: ResponseMode,
 ) -> str:
     template = (
-        INSUFFICIENT_EVIDENCE_STUDENT
-        if mode == "student"
-        else INSUFFICIENT_EVIDENCE_RESEARCHER
+        INSUFFICIENT_EVIDENCE_STUDENT if mode == "student" else INSUFFICIENT_EVIDENCE_RESEARCHER
     )
     return template.format(question=question.strip(), reason=reason)

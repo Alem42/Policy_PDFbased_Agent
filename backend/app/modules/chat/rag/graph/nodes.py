@@ -46,9 +46,7 @@ def retrieve_context_node(state: PDFQAState) -> dict:
 
     # Only use chunks that are actually close to the query.
     relevant_chunks = [
-        c
-        for c in raw_chunks
-        if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE
+        c for c in raw_chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE
     ]
     context_source = relevant_chunks or state["pages"]
     context, truncated = format_context(context_source)

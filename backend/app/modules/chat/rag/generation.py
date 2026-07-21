@@ -83,7 +83,7 @@ def generate_answer(
     # Build the message list: system → history turns → current question.
     # History is a list of {"role": "user"|"assistant", "content": str} dicts.
     messages: list = [SystemMessage(content=system_prompt)]
-    for msg in (history or []):
+    for msg in history or []:
         if msg.get("role") == "user":
             messages.append(HumanMessage(content=msg["content"]))
         elif msg.get("role") == "assistant":

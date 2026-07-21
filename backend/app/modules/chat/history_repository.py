@@ -128,9 +128,7 @@ class ChatHistoryRepository:
             for row in rows
         ]
 
-    def get_session_messages(
-        self, session_id: str, user_id: str
-    ) -> tuple[dict | None, list[dict]]:
+    def get_session_messages(self, session_id: str, user_id: str) -> tuple[dict | None, list[dict]]:
         """Return (session_meta, messages). session_meta is None if not found or wrong user."""
         with get_connection() as conn:
             session = conn.execute(

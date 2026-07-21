@@ -48,7 +48,9 @@ async def chat(
     # ── Save the user question immediately ─────────────────────────────
     await asyncio.to_thread(
         chat_history_repository.add_message,
-        session_id, "user", payload.question,
+        session_id,
+        "user",
+        payload.question,
     )
 
     try:
@@ -82,6 +84,7 @@ async def chat(
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
         from uuid import UUID
+
         return ChatResponse(
             answer=result["answer"],
             citations=citations,

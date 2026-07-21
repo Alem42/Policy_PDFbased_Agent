@@ -102,6 +102,7 @@ async def rename_session(
 
 # ---------------------------------------------------------------------------
 
+
 def _parse_citations(raw) -> list[Citation]:
     if not raw:
         return []
