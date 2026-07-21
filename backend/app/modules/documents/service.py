@@ -216,6 +216,20 @@ def read_documents(identifiers: list[str], include_restricted: bool = False) -> 
     return pages
 
 
+def documents_have_embeddings(identifiers: list[str]) -> bool:
+    """Return True when at least one of the given documents has been indexed with embeddings."""
+    if not identifiers:
+        return False
+    try:
+        documents = [
+            document_repository.get_record(identifier, include_restricted=True)
+            for identifier in identifiers
+        ]
+        return embedding_repository.has_embeddings([str(doc["id"]) for doc in documents])
+    except Exception:
+        return False
+
+
 def retrieve_relevant_chunks(
     question: str,
     identifiers: list[str],

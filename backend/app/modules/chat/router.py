@@ -1,5 +1,6 @@
 import asyncio
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -17,11 +18,11 @@ async def chat(
     payload: ChatRequest,
     user: CurrentUser,
 ) -> ChatResponse:
-    identifiers = [str(document_id) for document_id in payload.document_ids]
-    if not identifiers and payload.filenames:
-        identifiers = payload.filenames
-    if not identifiers:
+    doc_ids = [str(document_id) for document_id in payload.document_ids]
+    filenames = list(payload.filenames or [])
+    if not doc_ids and not filenames:
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
+    identifiers = doc_ids or filenames
 
     user_id = str(user["id"])
 
@@ -53,27 +54,31 @@ async def chat(
         # New session — no prior history.
         history = []
 
-    # ── Save the user question immediately ─────────────────────────────
-    await asyncio.to_thread(
-        chat_history_repository.add_message,
-        session_id,
-        "user",
-        payload.question,
-    )
-
     try:
+        # ── Save the user question immediately ─────────────────────────
+        await asyncio.to_thread(
+            chat_history_repository.add_message,
+            session_id,
+            "user",
+            payload.question,
+        )
+
         # run_pdf_qa is synchronous (LangGraph + CPU-bound embedding/reranking).
         # Running it in a thread pool prevents blocking the async event loop.
-        result = await asyncio.to_thread(
-            run_pdf_qa,
-            question=payload.question,
-            document_ids=identifiers,
-            model=payload.model,
-            response_mode=payload.response_mode,
-            answer_mode=payload.answer_mode,
-            top_k=payload.top_k,
-            include_restricted=user["role"] == "admin",
-            history=history,
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_pdf_qa,
+                question=payload.question,
+                document_ids=doc_ids or None,
+                filenames=filenames or None,
+                model=payload.model,
+                response_mode=payload.response_mode,
+                answer_mode=payload.answer_mode,
+                top_k=payload.top_k,
+                include_restricted=user["role"] == "admin",
+                history=history,
+            ),
+            timeout=120.0,
         )
 
         citations = [Citation(**c) for c in result.get("citations", [])]
@@ -88,10 +93,9 @@ async def chat(
             result.get("citations", []),
             evidence_sufficient,
             payload.response_mode,
+            payload.answer_mode,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
-
-        from uuid import UUID
 
         return ChatResponse(
             answer=result["answer"],
@@ -103,6 +107,8 @@ async def chat(
             answer_mode=payload.answer_mode,
             session_id=UUID(session_id),
         )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Request timed out after 120 s.") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

@@ -28,6 +28,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/Delete";
 import EditOutlinedIcon from "@mui/icons-material/Edit";
 import SendIcon from "@mui/icons-material/Send";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -144,33 +146,6 @@ export default function ChatPage({
   const location = useLocation();
   const resumeSessionId = location.state?.sessionId ?? null;
 
-  if (!user) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 8 }}>
-        <Card sx={{ p: 4, maxWidth: 420, width: "100%", textAlign: "center" }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Authentication required
-          </Typography>
-          <Typography variant="h2" sx={{ fontSize: 24, mb: 2 }}>
-            Sign in to use Chat
-          </Typography>
-          <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
-            The Q&amp;A chat is only available to registered users. Please log in or create an
-            account to continue.
-          </Typography>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <Button variant="contained" onClick={() => onNavigate("auth")}>
-              Log in
-            </Button>
-            <Button variant="outlined" onClick={() => onNavigate("library")}>
-              Browse document library
-            </Button>
-          </Box>
-        </Card>
-      </Box>
-    );
-  }
-
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
@@ -188,6 +163,7 @@ export default function ChatPage({
   const [snackbar, setSnackbar] = useState({ open: false, message: "" });
   const [renameDialog, setRenameDialog] = useState({ open: false, sessionId: null, title: "" });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, sessionId: null });
+  const [copiedIdx, setCopiedIdx] = useState(null);
 
   const [citationDrawer, setCitationDrawer] = useState({
     open: false,
@@ -208,6 +184,7 @@ export default function ChatPage({
   // Draggable divider between Sources and Recent Chats sections
   const sidebarRef = useRef(null);
   const dragCleanupRef = useRef(null);
+  const messagesEndRef = useRef(null);
   const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
 
   useEffect(() => {
@@ -280,6 +257,45 @@ export default function ChatPage({
     });
   }, [contextSourceIds]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
+
+  useEffect(() => {
+    if (!citationDrawer.open) return;
+    const targetId = `citation-card-${citationDrawer.focusIndex + 1}`;
+    requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, [citationDrawer.open, citationDrawer.focusIndex]);
+
+  if (!user) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 8 }}>
+        <Card sx={{ p: 4, maxWidth: 420, width: "100%", textAlign: "center" }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Authentication required
+          </Typography>
+          <Typography variant="h2" sx={{ fontSize: 24, mb: 2 }}>
+            Sign in to use Chat
+          </Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
+            The Q&amp;A chat is only available to registered users. Please log in or create an
+            account to continue.
+          </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <Button variant="contained" onClick={() => onNavigate("auth")}>
+              Log in
+            </Button>
+            <Button variant="outlined" onClick={() => onNavigate("library")}>
+              Browse document library
+            </Button>
+          </Box>
+        </Card>
+      </Box>
+    );
+  }
+
   function restoreSession(detail) {
     setMessages(
       detail.messages.map((m) => ({
@@ -289,10 +305,13 @@ export default function ChatPage({
         evidenceSufficient: m.evidence_sufficient,
         evidenceReason: null,
         responseMode: m.response_mode,
+        answerMode: m.answer_mode,
       })),
     );
     setSessionId(String(detail.id));
     if (detail.response_mode) setResponseMode(detail.response_mode);
+    const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
+    if (lastAssistant?.answer_mode) setAnswerMode(lastAssistant.answer_mode);
 
     // Cross-reference stored document_ids against currently available documents
     const sessionDocIds = detail.document_ids || [];
@@ -330,6 +349,43 @@ export default function ChatPage({
     setError("");
   }
 
+  function handleExportMessage(message, index) {
+    const questionMsg = index > 0 ? messages[index - 1] : null;
+    const lines = [
+      "AI Policy Assistant — Answer Export",
+      `Exported: ${new Date().toLocaleString()}`,
+      "",
+    ];
+    if (questionMsg) {
+      lines.push(`Question: ${questionMsg.content}`);
+      lines.push("");
+    }
+    lines.push("─".repeat(60));
+    lines.push("");
+    lines.push(message.content);
+    if (message.citations?.length > 0) {
+      lines.push("");
+      lines.push("─".repeat(60));
+      lines.push("Sources:");
+      message.citations.forEach((c, i) => {
+        lines.push(`[${i + 1}] ${c.title}${c.page ? `, p.${c.page}` : ""}`);
+        if (c.quote) {
+          const preview = c.quote.length > 200 ? `${c.quote.slice(0, 200)}...` : c.quote;
+          lines.push(`    "${preview}"`);
+        }
+      });
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `policy-answer-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   async function handleDeleteSession() {
     const id = deleteDialog.sessionId;
     setDeleteDialog({ open: false, sessionId: null });
@@ -356,13 +412,8 @@ export default function ChatPage({
     }
   }
 
-  function drawerCitations(citations, focusIndex) {
+  function drawerCitations(citations) {
     if (!citations || citations.length === 0) return [];
-    if (citations.length > 12) {
-      const start = Math.max(0, focusIndex - 1);
-      const end = Math.min(citations.length, focusIndex + 4);
-      return citations.slice(start, end).map((c, i) => ({ ...c, _displayIndex: start + i + 1 }));
-    }
     return citations.map((c, i) => ({ ...c, _displayIndex: i + 1 }));
   }
 
@@ -758,24 +809,49 @@ export default function ChatPage({
                         ].join(" · ")}
                       </Typography>
                     )}
-                    {message.role === "assistant" && message.citations?.length > 0 && (
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => openCitationDrawer(message.citations, 0, message.evidenceSufficient, message.evidenceReason)}
-                        sx={{
-                          ml: "auto",
-                          fontSize: "0.72em",
-                          color: isLowEvidence ? "#d84315" : "#214f42",
-                          textTransform: "none",
-                          minWidth: 0,
-                          px: 1,
-                          py: 0,
-                        }}
-                      >
-                        {isLowEvidence && "⚠ "}
-                        {message.citations.length} source{message.citations.length !== 1 ? "s" : ""}
-                      </Button>
+                    {message.role === "assistant" && (
+                      <Box sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {message.citations?.length > 0 && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => openCitationDrawer(message.citations, 0, message.evidenceSufficient, message.evidenceReason)}
+                            sx={{
+                              fontSize: "0.72em",
+                              color: isLowEvidence ? "#d84315" : "#214f42",
+                              textTransform: "none",
+                              minWidth: 0,
+                              px: 1,
+                              py: 0,
+                            }}
+                          >
+                            {isLowEvidence && "⚠ "}
+                            {message.citations.length} source{message.citations.length !== 1 ? "s" : ""}
+                          </Button>
+                        )}
+                        <Tooltip title={copiedIdx === index ? "Copied!" : "Copy"}>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              navigator.clipboard.writeText(message.content);
+                              setCopiedIdx(index);
+                              setTimeout(() => setCopiedIdx((prev) => (prev === index ? null : prev)), 2000);
+                            }}
+                            sx={{ color: "#888", p: 0.5 }}
+                          >
+                            <ContentCopyIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Export answer">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleExportMessage(message, index)}
+                            sx={{ color: "#888", p: 0.5 }}
+                          >
+                            <FileDownloadOutlinedIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     )}
                   </Box>
 
@@ -856,12 +932,31 @@ export default function ChatPage({
             })}
             {busy && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
-                <CircularProgress size={20} />
+                <Box sx={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                  {[0, 1, 2].map((i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        bgcolor: "#214f42",
+                        animation: "bounce 1.2s ease-in-out infinite",
+                        animationDelay: `${i * 0.2}s`,
+                        "@keyframes bounce": {
+                          "0%, 80%, 100%": { transform: "scale(0.6)", opacity: 0.4 },
+                          "40%": { transform: "scale(1)", opacity: 1 },
+                        },
+                      }}
+                    />
+                  ))}
+                </Box>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
                   Thinking...
                 </Typography>
               </Box>
             )}
+            <div ref={messagesEndRef} />
           </Box>
 
           {error && <Alert severity="error" sx={{ mb: 2, flexShrink: 0 }}>{error}</Alert>}
@@ -1054,6 +1149,7 @@ export default function ChatPage({
               return (
                 <Box
                   key={i}
+                  id={`citation-card-${c._displayIndex}`}
                   sx={{
                     mb: 2,
                     borderRadius: 2,

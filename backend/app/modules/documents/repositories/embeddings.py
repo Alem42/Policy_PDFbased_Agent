@@ -67,6 +67,23 @@ class EmbeddingRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def has_embeddings(self, document_ids: list[str]) -> bool:
+        """Return True when at least one chunk embedding exists for the given document IDs."""
+        if not document_ids:
+            return False
+        with get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT EXISTS(
+                    SELECT 1 FROM chunk_embeddings e
+                    JOIN document_chunks c ON c.id = e.chunk_id
+                    WHERE c.document_id = ANY(%s::uuid[])
+                ) AS exists
+                """,
+                (document_ids,),
+            ).fetchone()
+        return bool(row["exists"]) if row else False
+
     def retrieve(self, query_vector: str, document_ids: list[str], *, limit: int) -> list[dict]:
         if not document_ids:
             return []
