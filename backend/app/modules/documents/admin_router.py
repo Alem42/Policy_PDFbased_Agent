@@ -43,6 +43,7 @@ AdminUser = Annotated[dict, Depends(require_admin)]
 def _processing_status(status_value: str) -> ProcessingStatus:
     return {
         "uploaded": ProcessingStatus.QUEUED,
+        "ocr": ProcessingStatus.OCR,
         "parsed": ProcessingStatus.CHUNKING,
         "annotated": ProcessingStatus.EMBEDDING,
         "ready": ProcessingStatus.INDEXED,

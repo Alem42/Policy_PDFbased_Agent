@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 
@@ -55,7 +56,7 @@ def _resolve_tesseract_cmd() -> None:
 class PdfExtractor:
     """Extracts PDF pages and removes common retrieval noise."""
 
-    def extract(self, path: Path) -> list[dict]:
+    def extract(self, path: Path, on_ocr_start: Callable[[], None] | None = None) -> list[dict]:
         reader = PdfReader(BytesIO(path.read_bytes()))
         pages = [
             {
@@ -65,10 +66,15 @@ class PdfExtractor:
             }
             for page_number, page in enumerate(reader.pages, start=1)
         ]
-        pages = self._ocr_low_text_pages(path, pages)
+        pages = self._ocr_low_text_pages(path, pages, on_ocr_start)
         return self.clean(pages)
 
-    def _ocr_low_text_pages(self, path: Path, pages: list[dict]) -> list[dict]:
+    def _ocr_low_text_pages(
+        self,
+        path: Path,
+        pages: list[dict],
+        on_ocr_start: Callable[[], None] | None = None,
+    ) -> list[dict]:
         """Re-read scanned/image-only pages via OCR.
 
         Runs per page rather than once for the whole document, since mixed
@@ -81,6 +87,9 @@ class PdfExtractor:
         needs_ocr = [page for page in pages if len(page["text"]) < min_chars]
         if not needs_ocr:
             return pages
+
+        if on_ocr_start:
+            on_ocr_start()
 
         _resolve_tesseract_cmd()
 

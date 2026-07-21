@@ -36,6 +36,7 @@ const TERMINAL_STATUSES = new Set(["indexed", "ready", "failed"]);
 const STATUS_META = {
   queued: { label: "Queued", color: "default" },
   extracting: { label: "Extracting", color: "info" },
+  ocr: { label: "OCR", color: "info" },
   chunking: { label: "Chunking", color: "info" },
   embedding: { label: "Embedding", color: "info" },
   indexed: { label: "Indexed", color: "success" },

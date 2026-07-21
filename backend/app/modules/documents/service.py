@@ -33,7 +33,10 @@ def process_document(document_id: str) -> None:
     try:
         document = document_repository.get_record(document_id)
         path = document_file_store.resolve(document["file_path"])
-        pages = extract_document(path)
+        pages = extract_document(
+            path,
+            on_ocr_start=lambda: document_repository.set_status(document_id, "ocr"),
+        )
         document_content_repository.replace_pages(document_id, pages)
         document_repository.set_status(document_id, "parsed")
 

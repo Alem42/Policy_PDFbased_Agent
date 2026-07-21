@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class DocumentStatus(StrEnum):
     UPLOADED = "uploaded"
+    OCR = "ocr"
     PARSED = "parsed"
     ANNOTATED = "annotated"
     READY = "ready"

@@ -105,3 +105,20 @@ def test_mixed_document_only_ocrs_the_page_that_needs_it(tmp_path, monkeypatch):
     assert len(ocr_pages) == 1
     assert "Native text on page one" in pages[0]["text"]
     assert pages[1]["text"] == "Recovered via OCR"
+
+
+def test_on_ocr_start_fires_only_when_a_page_actually_needs_ocr(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.documents.pdf_extractor.pytesseract.image_to_string",
+        lambda *a, **k: "Recovered via OCR",
+    )
+    ocr_started = []
+
+    scanned_path = _build_pdf(tmp_path, native_text=None)
+    PdfExtractor().extract(scanned_path, on_ocr_start=lambda: ocr_started.append(1))
+    assert ocr_started == [1]
+
+    ocr_started.clear()
+    native_path = _build_pdf(tmp_path, native_text="Plenty of real selectable text here.")
+    PdfExtractor().extract(native_path, on_ocr_start=lambda: ocr_started.append(1))
+    assert ocr_started == []
