@@ -8,7 +8,12 @@ from app.modules.chat.rag.graph.nodes import (
     retrieve_context_node,
     route_after_evidence_check,
 )
-from app.modules.chat.rag.graph.state import AnswerMode, PDFQAState, ResponseMode
+from app.modules.chat.rag.graph.state import (
+    AnswerMode,
+    PDFQAState,
+    ResponseMode,
+    normalize_answer_mode,
+)
 
 
 def build_pdf_qa_graph():
@@ -53,6 +58,7 @@ def run_pdf_qa(
     history: list[dict] | None = None,
 ) -> dict:
     """Invoke the compiled graph and return its final state."""
+    effective_answer_mode = normalize_answer_mode(response_mode, answer_mode)
     return pdf_qa_graph.invoke(
         {
             "question": question,
@@ -60,7 +66,7 @@ def run_pdf_qa(
             "filenames": filenames or [],
             "model": model,
             "response_mode": response_mode,
-            "answer_mode": answer_mode,
+            "answer_mode": effective_answer_mode,
             "top_k": top_k,
             "include_restricted": include_restricted,
             "history": history or [],

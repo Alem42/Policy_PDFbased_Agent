@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.history_repository import chat_history_repository
+from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa
 from app.modules.chat.schemas import MAX_HISTORY_TURNS, ChatRequest, ChatResponse, Citation
 
@@ -24,6 +25,7 @@ async def chat(
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
     user_id = str(user["id"])
+    effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
 
     # ── Session management ──────────────────────────────────────────────
     if payload.session_id is not None:
@@ -70,7 +72,7 @@ async def chat(
             document_ids=identifiers,
             model=payload.model,
             response_mode=payload.response_mode,
-            answer_mode=payload.answer_mode,
+            answer_mode=effective_answer_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
             history=history,
@@ -100,7 +102,7 @@ async def chat(
             evidence_sufficient=evidence_sufficient,
             evidence_reason=result.get("evidence_reason"),
             response_mode=payload.response_mode,
-            answer_mode=payload.answer_mode,
+            answer_mode=effective_answer_mode,
             session_id=UUID(session_id),
         )
     except FileNotFoundError as exc:
