@@ -20,6 +20,30 @@ const PROVIDERS = [
   { id: "custom", label: "Custom / self-hosted" },
 ];
 
+// Must mirror each provider's "models" list in PROVIDER_CONFIGS. "custom" has
+// no curated list (self-hosted model names vary) so it keeps a free-text field.
+const PROVIDER_MODELS = {
+  deepseek: [
+    { id: "deepseek-chat", label: "DeepSeek Chat" },
+    { id: "deepseek-reasoner", label: "DeepSeek Reasoner" },
+  ],
+  openai: [
+    { id: "gpt-4o", label: "GPT-4o" },
+    { id: "gpt-4o-mini", label: "GPT-4o mini" },
+    { id: "gpt-4.1", label: "GPT-4.1" },
+  ],
+  anthropic: [
+    { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+    { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+    { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  ],
+  gemini: [
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  ],
+  custom: [],
+};
+
 export default function SettingsPage({ user, onNavigate }) {
   const [settings, setSettings] = useState(null);
   const [llmProvider, setLlmProvider] = useState("deepseek");
@@ -189,7 +213,15 @@ export default function SettingsPage({ user, onNavigate }) {
                 <TextField
                   select
                   value={llmProvider}
-                  onChange={(event) => setLlmProvider(event.target.value)}
+                  onChange={(event) => {
+                    const nextProvider = event.target.value;
+                    setLlmProvider(nextProvider);
+                    // Drop a model choice that doesn't exist for the newly selected provider.
+                    const validIds = (PROVIDER_MODELS[nextProvider] || []).map((m) => m.id);
+                    if (nextProvider !== "custom" && !validIds.includes(model)) {
+                      setModel("");
+                    }
+                  }}
                   size="small"
                   sx={{ maxWidth: 320 }}
                 >
@@ -208,13 +240,36 @@ export default function SettingsPage({ user, onNavigate }) {
                 <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
                   Default chat model override
                 </Typography>
-                <TextField
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="Leave blank to use the default provider's built-in model"
-                  size="small"
-                  sx={{ maxWidth: 320 }}
-                />
+                {llmProvider === "custom" ? (
+                  <TextField
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder="Enter the self-hosted model name"
+                    size="small"
+                    sx={{ maxWidth: 320 }}
+                  />
+                ) : (
+                  <TextField
+                    select
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    size="small"
+                    sx={{ maxWidth: 320 }}
+                  >
+                    <MenuItem value="">
+                      <em>Use provider's built-in default</em>
+                    </MenuItem>
+                    {/* Keep a saved value visible even if it predates this curated list. */}
+                    {model && !(PROVIDER_MODELS[llmProvider] || []).some((m) => m.id === model) && (
+                      <MenuItem value={model}>{model}</MenuItem>
+                    )}
+                    {(PROVIDER_MODELS[llmProvider] || []).map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <Typography variant="caption" sx={{ color: "text.secondary" }}>
                   Only applies to the default provider above.
                 </Typography>

@@ -1160,23 +1160,38 @@ export default function ChatPage({
 
             {modelGroups.length > 0 && (
               <Box>
-                <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
-                  Model
-                </Typography>
                 <Button
                   variant="outlined"
                   size="small"
                   disabled={busy}
-                  endIcon={<ArrowDropDownIcon />}
                   onClick={(event) => setModelAnchor(event.currentTarget)}
                   aria-haspopup="menu"
+                  sx={{
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    py: 0.75,
+                    px: 1.25,
+                    gap: 0,
+                    minWidth: 0,
+                    textTransform: "none",
+                  }}
                 >
-                  {selectedModel ? getModelLabel(modelLabels, selectedModel) : "Workspace default"}
+                  <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                    Model
+                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                    <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                      {selectedModel ? getModelLabel(modelLabels, selectedModel) : "Workspace default"}
+                    </Typography>
+                    <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                  </Box>
                 </Button>
                 <Menu
                   anchorEl={modelAnchor}
                   open={Boolean(modelAnchor)}
                   onClose={() => setModelAnchor(null)}
+                  anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                  transformOrigin={{ vertical: "bottom", horizontal: "left" }}
                 >
                   <MenuItem
                     selected={!selectedModel}
