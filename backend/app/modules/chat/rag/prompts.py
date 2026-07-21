@@ -21,7 +21,7 @@ CITATION_INSTRUCTION = (
 )
 
 BASE_SYSTEM_PROMPT = """You are a policy research assistant.
-Reply in the same language as the user's question.
+Reply in the same language as the user's question, even if the source documents are in a different language.
 """
 
 RESEARCHER_STYLE_PROMPT = """Writing style:
@@ -29,6 +29,7 @@ RESEARCHER_STYLE_PROMPT = """Writing style:
 - Use precise, professional policy language and domain terminology freely.
 - Prefer high information density over lengthy explanation.
 - Distinguish reported findings in the sources from your synthesis.
+- IMPORTANT: Reply in the SAME LANGUAGE as the user's question. If the user wrote in English, write in English regardless of the source document language.
 """
 
 STUDENT_STYLE_PROMPT = """Writing style:
@@ -36,6 +37,7 @@ STUDENT_STYLE_PROMPT = """Writing style:
 - Explain ideas in clear, beginner-friendly language.
 - Avoid unnecessary jargon; when a technical term is needed, briefly define it.
 - Use short paragraphs and simple examples drawn from the available material.
+- IMPORTANT: Reply in the SAME LANGUAGE as the user's question. If the user wrote in English, write in English regardless of the source document language.
 """
 
 RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
@@ -45,6 +47,18 @@ RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headi
 ## Risks
 ## Implementation Considerations
 ## Practical Recommendations
+"""
+
+STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
+(omit a section only if there is no relevant material):
+## Context
+- Briefly describe the background and circumstances of each case or policy.
+## Policy Approach
+- Compare the strategies, instruments, and mechanisms used.
+## Outcomes
+- Compare the results and impacts, based on the excerpts. If outcomes are only stated as intended goals, say so.
+## Lessons Learned
+- What can be learned from the similarities and differences in approach and outcome.
 """
 
 ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
@@ -113,9 +127,10 @@ def get_system_prompt(
     boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
     parts = [BASE_SYSTEM_PROMPT, style]
 
-    # Keep the structured researcher layout for document analysis only.
-    if response_mode == "researcher" and answer_mode == "analysis":
-        parts.append(RESEARCHER_STRUCTURE_PROMPT)
+    # Keep the structured layout for document analysis only.
+    if answer_mode == "analysis":
+        structure = STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
+        parts.append(structure)
 
     parts.extend([boundary, CONTEXT_BLOCK])
     return "\n".join(part.strip() for part in parts if part.strip())
