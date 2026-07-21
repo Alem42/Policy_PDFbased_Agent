@@ -6,7 +6,12 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
 from app.core.llm_providers import get_provider_config
-from app.modules.chat.rag.prompts import AnswerMode, CITATION_INSTRUCTION, ResponseMode, get_system_prompt
+from app.modules.chat.rag.prompts import (
+    CITATION_INSTRUCTION,
+    AnswerMode,
+    ResponseMode,
+    get_system_prompt,
+)
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model, get_llm_provider
 
 

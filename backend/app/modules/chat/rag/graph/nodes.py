@@ -1,4 +1,7 @@
-from app.modules.chat.rag.evidence import MAX_VECTOR_DISTANCE, assess_evidence_sufficiency  # noqa: F401 (MAX_VECTOR_DISTANCE used below)
+from app.modules.chat.rag.evidence import (  # noqa: F401 (MAX_VECTOR_DISTANCE used below)
+    MAX_VECTOR_DISTANCE,
+    assess_evidence_sufficiency,
+)
 from app.modules.chat.rag.generation import format_context, generate_answer
 from app.modules.chat.rag.graph.state import AnswerMode, PDFQAState, ResponseMode
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
@@ -42,7 +45,11 @@ def retrieve_context_node(state: PDFQAState) -> dict:
     has_embeddings = bool(raw_chunks)
 
     # Only use chunks that are actually close to the query.
-    relevant_chunks = [c for c in raw_chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE]
+    relevant_chunks = [
+        c
+        for c in raw_chunks
+        if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE
+    ]
     context_source = relevant_chunks or state["pages"]
     context, truncated = format_context(context_source)
 

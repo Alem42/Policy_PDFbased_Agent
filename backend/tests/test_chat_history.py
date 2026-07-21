@@ -5,7 +5,6 @@ import pytest
 
 from app.modules.chat.history_repository import ChatHistoryRepository
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
