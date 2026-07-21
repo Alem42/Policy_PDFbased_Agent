@@ -1,11 +1,11 @@
 import asyncio
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.history_repository import chat_history_repository
+from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa
 from app.modules.chat.schemas import MAX_HISTORY_TURNS, ChatRequest, ChatResponse, Citation
 
@@ -25,10 +25,19 @@ async def chat(
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
     user_id = str(user["id"])
+    effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
 
     # ── Session management ──────────────────────────────────────────────
     if payload.session_id is not None:
         session_id = str(payload.session_id)
+        owns_session = await asyncio.to_thread(
+            chat_history_repository.session_belongs_to_user,
+            session_id,
+            user_id,
+        )
+        if not owns_session:
+            raise HTTPException(status_code=404, detail="Session not found.")
+
         # Read history from DB (more reliable than relying on the client to resend it).
         history = await asyncio.to_thread(
             chat_history_repository.get_history_for_llm,
@@ -49,7 +58,9 @@ async def chat(
     # ── Save the user question immediately ─────────────────────────────
     await asyncio.to_thread(
         chat_history_repository.add_message,
-        session_id, "user", payload.question,
+        session_id,
+        "user",
+        payload.question,
     )
 
     try:
@@ -61,7 +72,7 @@ async def chat(
             document_ids=identifiers,
             model=payload.model,
             response_mode=payload.response_mode,
-            answer_mode=payload.answer_mode,
+            answer_mode=effective_answer_mode,
             top_k=payload.top_k,
             include_restricted=user["role"] == "admin",
             history=history,
@@ -83,6 +94,7 @@ async def chat(
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
         from uuid import UUID
+
         return ChatResponse(
             answer=result["answer"],
             citations=citations,
@@ -90,7 +102,7 @@ async def chat(
             evidence_sufficient=evidence_sufficient,
             evidence_reason=result.get("evidence_reason"),
             response_mode=payload.response_mode,
-            answer_mode=payload.answer_mode,
+            answer_mode=effective_answer_mode,
             session_id=UUID(session_id),
         )
     except FileNotFoundError as exc:

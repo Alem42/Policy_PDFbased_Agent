@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     embedding_batch_size: int = Field(default=32, ge=1, le=256)
     model_cache_dir: Path = Path("data/model_cache")
     default_embedding_dimensions: int = 384
-    max_context_characters: int = 120_000
+    max_context_characters: int = 200_000
 
     # Pages whose native (non-OCR) extracted text is shorter than this are
     # treated as scanned/image-only and re-read via OCR.

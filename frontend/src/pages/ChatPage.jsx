@@ -98,6 +98,11 @@ const RESPONSE_MODE_OPTIONS = [
     description: "Dense, specialist language for practitioners",
   },
   {
+    value: "policymaker",
+    label: "Policymaker",
+    description: "Document-grounded analysis for policy decision preparation",
+  },
+  {
     value: "student",
     label: "Student",
     description: "Plain language with short explanations",
@@ -119,6 +124,10 @@ const ANSWER_MODE_OPTIONS = [
 
 function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
+}
+
+function getResponseModeLabel(value) {
+  return getOptionLabel(RESPONSE_MODE_OPTIONS, value);
 }
 
 function formatSessionDate(dateStr) {
@@ -292,7 +301,10 @@ export default function ChatPage({
       })),
     );
     setSessionId(String(detail.id));
-    if (detail.response_mode) setResponseMode(detail.response_mode);
+    if (detail.response_mode) {
+      setResponseMode(detail.response_mode);
+      if (detail.response_mode === "policymaker") setAnswerMode("analysis");
+    }
 
     // Cross-reference stored document_ids against currently available documents
     const sessionDocIds = detail.document_ids || [];
@@ -753,7 +765,7 @@ export default function ChatPage({
                     {message.role === "assistant" && (message.responseMode || message.answerMode) && (
                       <Typography component="small" variant="caption" sx={{ color: "text.secondary" }}>
                         {[
-                          message.responseMode === "student" ? "Student" : "Policy Researcher",
+                          getResponseModeLabel(message.responseMode || "researcher"),
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
                         ].join(" · ")}
                       </Typography>
@@ -891,7 +903,11 @@ export default function ChatPage({
                   <MenuItem
                     key={option.value}
                     selected={option.value === responseMode}
-                    onClick={() => { setResponseMode(option.value); setResponseModeAnchor(null); }}
+                    onClick={() => {
+                      setResponseMode(option.value);
+                      if (option.value === "policymaker") setAnswerMode("analysis");
+                      setResponseModeAnchor(null);
+                    }}
                   >
                     <ListItemText primary={option.label} secondary={option.description} />
                   </MenuItem>
@@ -906,7 +922,7 @@ export default function ChatPage({
               <Button
                 variant="outlined"
                 size="small"
-                disabled={busy}
+                disabled={busy || responseMode === "policymaker"}
                 endIcon={<ArrowDropDownIcon />}
                 onClick={(event) => setAnswerModeAnchor(event.currentTarget)}
                 aria-haspopup="menu"
@@ -918,7 +934,9 @@ export default function ChatPage({
                 open={Boolean(answerModeAnchor)}
                 onClose={() => setAnswerModeAnchor(null)}
               >
-                {ANSWER_MODE_OPTIONS.map((option) => (
+                {ANSWER_MODE_OPTIONS
+                  .filter((option) => responseMode !== "policymaker" || option.value === "analysis")
+                  .map((option) => (
                   <MenuItem
                     key={option.value}
                     selected={option.value === answerMode}

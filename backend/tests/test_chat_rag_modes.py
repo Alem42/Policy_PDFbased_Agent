@@ -58,10 +58,10 @@ def test_insufficient_evidence_messages_differ_by_mode() -> None:
 def test_assess_evidence_rejects_empty_context() -> None:
     sufficient, reason = assess_evidence_sufficiency(
         question="test",
-        chunks=[],
+        raw_chunks=[],
         pages=[],
         context="",
-        used_vector_retrieval=False,
+        has_embeddings=False,
     )
     assert sufficient is False
     assert reason == REASON_NO_TEXT
@@ -70,10 +70,22 @@ def test_assess_evidence_rejects_empty_context() -> None:
 def test_assess_evidence_rejects_low_similarity_chunks() -> None:
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        chunks=[{"distance": 0.95, "text": "unrelated"}],
+        raw_chunks=[{"distance": 0.95, "text": "unrelated"}],
         pages=[],
         context="x" * 300,
-        used_vector_retrieval=True,
+        has_embeddings=True,
+    )
+    assert sufficient is False
+    assert reason == REASON_LOW_RELEVANCE
+
+
+def test_assess_evidence_rejects_low_reranker_score() -> None:
+    sufficient, reason = assess_evidence_sufficiency(
+        question="housing policy reform",
+        raw_chunks=[{"distance": 0.2, "reranker_score": -8.0, "text": "housing reform details"}],
+        pages=[],
+        context="x" * 300,
+        has_embeddings=True,
     )
     assert sufficient is False
     assert reason == REASON_LOW_RELEVANCE
@@ -82,10 +94,10 @@ def test_assess_evidence_rejects_low_similarity_chunks() -> None:
 def test_assess_evidence_accepts_strong_chunks() -> None:
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        chunks=[{"distance": 0.2, "text": "housing reform details"}],
+        raw_chunks=[{"distance": 0.2, "reranker_score": -5.0, "text": "housing reform details"}],
         pages=[],
         context="x" * 300,
-        used_vector_retrieval=True,
+        has_embeddings=True,
     )
     assert sufficient is True
     assert reason is None
@@ -93,23 +105,17 @@ def test_assess_evidence_accepts_strong_chunks() -> None:
 
 def test_route_after_evidence_check_analysis_blocks_weak_evidence() -> None:
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": True, "answer_mode": "analysis"}
-        )
+        route_after_evidence_check({"evidence_sufficient": True, "answer_mode": "analysis"})
         == "generate_answer"
     )
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": False, "answer_mode": "analysis"}
-        )
+        route_after_evidence_check({"evidence_sufficient": False, "answer_mode": "analysis"})
         == "insufficient_evidence"
     )
 
 
 def test_route_after_evidence_check_chat_allows_weak_evidence() -> None:
     assert (
-        route_after_evidence_check(
-            {"evidence_sufficient": False, "answer_mode": "chat"}
-        )
+        route_after_evidence_check({"evidence_sufficient": False, "answer_mode": "chat"})
         == "generate_answer"
     )

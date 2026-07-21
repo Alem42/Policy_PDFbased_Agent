@@ -35,6 +35,13 @@ function formatDate(iso) {
   });
 }
 
+function formatResponseMode(mode) {
+  if (mode === "policymaker") return "Policymaker";
+  if (mode === "student") return "Student";
+  if (mode === "researcher") return "Policy Researcher";
+  return mode;
+}
+
 export default function HistoryPage({ onNavigate }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +148,7 @@ export default function HistoryPage({ onNavigate }) {
                       </Typography>
                       {session.response_mode && (
                         <Chip
-                          label={session.response_mode}
+                          label={formatResponseMode(session.response_mode)}
                           size="small"
                           sx={{
                             height: 18,
