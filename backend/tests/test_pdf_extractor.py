@@ -6,8 +6,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import fitz
-import pytest
 import pytesseract
+import pytest
 
 from app.modules.documents.pdf_extractor import PdfExtractor
 
@@ -40,7 +40,9 @@ def _build_pdf(tmp_path: Path, *, native_text: str | None) -> Path:
 
 
 def test_page_with_enough_native_text_is_not_sent_to_ocr(tmp_path, monkeypatch):
-    pdf_path = _build_pdf(tmp_path, native_text="This page has plenty of real selectable text on it.")
+    pdf_path = _build_pdf(
+        tmp_path, native_text="This page has plenty of real selectable text on it."
+    )
     ocr_calls = []
     monkeypatch.setattr(
         "app.modules.documents.pdf_extractor.pytesseract.image_to_string",
@@ -80,7 +82,9 @@ def test_missing_tesseract_binary_degrades_gracefully(tmp_path, monkeypatch):
 
 def test_mixed_document_only_ocrs_the_page_that_needs_it(tmp_path, monkeypatch):
     doc = fitz.open()
-    doc.new_page(width=400, height=200).insert_text((20, 100), "Native text on page one.", fontsize=18)
+    doc.new_page(width=400, height=200).insert_text(
+        (20, 100), "Native text on page one.", fontsize=18
+    )
     doc.new_page(width=400, height=200)  # blank -- simulates a scanned page
     path = tmp_path / "mixed.pdf"
     doc.save(path)
@@ -92,7 +96,9 @@ def test_mixed_document_only_ocrs_the_page_that_needs_it(tmp_path, monkeypatch):
         ocr_pages.append(lang)
         return "Recovered via OCR"
 
-    monkeypatch.setattr("app.modules.documents.pdf_extractor.pytesseract.image_to_string", _fake_ocr)
+    monkeypatch.setattr(
+        "app.modules.documents.pdf_extractor.pytesseract.image_to_string", _fake_ocr
+    )
 
     pages = PdfExtractor().extract(path)
 
