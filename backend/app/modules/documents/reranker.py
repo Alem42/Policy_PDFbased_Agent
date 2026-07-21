@@ -43,15 +43,10 @@ def rerank_chunks(
 
         texts.append(text)
 
-    scores = [
-        float(score)
-        for score in _load_reranker().rerank(question, texts)
-    ]
+    scores = [float(score) for score in _load_reranker().rerank(question, texts)]
 
     if len(scores) != len(chunks):
-        raise RuntimeError(
-            "Reranker returned a different number of scores than chunks."
-        )
+        raise RuntimeError("Reranker returned a different number of scores than chunks.")
 
     ranked_chunks = [
         {

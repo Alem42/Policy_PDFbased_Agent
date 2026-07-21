@@ -12,15 +12,11 @@ MAX_VECTOR_DISTANCE = 0.45
 # Off-topic passages (climate, NHS, visa) score <= -7.2. Threshold -7.0 sits in the gap.
 MIN_RERANKER_SCORE = -7.0
 
-REASON_NO_TEXT = (
-    "No extractable text was found in the selected documents."
-)
+REASON_NO_TEXT = "No extractable text was found in the selected documents."
 REASON_LOW_RELEVANCE = (
     "The selected documents do not contain passages closely related to your question."
 )
-REASON_SHORT_CONTEXT = (
-    "Too little relevant text was retrieved to support a reliable answer."
-)
+REASON_SHORT_CONTEXT = "Too little relevant text was retrieved to support a reliable answer."
 
 
 def assess_evidence_sufficiency(

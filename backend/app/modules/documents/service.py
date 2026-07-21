@@ -188,9 +188,7 @@ def update_document_governance(
     approved: bool | None = None,
     access_level: str | None = None,
 ) -> dict:
-    document_repository.update_governance(
-        identifier, approved=approved, access_level=access_level
-    )
+    document_repository.update_governance(identifier, approved=approved, access_level=access_level)
     return document_content_repository.get_detail_record(identifier, include_restricted=True)
 
 
@@ -244,9 +242,7 @@ def retrieve_relevant_chunks(
             limit=limit,
         )
     except Exception:
-        logger.exception(
-            "Reranking failed; returning dense-vector ranking instead."
-        )
+        logger.exception("Reranking failed; returning dense-vector ranking instead.")
         return candidates[:limit]
 
 

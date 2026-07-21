@@ -9,7 +9,8 @@ AnswerMode = Literal["analysis", "chat"]
 # {source_list} is filled with one "[N] title, page X" line per retrieved chunk.
 CITATION_INSTRUCTION = (
     "Cite sources inline using numbered markers [1], [2], etc.\n"
-    "Place each marker immediately after the sentence that uses that source, before any punctuation.\n"
+    "Place each marker immediately after the sentence that uses that source,\n"
+    "before any punctuation.\n"
     'Example: "Emissions fell 30 % by 2030 [1] and further reductions are projected [2]."\n'
     "Rules for markers:\n"
     "- Use exactly ONE number per marker: [1], [2], not [1-2] or [1, 2].\n"
@@ -21,7 +22,8 @@ CITATION_INSTRUCTION = (
 )
 
 BASE_SYSTEM_PROMPT = """You are a policy research assistant.
-Reply in the same language as the user's question, even if the source documents are in a different language.
+Reply in the same language as the user's question,
+even if the source documents are in a different language.
 """
 
 RESEARCHER_STYLE_PROMPT = """Writing style:
@@ -29,7 +31,8 @@ RESEARCHER_STYLE_PROMPT = """Writing style:
 - Use precise, professional policy language and domain terminology freely.
 - Prefer high information density over lengthy explanation.
 - Distinguish reported findings in the sources from your synthesis.
-- IMPORTANT: Reply in the SAME LANGUAGE as the user's question. If the user wrote in English, write in English regardless of the source document language.
+- IMPORTANT: Reply in the SAME LANGUAGE as the user's question.
+  If the user wrote in English, write in English regardless of source language.
 """
 
 STUDENT_STYLE_PROMPT = """Writing style:
@@ -37,7 +40,8 @@ STUDENT_STYLE_PROMPT = """Writing style:
 - Explain ideas in clear, beginner-friendly language.
 - Avoid unnecessary jargon; when a technical term is needed, briefly define it.
 - Use short paragraphs and simple examples drawn from the available material.
-- IMPORTANT: Reply in the SAME LANGUAGE as the user's question. If the user wrote in English, write in English regardless of the source document language.
+- IMPORTANT: Reply in the SAME LANGUAGE as the user's question.
+  If the user wrote in English, write in English regardless of source language.
 """
 
 RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
@@ -56,7 +60,8 @@ STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
 ## Policy Approach
 - Compare the strategies, instruments, and mechanisms used.
 ## Outcomes
-- Compare the results and impacts, based on the excerpts. If outcomes are only stated as intended goals, say so.
+- Compare the results and impacts, based on the excerpts.
+  If outcomes are only stated as intended goals, say so.
 ## Lessons Learned
 - What can be learned from the similarities and differences in approach and outcome.
 """
@@ -129,7 +134,8 @@ def get_system_prompt(
 
     # Keep the structured layout for document analysis only.
     if answer_mode == "analysis":
-        structure = STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
+        is_student = response_mode == "student"
+        structure = STUDENT_STRUCTURE_PROMPT if is_student else RESEARCHER_STRUCTURE_PROMPT
         parts.append(structure)
 
     parts.extend([boundary, CONTEXT_BLOCK])
@@ -142,8 +148,6 @@ def get_insufficient_evidence_message(
     mode: ResponseMode,
 ) -> str:
     template = (
-        INSUFFICIENT_EVIDENCE_STUDENT
-        if mode == "student"
-        else INSUFFICIENT_EVIDENCE_RESEARCHER
+        INSUFFICIENT_EVIDENCE_STUDENT if mode == "student" else INSUFFICIENT_EVIDENCE_RESEARCHER
     )
     return template.format(question=question.strip(), reason=reason)

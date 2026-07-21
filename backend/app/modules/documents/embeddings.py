@@ -59,8 +59,7 @@ def _vector_to_list(vector: Iterable[float], expected_dimensions: int) -> list[f
     values = [float(value) for value in vector]
     if len(values) != expected_dimensions:
         raise ValueError(
-            "Embedding dimension mismatch: "
-            f"expected {expected_dimensions}, received {len(values)}."
+            f"Embedding dimension mismatch: expected {expected_dimensions}, received {len(values)}."
         )
     if not all(math.isfinite(value) for value in values):
         raise ValueError("Embedding contains a non-finite value.")

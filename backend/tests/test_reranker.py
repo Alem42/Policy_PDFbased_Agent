@@ -49,9 +49,7 @@ def test_rerank_chunks_orders_by_cross_encoder_score(
         "chunk-1",
     ]
     assert results[0]["reranker_score"] == 3.5
-    assert fake_model.received_question == (
-        "Which candidate is most relevant?"
-    )
+    assert fake_model.received_question == ("Which candidate is most relevant?")
     assert fake_model.received_texts == [
         "First candidate",
         "Best candidate",
@@ -71,11 +69,14 @@ def test_rerank_chunks_returns_empty_without_loading_model(
         fail_if_loaded,
     )
 
-    assert reranker.rerank_chunks(
-        "A valid question",
-        [],
-        limit=5,
-    ) == []
+    assert (
+        reranker.rerank_chunks(
+            "A valid question",
+            [],
+            limit=5,
+        )
+        == []
+    )
 
 
 def test_rerank_chunks_rejects_blank_question() -> None:

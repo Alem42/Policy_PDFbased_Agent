@@ -110,9 +110,7 @@ class CrawledDocumentRepository:
                 CrawledDocumentModel.last_seen_at.desc()
             )
             if crawl_source_id is not None:
-                statement = statement.where(
-                    CrawledDocumentModel.crawl_source_id == crawl_source_id
-                )
+                statement = statement.where(CrawledDocumentModel.crawl_source_id == crawl_source_id)
             models = (await session.scalars(statement)).all()
             return [crawled_document_model_to_schema(model) for model in models]
 

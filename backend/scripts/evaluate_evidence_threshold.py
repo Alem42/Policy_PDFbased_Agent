@@ -274,7 +274,7 @@ def main() -> None:
     relevant_scores = [s for c, s in zip(CASES, reranker_scores) if c.expect_sufficient]
     offtopic_scores = [s for c, s in zip(CASES, reranker_scores) if not c.expect_sufficient]
     if relevant_scores:
-        print(f"\nReranker score distribution by label:")
+        print("\nReranker score distribution by label:")
         print(f"  Relevant  (n={n_sufficient}): "
               f"min={min(relevant_scores):.3f}  max={max(relevant_scores):.3f}  "
               f"avg={sum(relevant_scores)/len(relevant_scores):.3f}")
@@ -305,7 +305,7 @@ def main() -> None:
             overlap = max_relevant_dist - min_offtopic_dist
             print(f"  Distributions overlap by {overlap:.4f}. "
                   f"No single distance threshold perfectly separates them.")
-            print(f"  Rely more on reranker score for borderline cases.")
+            print("  Rely more on reranker score for borderline cases.")
 
 
 if __name__ == "__main__":

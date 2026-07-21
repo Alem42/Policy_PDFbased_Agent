@@ -1,14 +1,15 @@
 """Integration tests for chat history repository (hits the real database)."""
+
 from __future__ import annotations
 
 import pytest
 
 from app.modules.chat.history_repository import ChatHistoryRepository
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_repo() -> ChatHistoryRepository:
     return ChatHistoryRepository()
@@ -28,6 +29,7 @@ def _find_test_user() -> str:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_create_session_returns_uuid():
     repo = _make_repo()

@@ -66,6 +66,7 @@ class ChatResponse(BaseModel):
 
 # ----- Chat history schemas -----
 
+
 class SessionSummary(BaseModel):
     id: UUID
     title: str
