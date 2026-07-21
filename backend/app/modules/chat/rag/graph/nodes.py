@@ -3,7 +3,12 @@ from app.modules.chat.rag.evidence import (  # noqa: F401 (MAX_VECTOR_DISTANCE u
     assess_evidence_sufficiency,
 )
 from app.modules.chat.rag.generation import format_context, generate_answer
-from app.modules.chat.rag.graph.state import AnswerMode, PDFQAState, ResponseMode
+from app.modules.chat.rag.graph.state import (
+    AnswerMode,
+    PDFQAState,
+    ResponseMode,
+    normalize_answer_mode,
+)
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 from app.modules.documents.service import read_documents, retrieve_relevant_chunks
 
@@ -14,12 +19,14 @@ def _identifiers(state: PDFQAState) -> list[str]:
 
 def _response_mode(state: PDFQAState) -> ResponseMode:
     mode = state.get("response_mode", "researcher")
-    return "student" if mode == "student" else "researcher"
+    if mode in {"researcher", "policymaker", "student"}:
+        return mode
+    return "researcher"
 
 
 def _answer_mode(state: PDFQAState) -> AnswerMode:
     mode = state.get("answer_mode", "analysis")
-    return "chat" if mode == "chat" else "analysis"
+    return normalize_answer_mode(_response_mode(state), mode)
 
 
 def load_documents_node(state: PDFQAState) -> dict:
@@ -138,7 +145,10 @@ def generate_answer_node(state: PDFQAState) -> dict:
 def route_after_evidence_check(state: PDFQAState) -> str:
     if state.get("evidence_sufficient", False):
         return "generate_answer"
-    # Open discussion may continue even when selected documents are thin.
+    # Policymaker mode is always document-grounded and must stop when evidence is weak.
+    if _response_mode(state) == "policymaker":
+        return "insufficient_evidence"
+    # Existing Researcher/Student Open Discussion behaviour remains unchanged.
     if _answer_mode(state) == "chat":
         return "generate_answer"
     return "insufficient_evidence"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-ResponseMode = Literal["researcher", "student"]
+ResponseMode = Literal["researcher", "policymaker", "student"]
 AnswerMode = Literal["analysis", "chat"]
 
 # Injected into the system prompt when numbered citations are available.
@@ -26,11 +26,30 @@ Reply in the same language as the user's question,
 even if the source documents are in a different language.
 """
 
+POLICYMAKER_BASE_SYSTEM_PROMPT = """You are a document-grounded policy assistant for policymakers
+and policy implementation professionals.
+Reply in the same language as the user's question,
+even if the source documents are in a different language.
+"""
+
 RESEARCHER_STYLE_PROMPT = """Writing style:
 - Assume the user is a policy researcher or practitioner.
 - Use precise, professional policy language and domain terminology freely.
 - Prefer high information density over lengthy explanation.
 - Distinguish reported findings in the sources from your synthesis.
+- IMPORTANT: Reply in the SAME LANGUAGE as the user's question.
+  If the user wrote in English, write in English regardless of source language.
+"""
+
+
+POLICYMAKER_STYLE_PROMPT = """Writing style and role:
+- Assume the user is a policymaker or policy implementation professional.
+- Answer the user's actual question directly, using clear and professional policy language.
+- Prefer concise, decision-preparation-oriented analysis over a fixed research-report structure.
+- Distinguish findings stated in the selected sources from any synthesis of those findings.
+- Support policy review and decision preparation, but do NOT make policy decisions for the user.
+- Do NOT independently recommend a policy option. If a selected source contains a recommendation,
+  attribute it explicitly to that source (for example, "The report recommends...").
 - IMPORTANT: Reply in the SAME LANGUAGE as the user's question.
   If the user wrote in English, write in English regardless of source language.
 """
@@ -76,6 +95,21 @@ ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
   what remains unclear. If something is not stated in the excerpts, say so explicitly.
 """
 
+
+POLICYMAKER_BOUNDARY_PROMPT = """Knowledge boundary (Policymaker Document Grounding):
+- Answer using ONLY the supplied excerpts from the user's selected policy documents.
+- Do not use pretrained model knowledge, unsupported general knowledge, general common sense,
+  industry norms, or information from documents the user did not select to fill information gaps.
+- Ground every substantive factual claim in the selected document excerpts.
+- If the excerpts only partially address the question, clearly separate what is supported from
+  what remains unclear. If the selected documents do not provide enough information, say so
+  explicitly.
+- Never invent missing facts, costs, evidence, risks, implementation details, or recommendations.
+- Do not independently choose a policy option or make an autonomous policy recommendation.
+- You may summarise or compare policy options and recommendations that are explicitly contained in
+  the selected documents, but clearly attribute those recommendations to their source.
+"""
+
 CHAT_BOUNDARY_PROMPT = """Knowledge boundary (Open Discussion):
 - Use the supplied policy document excerpts as the primary grounding material.
 - You MAY also draw on your pretrained knowledge to explain concepts, compare with
@@ -110,6 +144,17 @@ The selected documents do not contain enough relevant material to answer this qu
 - Check that the selected documents cover the policy area, country, or time period you need.
 """
 
+
+INSUFFICIENT_EVIDENCE_POLICYMAKER = """The selected documents do not provide enough information
+to answer this question reliably.
+
+**Your question:** {question}
+
+**Information gap:** {reason}
+
+I have not filled this gap with general model knowledge or unsupported assumptions.
+"""
+
 INSUFFICIENT_EVIDENCE_STUDENT = """I could not find enough information in the documents you selected
 to answer this question confidently.
 
@@ -128,11 +173,22 @@ def get_system_prompt(
     response_mode: ResponseMode = "researcher",
     answer_mode: AnswerMode = "analysis",
 ) -> str:
+    # Policymaker is a dedicated, strictly document-grounded persona. It never
+    # enters Open Discussion, even if a caller passes answer_mode="chat".
+    if response_mode == "policymaker":
+        parts = [
+            POLICYMAKER_BASE_SYSTEM_PROMPT,
+            POLICYMAKER_STYLE_PROMPT,
+            POLICYMAKER_BOUNDARY_PROMPT,
+            CONTEXT_BLOCK,
+        ]
+        return "\n".join(part.strip() for part in parts if part.strip())
+
     style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
     parts = [BASE_SYSTEM_PROMPT, style]
 
-    # Keep the structured layout for document analysis only.
+    # Preserve the existing structured layout for Researcher/Student document analysis.
     if answer_mode == "analysis":
         is_student = response_mode == "student"
         structure = STUDENT_STRUCTURE_PROMPT if is_student else RESEARCHER_STRUCTURE_PROMPT
@@ -147,7 +203,10 @@ def get_insufficient_evidence_message(
     reason: str,
     mode: ResponseMode,
 ) -> str:
-    template = (
-        INSUFFICIENT_EVIDENCE_STUDENT if mode == "student" else INSUFFICIENT_EVIDENCE_RESEARCHER
-    )
+    if mode == "policymaker":
+        template = INSUFFICIENT_EVIDENCE_POLICYMAKER
+    elif mode == "student":
+        template = INSUFFICIENT_EVIDENCE_STUDENT
+    else:
+        template = INSUFFICIENT_EVIDENCE_RESEARCHER
     return template.format(question=question.strip(), reason=reason)

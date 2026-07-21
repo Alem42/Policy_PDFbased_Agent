@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-ResponseMode = Literal["researcher", "student"]
+ResponseMode = Literal["researcher", "policymaker", "student"]
 AnswerMode = Literal["analysis", "chat"]
 
 # Maximum number of prior conversation turns sent to the LLM for context.
