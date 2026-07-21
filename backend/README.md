@@ -63,6 +63,27 @@ browser separately when required:
 playwright install chromium
 ```
 
+OCR (scanned/image-only PDF pages) requires the Tesseract system binary, not just
+the `pytesseract` pip package. Install it separately if you're running outside
+Docker (the Docker image installs it automatically):
+
+```powershell
+winget install --id UB-Mannheim.TesseractOCR -e   # Windows
+```
+
+```bash
+apt-get install tesseract-ocr   # Debian/Ubuntu
+brew install tesseract          # macOS
+```
+
+Without it, PDF processing still works normally -- pages that would need OCR
+are just left with empty text (logged as a warning) instead of being recognized.
+
+Uploads also accept Word (`.docx`), plain text (`.txt`), and Markdown (`.md`)
+files alongside PDFs -- see `app/modules/documents/extraction.py` for the
+per-extension extractor dispatch. These formats need no extra system
+dependencies beyond the pip packages.
+
 Start the API from `backend/`:
 
 ```powershell

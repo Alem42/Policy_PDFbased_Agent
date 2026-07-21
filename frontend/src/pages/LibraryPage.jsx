@@ -443,7 +443,7 @@ export default function LibraryPage({
           {user?.role === "admin" ? "Admin Workspace" : "Policy library"}
         </Typography>
         <Typography variant="h1">
-          {user?.role === "admin" ? "PDF Management" : "Document Library"}
+          {user?.role === "admin" ? "Document Management" : "Document Library"}
         </Typography>
         <Typography variant="body1" sx={{ mt: "18px", color: "#63706a" }}>
           {user?.role === "admin"
@@ -596,7 +596,7 @@ export default function LibraryPage({
           </Box>
         ) : pageData.items.length === 0 ? (
           <Typography sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
-            No matching PDFs.
+            No matching documents.
           </Typography>
         ) : (
           pageData.items.map((document) => (
