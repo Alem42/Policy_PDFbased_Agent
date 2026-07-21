@@ -8,6 +8,7 @@ import {
   AccordionDetails,
   Chip,
   Drawer,
+  Skeleton,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -22,7 +23,16 @@ const METADATA_FIELDS = [
   { key: "publication_date", label: "Publication date", fallback: "Unknown" },
 ];
 
-export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleChunk, onClose }) {
+export default function DocumentDrawer({
+  open,
+  detail,
+  detailLoading,
+  chunks,
+  chunksLoading,
+  openChunkId,
+  onToggleChunk,
+  onClose,
+}) {
   const lastDetailRef = useRef(detail);
   const lastChunksRef = useRef(chunks);
 
@@ -30,13 +40,16 @@ export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleCh
     lastDetailRef.current = detail;
     lastChunksRef.current = chunks;
   }
-  const renderedDetail = detail || lastDetailRef.current;
-  const renderedChunks = detail ? chunks : lastChunksRef.current;
+  // While a new detail fetch is in flight, don't fall back to the previous
+  // document's cached data -- that would mislabel it as the new one.
+  const renderedDetail = detail || (detailLoading ? null : lastDetailRef.current);
+  const renderedChunks = detail ? chunks : (open ? null : lastChunksRef.current);
+  const renderedChunksLoading = detail ? chunksLoading : false;
 
   return (
     <Drawer
       anchor="right"
-      open={!!detail}
+      open={open}
       onClose={onClose}
       transitionDuration={{ enter: 280, exit: 220 }}
       slotProps={{
@@ -52,6 +65,29 @@ export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleCh
         },
       }}
     >
+      {!renderedDetail && detailLoading && (
+        <Box sx={{ p: 3 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
+            <Box sx={{ width: "70%" }}>
+              <Skeleton variant="text" width="40%" height={20} />
+              <Skeleton variant="text" width="85%" height={36} />
+            </Box>
+            <IconButton onClick={onClose} aria-label="Close details" size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: "grid", gap: 2, mb: 3 }}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Box key={index}>
+                <Skeleton variant="text" width="30%" height={16} />
+                <Skeleton variant="text" width="55%" height={22} />
+              </Box>
+            ))}
+          </Box>
+          <Skeleton variant="rounded" height={80} sx={{ borderRadius: 2 }} />
+        </Box>
+      )}
+
       {renderedDetail && (
         <Box sx={{ p: 3 }}>
       {/* Header */}
@@ -169,10 +205,19 @@ export default function DocumentDrawer({ detail, chunks, openChunkId, onToggleCh
       </Accordion>
 
       {/* Chunks */}
-      {renderedChunks && (
+      {(renderedChunks || renderedChunksLoading) && (
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Chunks</Typography>
-          {renderedChunks.chunks.map((chunk) => (
+          {renderedChunksLoading && !renderedChunks
+            ? Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rounded"
+                  height={44}
+                  sx={{ mb: 1, borderRadius: 2 }}
+                />
+              ))
+            : renderedChunks.chunks.map((chunk) => (
             <Accordion
               key={chunk.id}
               expanded={openChunkId === chunk.id}

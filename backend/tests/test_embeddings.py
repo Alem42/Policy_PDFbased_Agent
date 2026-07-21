@@ -72,3 +72,33 @@ def test_blank_text_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="must not be blank"):
         embeddings.embed_documents(["valid", "  "])
+
+
+class FakeChunkingTokenizer:
+    def __init__(self) -> None:
+        self.truncation_disabled = False
+
+    def no_truncation(self) -> None:
+        self.truncation_disabled = True
+
+    @staticmethod
+    def encode(_: str) -> SimpleNamespace:
+        return SimpleNamespace(ids=[101, 202, 102])
+
+
+def test_embedding_token_count_uses_untruncated_model_tokenizer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tokenizer = FakeChunkingTokenizer()
+    model = SimpleNamespace(model=SimpleNamespace(_model_dir="model-dir"))
+
+    monkeypatch.setattr(embeddings, "get_settings", lambda: _settings())
+    monkeypatch.setattr(embeddings, "_load_model", lambda _: model)
+    monkeypatch.setattr(embeddings, "load_tokenizer", lambda **_: (tokenizer, None))
+    embeddings._load_chunking_tokenizer.cache_clear()
+
+    try:
+        assert embeddings.estimate_embedding_token_count("policy text") == 3
+        assert tokenizer.truncation_disabled
+    finally:
+        embeddings._load_chunking_tokenizer.cache_clear()

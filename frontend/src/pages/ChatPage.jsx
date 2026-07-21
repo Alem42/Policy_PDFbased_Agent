@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   Alert,
@@ -11,9 +11,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Drawer,
-  FormControlLabel,
   IconButton,
   ListItemButton,
   ListItemText,
@@ -37,10 +35,13 @@ import {
   deleteChatSession,
   getChatSession,
   getChatSessions,
+  getDocumentChunks,
+  getDocumentDetail,
   openDocumentFile,
   renameChatSession,
 } from "../api";
 import CitationList from "../components/CitationList";
+import DocumentDrawer from "../components/DocumentDrawer";
 
 // Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
@@ -196,6 +197,45 @@ export default function ChatPage({
     evidenceReason: null,
   });
 
+  // Document detail drawer (Sources module) — same drawer used in the Library page
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  const [detailDoc, setDetailDoc] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailChunks, setDetailChunks] = useState(null);
+  const [detailChunksLoading, setDetailChunksLoading] = useState(false);
+  const [openChunkId, setOpenChunkId] = useState(null);
+
+  // Draggable divider between Sources and Recent Chats sections
+  const sidebarRef = useRef(null);
+  const dragCleanupRef = useRef(null);
+  const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
+
+  useEffect(() => {
+    return () => dragCleanupRef.current?.();
+  }, []);
+
+  function handleResizerMouseDown(event) {
+    event.preventDefault();
+    const handleMove = (moveEvent) => {
+      if (!sidebarRef.current) return;
+      const rect = sidebarRef.current.getBoundingClientRect();
+      const pct = ((moveEvent.clientY - rect.top) / rect.height) * 100;
+      setSourcesHeightPct(Math.min(80, Math.max(15, pct)));
+    };
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      dragCleanupRef.current = null;
+    };
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    dragCleanupRef.current = handleUp;
+  }
+
   // Load session list on mount
   async function loadSessions() {
     setHistoryLoading(true);
@@ -340,6 +380,52 @@ export default function ChatPage({
     setCitationDrawer({ open: true, citations: citations || [], focusIndex, evidenceSufficient: evidenceSufficient !== false, evidenceReason: evidenceReason || null });
   }
 
+  async function handleShowDocumentDetail(document) {
+    setError("");
+    // Open the drawer immediately with a skeleton; metadata and chunks both
+    // fill in afterwards once their fetches resolve. `detailDrawerOpen` is a
+    // single dedicated flag set once here and only cleared by
+    // closeDocumentDetail(), so the drawer never flickers shut while
+    // `detailDoc`/`detailLoading` are updating in between.
+    setDetailDoc(null);
+    setDetailChunks(null);
+    setOpenChunkId(null);
+    setDetailLoading(true);
+    setDetailDrawerOpen(true);
+
+    let detail;
+    try {
+      detail = await getDocumentDetail(document.id);
+    } catch (detailError) {
+      setError(detailError.message);
+      setDetailLoading(false);
+      return;
+    }
+
+    setDetailDoc(detail);
+    setDetailLoading(false);
+
+    if (document.status === "ready") {
+      setDetailChunksLoading(true);
+      try {
+        setDetailChunks(await getDocumentChunks(document.id));
+      } catch (chunkError) {
+        setError(chunkError.message);
+      } finally {
+        setDetailChunksLoading(false);
+      }
+    }
+  }
+
+  function closeDocumentDetail() {
+    setDetailDrawerOpen(false);
+    setDetailDoc(null);
+    setDetailLoading(false);
+    setDetailChunks(null);
+    setDetailChunksLoading(false);
+    setOpenChunkId(null);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const cleanQuestion = question.trim();
@@ -395,24 +481,36 @@ export default function ChatPage({
   }
 
   return (
-    <Box component="section">
-      <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
+    <Box component="section" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
 
-        {/* Left panel: Sources (top) + History (bottom) */}
-        <Card
+        {/* Left panel: Sources (top) + History (bottom), height split is user-resizable */}
+        <Box
+          ref={sidebarRef}
           sx={{
-            p: 0,
             width: { xs: "100%", md: 280 },
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
-            minHeight: { md: 520 },
+            height: "100%",
           }}
         >
           {/* ── Sources section ── */}
-          <Box sx={{ px: 3, pt: 3, pb: 1.5, flexShrink: 0 }}>
-            <Typography variant="subtitle2">Context</Typography>
-            <Typography variant="h2" sx={{ fontSize: 22, mb: 1.5 }}>Sources</Typography>
+          <Card
+            sx={{
+              height: `${sourcesHeightPct}%`,
+              flexShrink: 0,
+              p: 0,
+              px: 3,
+              pt: 3,
+              pb: 1.5,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ flexShrink: 0 }}>Context</Typography>
+            <Typography variant="h2" sx={{ fontSize: 22, mb: 1.5, flexShrink: 0 }}>Sources</Typography>
             {sourceDocs.length === 0 ? (
               <Box sx={{ py: 2, textAlign: "center" }}>
                 <Typography variant="body2" sx={{ color: "text.secondary", mb: 1.5 }}>
@@ -423,27 +521,32 @@ export default function ChatPage({
                 </Button>
               </Box>
             ) : (
-              <Box sx={{ maxHeight: 200, overflowY: "auto" }}>
+              <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {sourceDocs.map((document) => (
                   <Box
                     key={document.id || document.name}
                     sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}
                   >
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={selected.includes(document.id)}
-                          onChange={() => toggleDocument(document.id)}
-                          size="small"
-                        />
-                      }
-                      label={
-                        <Typography variant="body2" sx={{ wordBreak: "break-word", fontSize: 13 }}>
-                          {document.title || document.name}
-                        </Typography>
-                      }
-                      sx={{ m: 0, flex: 1 }}
-                    />
+                    <Box sx={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+                      <Checkbox
+                        checked={selected.includes(document.id)}
+                        onChange={() => toggleDocument(document.id)}
+                        size="small"
+                      />
+                      <Typography
+                        variant="body2"
+                        onClick={() => handleShowDocumentDetail(document)}
+                        title="View document details"
+                        sx={{
+                          wordBreak: "break-word",
+                          fontSize: 13,
+                          cursor: "pointer",
+                          "&:hover": { textDecoration: "underline", color: "#214f42" },
+                        }}
+                      >
+                        {document.title || document.name}
+                      </Typography>
+                    </Box>
                     <IconButton
                       size="small"
                       title="Remove from context"
@@ -461,16 +564,34 @@ export default function ChatPage({
                 size="small"
                 variant="text"
                 onClick={() => onNavigate("library")}
-                sx={{ mt: 0.5, fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
+                sx={{ mt: 0.5, flexShrink: 0, fontSize: "0.75em", color: "#214f42", textTransform: "none", px: 0 }}
               >
                 + Add more sources
               </Button>
             )}
+          </Card>
+
+          {/* ── Draggable handle — resizes Sources vs. Recent Chats ── */}
+          <Box
+            onMouseDown={handleResizerMouseDown}
+            sx={{
+              flexShrink: 0,
+              height: 16,
+              cursor: "row-resize",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              "&:hover .resize-handle-grip": { bgcolor: "#9db3a7" },
+            }}
+          >
+            <Box
+              className="resize-handle-grip"
+              sx={{ width: 40, height: 4, borderRadius: 999, bgcolor: "#c8d0cb", transition: "background-color 0.15s" }}
+            />
           </Box>
 
-          <Divider />
-
           {/* ── History section ── */}
+          <Card sx={{ flex: 1, minHeight: 0, p: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Box
             sx={{
               px: 2,
@@ -586,12 +707,13 @@ export default function ChatPage({
               );
             })}
           </Box>
-        </Card>
+          </Card>
+        </Box>
 
         {/* Chat Panel */}
-        <Card sx={{ p: 3, flex: 1, minWidth: 0 }}>
+        <Card sx={{ p: 3, flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Box
-            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: "20px" }}
+            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: "20px", flexShrink: 0 }}
           >
             <Box>
               <Typography variant="subtitle2">Conversation</Typography>
@@ -603,7 +725,7 @@ export default function ChatPage({
           </Box>
 
           {/* Messages */}
-          <Box sx={{ mb: 3, minHeight: 200 }}>
+          <Box sx={{ mb: 3, flex: 1, minHeight: 0, overflowY: "auto" }}>
             {messages.length === 0 && (
               <Typography sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
                 Ask a question to start a conversation.
@@ -742,10 +864,10 @@ export default function ChatPage({
             )}
           </Box>
 
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mb: 2, flexShrink: 0 }}>{error}</Alert>}
 
           {/* Mode selectors */}
-          <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
+          <Box sx={{ mb: 2, flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
             <Box>
               <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
                 Writing style
@@ -810,7 +932,7 @@ export default function ChatPage({
           </Box>
 
           {/* Chat Form */}
-          <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", gap: 1 }}>
+          <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
             <TextField
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
@@ -1064,6 +1186,18 @@ export default function ChatPage({
           )}
         </Box>
       </Drawer>
+
+      {/* Document detail drawer — opened from the Sources module */}
+      <DocumentDrawer
+        open={detailDrawerOpen}
+        detail={detailDoc}
+        detailLoading={detailLoading}
+        chunks={detailChunks}
+        chunksLoading={detailChunksLoading}
+        openChunkId={openChunkId}
+        onToggleChunk={(chunkId) => setOpenChunkId(openChunkId === chunkId ? null : chunkId)}
+        onClose={closeDocumentDetail}
+      />
 
       {/* Missing documents warning */}
       <Snackbar

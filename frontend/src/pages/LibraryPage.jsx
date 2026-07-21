@@ -14,9 +14,21 @@ import {
   Menu,
   Divider,
   Pagination,
+  Popover,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Autocomplete,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import dayjs from "dayjs";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { useSearchParams } from "react-router-dom";
 import {
   deleteDocument,
@@ -60,12 +72,26 @@ const SEARCH_PARAM_DEFAULTS = {
 
 const filterSelectSx = { minWidth: 140, "& .MuiSelect-select": { py: "10px" } };
 
+const EMPTY_EDIT_FORM = {
+  title: "",
+  summary: "",
+  source_type: "",
+  source_organisation: "",
+  country_region: "",
+  language: "",
+  publication_date: "",
+  year: "",
+  policy_areas: [],
+  keywords: [],
+};
+
 export default function LibraryPage({
   documents,
   user,
   onRefresh,
   onRescan,
   onDocumentsChanged,
+  onNavigate,
   contextSourceIds = [],
   onAddSource,
   onRemoveSource,
@@ -90,13 +116,18 @@ export default function LibraryPage({
   const [pageData, setPageData] = useState({ items: [], total: 0, pages: 0 });
   const [searchLoading, setSearchLoading] = useState(true);
   const [searchVersion, setSearchVersion] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [chunks, setChunks] = useState(null);
+  const [chunksLoading, setChunksLoading] = useState(false);
   const [openChunkId, setOpenChunkId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
+  const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
+  const [editDialog, setEditDialog] = useState({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
 
   function updateSearchParams(updates, { replace = false } = {}) {
     setSearchParams((current) => {
@@ -236,21 +267,93 @@ export default function LibraryPage({
     }
   }
 
-  async function handleDetail(document) {
-    setBusy(true);
+  function openEditDialog(document) {
+    setEditDialog({
+      open: true,
+      document,
+      form: {
+        title: document.title || "",
+        summary: document.summary || "",
+        source_type: document.source_type || "",
+        source_organisation: document.source_organisation || "",
+        country_region: document.country_region || "",
+        language: document.language || "",
+        publication_date: document.publication_date ? String(document.publication_date).slice(0, 10) : "",
+        year: document.year ?? "",
+        policy_areas: document.policy_areas || [],
+        keywords: document.keywords || [],
+      },
+      saving: false,
+    });
+  }
+
+  function closeEditDialog() {
+    setEditDialog({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
+  }
+
+  function updateEditField(field, value) {
+    setEditDialog((state) => ({ ...state, form: { ...state.form, [field]: value } }));
+  }
+
+  async function handleSaveEdit() {
+    const { document, form } = editDialog;
+    setEditDialog((state) => ({ ...state, saving: true }));
     setError("");
     try {
-      const detail = await getDocumentDetail(document.id);
-      setSelected(detail);
-      setChunks(null);
-      setOpenChunkId(null);
-      if (document.status === "ready") {
-        setChunks(await getDocumentChunks(document.id));
-      }
+      await updateDocument(document.id, {
+        title: form.title,
+        summary: form.summary,
+        source_type: form.source_type,
+        source_organisation: form.source_organisation,
+        country_region: form.country_region,
+        language: form.language,
+        publication_date: form.publication_date || null,
+        year: form.year === "" ? null : Number(form.year),
+        policy_areas: form.policy_areas,
+        keywords: form.keywords,
+      });
+      closeEditDialog();
+      await handleDocumentsChanged();
+    } catch (updateError) {
+      setError(updateError.message);
+      setEditDialog((state) => ({ ...state, saving: false }));
+    }
+  }
+
+  async function handleDetail(document) {
+    setError("");
+    // Open the drawer immediately with a skeleton; metadata and chunks both
+    // fill in afterwards once their fetches resolve. `drawerOpen` is a single
+    // dedicated flag set once here and only cleared by closeDrawer(), so the
+    // drawer never flickers shut while `selected`/`detailLoading` are
+    // updating in between.
+    setSelected(null);
+    setChunks(null);
+    setOpenChunkId(null);
+    setDetailLoading(true);
+    setDrawerOpen(true);
+
+    let detail;
+    try {
+      detail = await getDocumentDetail(document.id);
     } catch (detailError) {
       setError(detailError.message);
-    } finally {
-      setBusy(false);
+      setDetailLoading(false);
+      return;
+    }
+
+    setSelected(detail);
+    setDetailLoading(false);
+
+    if (document.status === "ready") {
+      setChunksLoading(true);
+      try {
+        setChunks(await getDocumentChunks(document.id));
+      } catch (chunkError) {
+        setError(chunkError.message);
+      } finally {
+        setChunksLoading(false);
+      }
     }
   }
 
@@ -284,9 +387,33 @@ export default function LibraryPage({
   }
 
   function closeDrawer() {
+    setDrawerOpen(false);
     setSelected(null);
+    setDetailLoading(false);
     setChunks(null);
+    setChunksLoading(false);
     setOpenChunkId(null);
+  }
+
+  function handleAddToChat(event, document) {
+    try {
+      onAddSource(document.id);
+      setAddedPopover({ anchorEl: event.currentTarget, document, success: true });
+    } catch (addError) {
+      setAddedPopover({ anchorEl: event.currentTarget, document, success: false, error: addError.message });
+    }
+  }
+
+  function closeAddedPopover() {
+    // Only clear anchorEl (which drives `open`) -- keep success/error/document
+    // as-is so the content doesn't flip to the "failed" state while the
+    // Popover is still fading out.
+    setAddedPopover((state) => ({ ...state, anchorEl: null }));
+  }
+
+  function handleGoToChat() {
+    closeAddedPopover();
+    onNavigate("chat");
   }
 
   return (
@@ -564,7 +691,7 @@ export default function LibraryPage({
                     variant="outlined"
                     disabled={busy}
                     onClick={() => onRemoveSource(document.id)}
-                    sx={{ color: "error.main", borderColor: "error.main" }}
+                    sx={{ color: "error.main", borderColor: "error.main", minWidth: 108 }}
                   >
                     Remove
                   </Button>
@@ -573,7 +700,8 @@ export default function LibraryPage({
                     size="small"
                     variant="contained"
                     disabled={busy}
-                    onClick={() => onAddSource(document.id)}
+                    onClick={(event) => handleAddToChat(event, document)}
+                    sx={{ minWidth: 108 }}
                   >
                     Add to chat
                   </Button>
@@ -665,6 +793,9 @@ export default function LibraryPage({
         <MenuItem onClick={() => runMoreAction(handleOpenSource)}>Open source</MenuItem>
         {user?.role === "admin" && <Divider />}
         {user?.role === "admin" && (
+          <MenuItem onClick={() => runMoreAction(openEditDialog)}>Edit</MenuItem>
+        )}
+        {user?.role === "admin" && (
           <MenuItem
             onClick={() =>
               runMoreAction((document) =>
@@ -684,9 +815,172 @@ export default function LibraryPage({
         )}
       </Menu>
 
+      {/* "Added to chat" confirmation bubble */}
+      <Popover
+        open={Boolean(addedPopover.anchorEl)}
+        anchorEl={addedPopover.anchorEl}
+        onClose={closeAddedPopover}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        transformOrigin={{ vertical: "top", horizontal: "center" }}
+        slotProps={{ paper: { sx: { mt: 1, borderRadius: 2 } } }}
+      >
+        <Box sx={{ px: 1.5, py: 1, display: "flex", flexDirection: "column", gap: 0.75, minWidth: 160 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              color: addedPopover.success ? "success.main" : "error.main",
+            }}
+          >
+            {addedPopover.success ? (
+              <CheckCircleIcon sx={{ fontSize: 16 }} />
+            ) : (
+              <ErrorIcon sx={{ fontSize: 16 }} />
+            )}
+            <Typography variant="caption" sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+              {addedPopover.success ? "Added to chat" : addedPopover.error || "Failed to add"}
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant="contained"
+            fullWidth
+            onClick={handleGoToChat}
+            sx={{ py: 0.4, fontSize: 12, minHeight: 0 }}
+          >
+            Go to chat
+          </Button>
+        </Box>
+      </Popover>
+
+      {/* Edit document metadata dialog */}
+      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="md" fullWidth>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <DialogTitle>Edit document</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, pt: 1 }}>
+            <TextField
+              label="Title"
+              fullWidth
+              size="small"
+              value={editDialog.form.title}
+              onChange={(e) => updateEditField("title", e.target.value)}
+            />
+            <TextField
+              label="Summary"
+              fullWidth
+              multiline
+              rows={3}
+              size="small"
+              value={editDialog.form.summary}
+              onChange={(e) => updateEditField("summary", e.target.value)}
+            />
+            <TextField
+              label="Source type"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.source_type}
+              onChange={(e) => updateEditField("source_type", e.target.value)}
+            />
+            <TextField
+              label="Source organisation"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.source_organisation}
+              onChange={(e) => updateEditField("source_organisation", e.target.value)}
+            />
+            <TextField
+              label="Region"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.country_region}
+              onChange={(e) => updateEditField("country_region", e.target.value)}
+            />
+            <TextField
+              label="Language"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.language}
+              onChange={(e) => updateEditField("language", e.target.value)}
+            />
+            <TextField
+              label="Year"
+              type="number"
+              size="small"
+              sx={{ flex: "1 1 45%" }}
+              value={editDialog.form.year}
+              onChange={(e) => updateEditField("year", e.target.value)}
+            />
+            <DatePicker
+              label="Publication date"
+              value={editDialog.form.publication_date ? dayjs(editDialog.form.publication_date) : null}
+              onChange={(newValue) =>
+                updateEditField(
+                  "publication_date",
+                  newValue && newValue.isValid() ? newValue.format("YYYY-MM-DD") : "",
+                )
+              }
+              slotProps={{ textField: { size: "small" } }}
+              sx={{ flex: "1 1 45%" }}
+            />
+            <Autocomplete
+              multiple
+              freeSolo
+              fullWidth
+              size="small"
+              options={policyAreas}
+              value={editDialog.form.policy_areas}
+              onChange={(_, value) => updateEditField("policy_areas", value)}
+              renderValue={(value, getItemProps) =>
+                value.map((option, index) => {
+                  const { key, ...itemProps } = getItemProps({ index });
+                  return <Chip key={key} label={option} size="small" {...itemProps} />;
+                })
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Policy areas" placeholder="Type and press enter" />
+              )}
+              sx={{ width: "100%" }}
+            />
+            <Autocomplete
+              multiple
+              freeSolo
+              fullWidth
+              size="small"
+              options={[]}
+              value={editDialog.form.keywords}
+              onChange={(_, value) => updateEditField("keywords", value)}
+              renderValue={(value, getItemProps) =>
+                value.map((option, index) => {
+                  const { key, ...itemProps } = getItemProps({ index });
+                  return <Chip key={key} label={option} size="small" {...itemProps} />;
+                })
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Keywords" placeholder="Type and press enter" />
+              )}
+              sx={{ width: "100%" }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEditDialog} disabled={editDialog.saving}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSaveEdit} disabled={editDialog.saving}>
+            {editDialog.saving ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </LocalizationProvider>
+      </Dialog>
+
       <DocumentDrawer
+        open={drawerOpen}
         detail={selected}
+        detailLoading={detailLoading}
         chunks={chunks}
+        chunksLoading={chunksLoading}
         openChunkId={openChunkId}
         onToggleChunk={(chunkId) => setOpenChunkId(openChunkId === chunkId ? null : chunkId)}
         onClose={closeDrawer}
