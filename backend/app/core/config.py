@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     llm_chat_model: str | None = None
     deepseek_chat_model: str | None = None
+    # Per-provider API keys, so multiple providers can be usable at once
+    # (e.g. one message answered by OpenAI, the next by Anthropic).
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    gemini_api_key: str | None = None
     app_secret: str = "development-only-change-me"
 
     firecrawl_api_key: str | None = None

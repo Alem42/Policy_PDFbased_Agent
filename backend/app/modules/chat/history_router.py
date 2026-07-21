@@ -59,6 +59,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             evidence_sufficient=m.get("evidence_sufficient"),
             response_mode=m.get("response_mode"),
             answer_mode=m.get("answer_mode"),
+            model=m.get("model"),
             created_at=m["created_at"],
         )
         for m in msgs

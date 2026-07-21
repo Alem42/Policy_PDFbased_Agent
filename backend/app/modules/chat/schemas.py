@@ -62,6 +62,8 @@ class ChatResponse(BaseModel):
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"
     session_id: UUID | None = None
+    # Resolved "<provider>/<model-id>" that actually answered, e.g. "openai/gpt-4o".
+    model: str | None = None
 
 
 # ----- Chat history schemas -----
@@ -86,6 +88,7 @@ class SessionMessage(BaseModel):
     evidence_sufficient: bool | None = None
     response_mode: ResponseMode | None = None
     answer_mode: AnswerMode | None = None
+    model: str | None = None
     created_at: datetime
 
 
@@ -101,6 +104,17 @@ class SessionDetail(BaseModel):
 
 class SessionRenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+
+class ModelOption(BaseModel):
+    id: str  # "<provider>/<model-id>", e.g. "openai/gpt-4o" — pass as ChatRequest.model
+    label: str
+
+
+class ProviderModels(BaseModel):
+    provider: str
+    provider_label: str
+    models: list[ModelOption]
 
 
 class DocumentChunkRead(BaseModel):
