@@ -33,7 +33,7 @@ import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  askQuestion,
+  askQuestionStream,
   deleteChatSession,
   getChatSession,
   getChatSessions,
@@ -500,30 +500,66 @@ export default function ChatPage({
     setBusy(true);
     setError("");
 
+    let assistantAdded = false;
+
     try {
-      const result = await askQuestion(
+      const stream = askQuestionStream(
         cleanQuestion, selected, responseMode, answerMode, messages, sessionId,
       );
-      if (!sessionId && result.session_id) {
-        setSessionId(result.session_id);
-        // Refresh history list so the new session appears
-        loadSessions();
+
+      for await (const event of stream) {
+        if (event.type === "token") {
+          if (!assistantAdded) {
+            assistantAdded = true;
+            setMessages((current) => [
+              ...current,
+              {
+                role: "assistant",
+                content: event.value,
+                citations: [],
+                evidenceSufficient: true,
+                evidenceReason: null,
+                responseMode: responseMode,
+                answerMode: answerMode,
+                streaming: true,
+              },
+            ]);
+          } else {
+            setMessages((current) => {
+              const updated = [...current];
+              const last = updated[updated.length - 1];
+              updated[updated.length - 1] = { ...last, content: last.content + event.value };
+              return updated;
+            });
+          }
+        } else if (event.type === "citations") {
+          setMessages((current) => {
+            const updated = [...current];
+            const last = updated[updated.length - 1];
+            updated[updated.length - 1] = {
+              ...last,
+              citations: Array.isArray(event.data) ? event.data : [],
+              evidenceSufficient: event.evidence_sufficient ?? true,
+              evidenceReason: event.evidence_reason ?? null,
+              responseMode: event.response_mode || responseMode,
+              answerMode: event.answer_mode || answerMode,
+              streaming: false,
+            };
+            return updated;
+          });
+          if (event.session_id && !sessionId) {
+            setSessionId(String(event.session_id));
+            loadSessions();
+          }
+        } else if (event.type === "error") {
+          throw new Error(event.message);
+        }
       }
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: result.answer,
-          citations: Array.isArray(result.citations) ? result.citations : [],
-          truncated: result.truncated,
-          evidenceSufficient: result.evidence_sufficient,
-          evidenceReason: result.evidence_reason || null,
-          responseMode: result.response_mode || responseMode,
-          answerMode: result.answer_mode || answerMode,
-        },
-      ]);
     } catch (chatError) {
       setError(chatError.message);
+      if (assistantAdded) {
+        setMessages((current) => current.filter((m) => !m.streaming));
+      }
     } finally {
       setBusy(false);
     }
@@ -919,6 +955,21 @@ export default function ChatPage({
                       >
                         {message.content}
                       </ReactMarkdown>
+                      {message.streaming && (
+                        <Box
+                          component="span"
+                          sx={{
+                            display: "inline-block",
+                            width: "2px",
+                            height: "0.9em",
+                            bgcolor: "#214f42",
+                            ml: "2px",
+                            verticalAlign: "text-bottom",
+                            animation: "blink 1s step-end infinite",
+                            "@keyframes blink": { "0%,100%": { opacity: 1 }, "50%": { opacity: 0 } },
+                          }}
+                        />
+                      )}
                     </Box>
                   ) : (
                     <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
@@ -943,7 +994,7 @@ export default function ChatPage({
                 </Box>
               );
             })}
-            {busy && (
+            {busy && !messages[messages.length - 1]?.streaming && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
                 <Box sx={{ display: "flex", gap: "4px", alignItems: "center" }}>
                   {[0, 1, 2].map((i) => (
@@ -965,7 +1016,7 @@ export default function ChatPage({
                   ))}
                 </Box>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  Thinking...
+                  Searching documents...
                 </Typography>
               </Box>
             )}
@@ -977,23 +1028,38 @@ export default function ChatPage({
           {/* Mode selectors */}
           <Box sx={{ mb: 2, flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
             <Box>
-              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
-                Writing style
-              </Typography>
               <Button
                 variant="outlined"
                 size="small"
                 disabled={busy}
-                endIcon={<ArrowDropDownIcon />}
                 onClick={(event) => setResponseModeAnchor(event.currentTarget)}
                 aria-haspopup="menu"
+                sx={{
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  py: 0.75,
+                  px: 1.25,
+                  gap: 0,
+                  minWidth: 0,
+                  textTransform: "none",
+                }}
               >
-                {getOptionLabel(RESPONSE_MODE_OPTIONS, responseMode)}
+                <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                  Writing style
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                  <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                    {getOptionLabel(RESPONSE_MODE_OPTIONS, responseMode)}
+                  </Typography>
+                  <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                </Box>
               </Button>
               <Menu
                 anchorEl={responseModeAnchor}
                 open={Boolean(responseModeAnchor)}
                 onClose={() => setResponseModeAnchor(null)}
+                anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                transformOrigin={{ vertical: "bottom", horizontal: "left" }}
               >
                 {RESPONSE_MODE_OPTIONS.map((option) => (
                   <MenuItem
@@ -1012,23 +1078,38 @@ export default function ChatPage({
             </Box>
 
             <Box>
-              <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
-                Answer purpose
-              </Typography>
               <Button
                 variant="outlined"
                 size="small"
                 disabled={busy || responseMode === "policymaker"}
-                endIcon={<ArrowDropDownIcon />}
                 onClick={(event) => setAnswerModeAnchor(event.currentTarget)}
                 aria-haspopup="menu"
+                sx={{
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  py: 0.75,
+                  px: 1.25,
+                  gap: 0,
+                  minWidth: 0,
+                  textTransform: "none",
+                }}
               >
-                {getOptionLabel(ANSWER_MODE_OPTIONS, answerMode)}
+                <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                  Answer purpose
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                  <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                    {getOptionLabel(ANSWER_MODE_OPTIONS, answerMode)}
+                  </Typography>
+                  <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                </Box>
               </Button>
               <Menu
                 anchorEl={answerModeAnchor}
                 open={Boolean(answerModeAnchor)}
                 onClose={() => setAnswerModeAnchor(null)}
+                anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                transformOrigin={{ vertical: "bottom", horizontal: "left" }}
               >
                 {ANSWER_MODE_OPTIONS
                   .filter((option) => responseMode !== "policymaker" || option.value === "analysis")

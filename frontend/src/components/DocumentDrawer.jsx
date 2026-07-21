@@ -55,8 +55,7 @@ export default function DocumentDrawer({
       slotProps={{
         paper: {
           sx: {
-            width: { xs: "calc(100vw - 24px)", sm: 480, md: 520 },
-            maxWidth: 520,
+            width: "clamp(320px, 50vw, 620px)",
             overflowX: "hidden",
             overflowY: "auto",
             borderRadius: 0,
