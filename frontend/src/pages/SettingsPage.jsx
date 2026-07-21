@@ -8,7 +8,14 @@ import {
   MenuItem,
   Alert,
   Skeleton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/Delete";
 import { getSettings, saveSettings } from "../api";
 
 // Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
@@ -20,30 +27,6 @@ const PROVIDERS = [
   { id: "custom", label: "Custom / self-hosted" },
 ];
 
-// Must mirror each provider's "models" list in PROVIDER_CONFIGS. "custom" has
-// no curated list (self-hosted model names vary) so it keeps a free-text field.
-const PROVIDER_MODELS = {
-  deepseek: [
-    { id: "deepseek-chat", label: "DeepSeek Chat" },
-    { id: "deepseek-reasoner", label: "DeepSeek Reasoner" },
-  ],
-  openai: [
-    { id: "gpt-4o", label: "GPT-4o" },
-    { id: "gpt-4o-mini", label: "GPT-4o mini" },
-    { id: "gpt-4.1", label: "GPT-4.1" },
-  ],
-  anthropic: [
-    { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
-    { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-    { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  ],
-  gemini: [
-    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  ],
-  custom: [],
-};
-
 export default function SettingsPage({ user, onNavigate }) {
   const [settings, setSettings] = useState(null);
   const [llmProvider, setLlmProvider] = useState("deepseek");
@@ -53,6 +36,13 @@ export default function SettingsPage({ user, onNavigate }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  // "Manage models" dialog — edits the curated model list for one provider at a time.
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelDialogProvider, setModelDialogProvider] = useState("deepseek");
+  const [modelDialogRows, setModelDialogRows] = useState([]);
+  const [modelDialogBusy, setModelDialogBusy] = useState(false);
+  const [modelDialogError, setModelDialogError] = useState("");
 
   async function loadSettings() {
     setLoading(true);
@@ -116,6 +106,55 @@ export default function SettingsPage({ user, onNavigate }) {
       setError(clearError.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openModelDialog(providerId) {
+    const initialProvider = providerId || llmProvider;
+    setModelDialogProvider(initialProvider);
+    setModelDialogRows((settings?.provider_models?.[initialProvider] || []).map((m) => ({ ...m })));
+    setModelDialogError("");
+    setModelDialogOpen(true);
+  }
+
+  function switchModelDialogProvider(providerId) {
+    setModelDialogProvider(providerId);
+    setModelDialogRows((settings?.provider_models?.[providerId] || []).map((m) => ({ ...m })));
+  }
+
+  function updateModelRow(index, field, value) {
+    setModelDialogRows((rows) => rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  }
+
+  function addModelRow() {
+    setModelDialogRows((rows) => [...rows, { id: "", label: "" }]);
+  }
+
+  function removeModelRow(index) {
+    setModelDialogRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  function resetModelDialogToDefault() {
+    setModelDialogRows(
+      (settings?.default_provider_models?.[modelDialogProvider] || []).map((m) => ({ ...m })),
+    );
+  }
+
+  async function handleSaveModelDialog() {
+    setModelDialogBusy(true);
+    setModelDialogError("");
+    try {
+      const cleanRows = modelDialogRows
+        .map((r) => ({ id: r.id.trim(), label: r.label.trim() || r.id.trim() }))
+        .filter((r) => r.id);
+      const result = await saveSettings({ provider_models: { [modelDialogProvider]: cleanRows } });
+      setSettings(result);
+      setModelDialogOpen(false);
+      setNotice(`Updated the model list for ${modelDialogProvider}.`);
+    } catch (saveError) {
+      setModelDialogError(saveError.message);
+    } finally {
+      setModelDialogBusy(false);
     }
   }
 
@@ -217,7 +256,7 @@ export default function SettingsPage({ user, onNavigate }) {
                     const nextProvider = event.target.value;
                     setLlmProvider(nextProvider);
                     // Drop a model choice that doesn't exist for the newly selected provider.
-                    const validIds = (PROVIDER_MODELS[nextProvider] || []).map((m) => m.id);
+                    const validIds = (settings?.provider_models?.[nextProvider] || []).map((m) => m.id);
                     if (nextProvider !== "custom" && !validIds.includes(model)) {
                       setModel("");
                     }
@@ -260,10 +299,10 @@ export default function SettingsPage({ user, onNavigate }) {
                       <em>Use provider's built-in default</em>
                     </MenuItem>
                     {/* Keep a saved value visible even if it predates this curated list. */}
-                    {model && !(PROVIDER_MODELS[llmProvider] || []).some((m) => m.id === model) && (
+                    {model && !(settings?.provider_models?.[llmProvider] || []).some((m) => m.id === model) && (
                       <MenuItem value={model}>{model}</MenuItem>
                     )}
-                    {(PROVIDER_MODELS[llmProvider] || []).map((option) => (
+                    {(settings?.provider_models?.[llmProvider] || []).map((option) => (
                       <MenuItem key={option.id} value={option.id}>
                         {option.label}
                       </MenuItem>
@@ -275,9 +314,14 @@ export default function SettingsPage({ user, onNavigate }) {
                 </Typography>
               </Box>
 
-              <Typography variant="body2" sx={{ fontWeight: 800, mt: 1 }}>
-                Provider API keys
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                  Provider API keys
+                </Typography>
+                <Button size="small" variant="outlined" onClick={() => openModelDialog()}>
+                  Manage models
+                </Button>
+              </Box>
               {PROVIDERS.map((provider) => (
                 <Box
                   key={provider.id}
@@ -335,6 +379,72 @@ export default function SettingsPage({ user, onNavigate }) {
           </>
         )}
       </Card>
+
+      {/* Manage models dialog */}
+      <Dialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Manage models</DialogTitle>
+        <DialogContent sx={{ display: "grid", gap: 2 }}>
+          <TextField
+            select
+            label="Provider"
+            value={modelDialogProvider}
+            onChange={(event) => switchModelDialogProvider(event.target.value)}
+            size="small"
+            sx={{ maxWidth: 280, mt: 1 }}
+          >
+            {PROVIDERS.map((provider) => (
+              <MenuItem key={provider.id} value={provider.id}>
+                {provider.label}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          {modelDialogError && <Alert severity="error">{modelDialogError}</Alert>}
+
+          <Box sx={{ display: "grid", gap: 1 }}>
+            {modelDialogRows.length === 0 && (
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                No models configured for this provider yet.
+              </Typography>
+            )}
+            {modelDialogRows.map((row, index) => (
+              <Box key={index} sx={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 1 }}>
+                <TextField
+                  value={row.id}
+                  onChange={(event) => updateModelRow(index, "id", event.target.value)}
+                  placeholder="Model id (e.g. gpt-4o)"
+                  size="small"
+                />
+                <TextField
+                  value={row.label}
+                  onChange={(event) => updateModelRow(index, "label", event.target.value)}
+                  placeholder="Display label (e.g. GPT-4o)"
+                  size="small"
+                />
+                <IconButton size="small" onClick={() => removeModelRow(index)} sx={{ color: "#888" }}>
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+            <Button size="small" variant="text" startIcon={<AddIcon />} onClick={addModelRow} sx={{ justifySelf: "start" }}>
+              Add model
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
+          <Button size="small" onClick={resetModelDialogToDefault} disabled={modelDialogBusy}>
+            Reset to default
+          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button onClick={() => setModelDialogOpen(false)} disabled={modelDialogBusy}>
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={handleSaveModelDialog} disabled={modelDialogBusy}>
+              {modelDialogBusy ? "Saving..." : "Save"}
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

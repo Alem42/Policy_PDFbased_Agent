@@ -1,6 +1,7 @@
 from app.core.config import get_settings
 from app.core.llm_providers import DEFAULT_PROVIDER, PROVIDER_CONFIGS
 from app.modules.settings.repository import settings_repository
+from app.modules.settings.schemas import ModelEntry
 
 
 def get_llm_api_key(provider: str | None = None) -> tuple[str | None, str]:
@@ -53,6 +54,18 @@ def get_llm_provider() -> str:
     return runtime.llm_provider or DEFAULT_PROVIDER
 
 
+def get_provider_models(provider: str) -> list[ModelEntry]:
+    """Effective selectable-model list for `provider`.
+
+    Returns the runtime override if the admin has customized it (even to an
+    empty list), otherwise the hardcoded default from PROVIDER_CONFIGS.
+    """
+    runtime = settings_repository.load()
+    if provider in runtime.provider_models:
+        return runtime.provider_models[provider]
+    return [ModelEntry(**m) for m in PROVIDER_CONFIGS.get(provider, {}).get("models", [])]
+
+
 def get_public_settings() -> dict:
     api_key, api_key_source = get_llm_api_key()
     model, model_source = get_llm_chat_model()
@@ -68,6 +81,13 @@ def get_public_settings() -> dict:
         "llm_base_url": get_settings().llm_base_url,
         "llm_provider": get_llm_provider(),
         "masked_provider_keys": masked_provider_keys,
+        "provider_models": {
+            provider: get_provider_models(provider) for provider in PROVIDER_CONFIGS
+        },
+        "default_provider_models": {
+            provider: [ModelEntry(**m) for m in config["models"]]
+            for provider, config in PROVIDER_CONFIGS.items()
+        },
     }
 
 
@@ -76,6 +96,7 @@ def update_public_settings(
     llm_chat_model: str | None = None,
     llm_provider: str | None = None,
     provider_api_keys: dict[str, str] | None = None,
+    provider_models: dict[str, list[ModelEntry] | None] | None = None,
 ) -> dict:
     runtime = settings_repository.load()
     if llm_api_key is not None:
@@ -97,5 +118,16 @@ def update_public_settings(
             else:
                 updated_keys.pop(provider, None)
         runtime.provider_api_keys = updated_keys
+    if provider_models is not None:
+        updated_models = dict(runtime.provider_models)
+        for provider, entries in provider_models.items():
+            if provider not in PROVIDER_CONFIGS:
+                continue
+            if entries is None:
+                # Explicit reset -- fall back to the hardcoded default list.
+                updated_models.pop(provider, None)
+            else:
+                updated_models[provider] = entries
+        runtime.provider_models = updated_models
     settings_repository.save(runtime)
     return get_public_settings()
