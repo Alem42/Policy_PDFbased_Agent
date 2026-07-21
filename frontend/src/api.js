@@ -222,6 +222,7 @@ export function askQuestion(
   answerMode = "analysis",
   history = [],
   sessionId = null,
+  model = null,
 ) {
   const body = {
     question,
@@ -230,6 +231,7 @@ export function askQuestion(
     answer_mode: answerMode,
     session_id: sessionId,
   };
+  if (model) body.model = model;
 
   // When no session_id, still send history inline for backwards compat.
   // When session_id is set the server reads history from DB — inline is ignored.
@@ -319,6 +321,12 @@ export async function* askQuestionStream(
       } catch { /* skip malformed frames */ }
     }
   }
+}
+
+// Models selectable per-message, grouped by provider. Only providers with a
+// configured API key are returned by the backend.
+export function getChatModels() {
+  return request("/chat/models");
 }
 
 // ── Chat history API ───────────────────────────────────────────────────────

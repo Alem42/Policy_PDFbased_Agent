@@ -7,7 +7,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
-from app.core.llm_providers import get_provider_config
+from app.core.llm_providers import get_provider_config, resolve_provider_and_model
 from app.modules.chat.rag.prompts import (
     CITATION_INSTRUCTION,
     AnswerMode,
@@ -65,16 +65,23 @@ def generate_answer(
     history: list[dict] | None = None,
     citations: list[dict] | None = None,
     answer_mode: AnswerMode = "analysis",
-) -> str:
-    api_key, _ = get_llm_api_key()
+) -> tuple[str, str]:
+    """Generate the answer text. Returns (answer, resolved_model) where
+    resolved_model is "<provider>/<model-id>", persisted per-message so chat
+    history can show which model actually answered.
+    """
+    default_provider = get_llm_provider()
+    # `model` may carry an explicit "<provider>/<model-id>" prefix chosen
+    # per-message from the chat UI; otherwise fall back to the admin default.
+    provider, requested_model = resolve_provider_and_model(model, default_provider)
+    config = get_provider_config(provider)
+
+    api_key, _ = get_llm_api_key(provider)
     if not api_key:
-        raise ValueError("LLM_API_KEY is not configured.")
+        raise ValueError(f"No API key is configured for provider '{provider}'.")
 
     if not context and answer_mode == "analysis":
         raise ValueError("No extractable text was found in the selected PDFs.")
-
-    provider = get_llm_provider()
-    config = get_provider_config(provider)
 
     citation_instruction = _build_citation_instruction(citations or [])
     system_prompt = get_system_prompt(response_mode, answer_mode).format(
@@ -92,8 +99,17 @@ def generate_answer(
             messages.append(AIMessage(content=msg["content"]))
     messages.append(HumanMessage(content=question))
 
+    # The global "default chat model" override only applies when no explicit
+    # per-message provider was requested — it wouldn't make sense to apply an
+    # e.g. DeepSeek model override to a message that explicitly asked for OpenAI.
+    if provider == default_provider:
+        selected_model = requested_model or get_llm_chat_model()[0] or config["default_model"]
+    else:
+        selected_model = requested_model or config["default_model"]
+    if not selected_model:
+        raise ValueError(f"No model specified for provider '{provider}'.")
+
     base_url = config["base_url"] or get_settings().llm_base_url
-    selected_model = model or get_llm_chat_model()[0] or config["default_model"]
 
     llm = ChatOpenAI(
         api_key=api_key,
@@ -105,7 +121,8 @@ def generate_answer(
         extra_body=config["extra_body"],
     )
 
-    return StrOutputParser().invoke(llm.invoke(messages))
+    answer = StrOutputParser().invoke(llm.invoke(messages))
+    return answer, f"{provider}/{selected_model}"
 
 
 async def generate_answer_streaming(
@@ -117,7 +134,11 @@ async def generate_answer_streaming(
     citations: list[dict] | None = None,
     answer_mode: AnswerMode = "analysis",
 ) -> AsyncGenerator[str, None]:
-    """Async generator that yields raw text chunks from the LLM as they arrive."""
+    """Async generator that yields raw text chunks from the LLM as they arrive.
+
+    Does not yet support per-message provider/model selection like
+    generate_answer does -- always uses the admin-configured default.
+    """
     api_key, _ = get_llm_api_key()
     if not api_key:
         raise ValueError("LLM_API_KEY is not configured.")

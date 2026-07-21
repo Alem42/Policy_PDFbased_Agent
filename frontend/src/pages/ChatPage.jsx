@@ -15,6 +15,7 @@ import {
   IconButton,
   ListItemButton,
   ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Snackbar,
@@ -35,6 +36,7 @@ import remarkGfm from "remark-gfm";
 import {
   askQuestionStream,
   deleteChatSession,
+  getChatModels,
   getChatSession,
   getChatSessions,
   getDocumentChunks,
@@ -132,6 +134,23 @@ function getResponseModeLabel(value) {
   return getOptionLabel(RESPONSE_MODE_OPTIONS, value);
 }
 
+// Flattens the /chat/models response ([{provider, provider_label, models}, ...])
+// into a lookup keyed by "<provider>/<model-id>" for display purposes.
+function flattenModelLabels(providerGroups) {
+  const lookup = {};
+  for (const group of providerGroups || []) {
+    for (const model of group.models || []) {
+      lookup[model.id] = `${model.label} (${group.provider_label})`;
+    }
+  }
+  return lookup;
+}
+
+function getModelLabel(modelLookup, modelId) {
+  if (!modelId) return null;
+  return modelLookup[modelId] || modelId;
+}
+
 function formatSessionDate(dateStr) {
   const date = new Date(dateStr);
   const now = new Date();
@@ -162,6 +181,12 @@ export default function ChatPage({
   const [answerMode, setAnswerMode] = useState("analysis");
   const [responseModeAnchor, setResponseModeAnchor] = useState(null);
   const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
+
+  // Per-message model selection: null means "use the workspace default model".
+  const [modelGroups, setModelGroups] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [modelAnchor, setModelAnchor] = useState(null);
+  const modelLabels = flattenModelLabels(modelGroups);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState(resumeSessionId);
@@ -240,6 +265,17 @@ export default function ChatPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const groups = await getChatModels();
+        setModelGroups(Array.isArray(groups) ? groups : []);
+      } catch {
+        // Non-fatal: fall back to the workspace default model.
+      }
+    })();
+  }, []);
+
   // Load a prior session when navigated here with a sessionId in router state
   useEffect(() => {
     if (!resumeSessionId) return;
@@ -315,6 +351,7 @@ export default function ChatPage({
         evidenceReason: null,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
+        model: m.model,
       })),
     );
     setSessionId(String(detail.id));
@@ -503,57 +540,30 @@ export default function ChatPage({
     let assistantAdded = false;
 
     try {
-      const stream = askQuestionStream(
-        cleanQuestion, selected, responseMode, answerMode, messages, sessionId,
+      // Streaming (askQuestionStream) doesn't support per-message model
+      // selection yet -- using the non-streaming endpoint until it does.
+      const result = await askQuestion(
+        cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
       );
 
-      for await (const event of stream) {
-        if (event.type === "token") {
-          if (!assistantAdded) {
-            assistantAdded = true;
-            setMessages((current) => [
-              ...current,
-              {
-                role: "assistant",
-                content: event.value,
-                citations: [],
-                evidenceSufficient: true,
-                evidenceReason: null,
-                responseMode: responseMode,
-                answerMode: answerMode,
-                streaming: true,
-              },
-            ]);
-          } else {
-            setMessages((current) => {
-              const updated = [...current];
-              const last = updated[updated.length - 1];
-              updated[updated.length - 1] = { ...last, content: last.content + event.value };
-              return updated;
-            });
-          }
-        } else if (event.type === "citations") {
-          setMessages((current) => {
-            const updated = [...current];
-            const last = updated[updated.length - 1];
-            updated[updated.length - 1] = {
-              ...last,
-              citations: Array.isArray(event.data) ? event.data : [],
-              evidenceSufficient: event.evidence_sufficient ?? true,
-              evidenceReason: event.evidence_reason ?? null,
-              responseMode: event.response_mode || responseMode,
-              answerMode: event.answer_mode || answerMode,
-              streaming: false,
-            };
-            return updated;
-          });
-          if (event.session_id && !sessionId) {
-            setSessionId(String(event.session_id));
-            loadSessions();
-          }
-        } else if (event.type === "error") {
-          throw new Error(event.message);
-        }
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content: result.answer,
+          citations: Array.isArray(result.citations) ? result.citations : [],
+          truncated: result.truncated,
+          evidenceSufficient: result.evidence_sufficient,
+          evidenceReason: result.evidence_reason || null,
+          responseMode: result.response_mode || responseMode,
+          answerMode: result.answer_mode || answerMode,
+          model: result.model || null,
+        },
+      ]);
+
+      if (result.session_id && !sessionId) {
+        setSessionId(String(result.session_id));
+        loadSessions();
       }
     } catch (chatError) {
       setError(chatError.message);
@@ -855,7 +865,8 @@ export default function ChatPage({
                         {[
                           getResponseModeLabel(message.responseMode || "researcher"),
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
-                        ].join(" · ")}
+                          message.model ? `Answered by ${getModelLabel(modelLabels, message.model)}` : null,
+                        ].filter(Boolean).join(" · ")}
                       </Typography>
                     )}
                     {message.role === "assistant" && (
@@ -1124,6 +1135,50 @@ export default function ChatPage({
                 ))}
               </Menu>
             </Box>
+
+            {modelGroups.length > 0 && (
+              <Box>
+                <Typography variant="caption" sx={{ display: "block", mb: 0.5, color: "text.secondary" }}>
+                  Model
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={busy}
+                  endIcon={<ArrowDropDownIcon />}
+                  onClick={(event) => setModelAnchor(event.currentTarget)}
+                  aria-haspopup="menu"
+                >
+                  {selectedModel ? getModelLabel(modelLabels, selectedModel) : "Workspace default"}
+                </Button>
+                <Menu
+                  anchorEl={modelAnchor}
+                  open={Boolean(modelAnchor)}
+                  onClose={() => setModelAnchor(null)}
+                >
+                  <MenuItem
+                    selected={!selectedModel}
+                    onClick={() => { setSelectedModel(null); setModelAnchor(null); }}
+                  >
+                    <ListItemText primary="Workspace default" secondary="Use the admin-configured default model" />
+                  </MenuItem>
+                  {modelGroups.map((group) => [
+                    <ListSubheader key={group.provider} sx={{ lineHeight: "32px" }}>
+                      {group.provider_label}
+                    </ListSubheader>,
+                    ...group.models.map((option) => (
+                      <MenuItem
+                        key={option.id}
+                        selected={option.id === selectedModel}
+                        onClick={() => { setSelectedModel(option.id); setModelAnchor(null); }}
+                      >
+                        <ListItemText primary={option.label} />
+                      </MenuItem>
+                    )),
+                  ])}
+                </Menu>
+              </Box>
+            )}
           </Box>
 
           {/* Chat Form */}

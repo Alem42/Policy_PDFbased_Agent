@@ -7,16 +7,52 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.core.llm_providers import PROVIDER_CONFIGS
 from app.modules.auth.dependencies import get_current_user
 from app.modules.chat.history_repository import chat_history_repository
 from app.modules.chat.rag.generation import generate_answer_streaming
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
-from app.modules.chat.schemas import MAX_HISTORY_TURNS, ChatRequest, ChatResponse, Citation
+from app.modules.chat.schemas import (
+    MAX_HISTORY_TURNS,
+    ChatRequest,
+    ChatResponse,
+    Citation,
+    ModelOption,
+    ProviderModels,
+)
+from app.modules.settings.service import get_llm_api_key
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+
+
+@router.get("/chat/models", response_model=list[ProviderModels])
+async def list_models(_: CurrentUser) -> list[ProviderModels]:
+    """List models selectable per-message, grouped by provider.
+
+    Only providers with a configured API key are included so the chat UI
+    never offers a model that would fail at request time.
+    """
+    available: list[ProviderModels] = []
+    for provider, config in PROVIDER_CONFIGS.items():
+        if not config["models"]:
+            continue
+        api_key, _ = await asyncio.to_thread(get_llm_api_key, provider)
+        if not api_key:
+            continue
+        available.append(
+            ProviderModels(
+                provider=provider,
+                provider_label=config["label"],
+                models=[
+                    ModelOption(id=f"{provider}/{m['id']}", label=m["label"])
+                    for m in config["models"]
+                ],
+            )
+        )
+    return available
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -91,6 +127,8 @@ async def chat(
         citations = [Citation(**c) for c in result.get("citations", [])]
         evidence_sufficient = result.get("evidence_sufficient", True)
 
+        resolved_model = result.get("resolved_model")
+
         # ── Save the assistant answer ───────────────────────────────────
         await asyncio.to_thread(
             chat_history_repository.add_message,
@@ -101,6 +139,7 @@ async def chat(
             evidence_sufficient,
             payload.response_mode,
             payload.answer_mode,
+            resolved_model,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -113,6 +152,7 @@ async def chat(
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
             session_id=UUID(session_id),
+            model=resolved_model,
         )
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Request timed out after 120 s.") from exc
@@ -204,12 +244,8 @@ async def chat_stream(
             effective_answer_mode = str(state.get("answer_mode", "analysis"))
 
             # Mirror route_after_evidence_check logic
-            should_generate = (
-                evidence_sufficient
-                or (
-                    effective_answer_mode == "chat"
-                    and payload.response_mode != "policymaker"
-                )
+            should_generate = evidence_sufficient or (
+                effective_answer_mode == "chat" and payload.response_mode != "policymaker"
             )
 
             if should_generate:
@@ -248,15 +284,17 @@ async def chat_stream(
             )
             await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
-            yield _sse({
-                "type": "citations",
-                "data": citations,
-                "evidence_sufficient": evidence_sufficient,
-                "evidence_reason": evidence_reason,
-                "response_mode": payload.response_mode,
-                "answer_mode": effective_answer_mode,
-                "session_id": session_id,
-            })
+            yield _sse(
+                {
+                    "type": "citations",
+                    "data": citations,
+                    "evidence_sufficient": evidence_sufficient,
+                    "evidence_reason": evidence_reason,
+                    "response_mode": payload.response_mode,
+                    "answer_mode": effective_answer_mode,
+                    "session_id": session_id,
+                }
+            )
             yield _sse({"type": "done"})
 
         except TimeoutError:

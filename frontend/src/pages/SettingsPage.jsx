@@ -5,16 +5,26 @@ import {
   Typography,
   Button,
   TextField,
+  MenuItem,
   Alert,
-  CircularProgress,
   Skeleton,
 } from "@mui/material";
 import { getSettings, saveSettings } from "../api";
 
+// Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
+const PROVIDERS = [
+  { id: "deepseek", label: "DeepSeek" },
+  { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic" },
+  { id: "gemini", label: "Gemini" },
+  { id: "custom", label: "Custom / self-hosted" },
+];
+
 export default function SettingsPage({ user, onNavigate }) {
   const [settings, setSettings] = useState(null);
-  const [apiKey, setApiKey] = useState("");
+  const [llmProvider, setLlmProvider] = useState("deepseek");
   const [model, setModel] = useState("");
+  const [providerKeyInputs, setProviderKeyInputs] = useState({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -27,6 +37,8 @@ export default function SettingsPage({ user, onNavigate }) {
       const result = await getSettings();
       setSettings(result);
       setModel(result.llm_chat_model || "");
+      setLlmProvider(result.llm_provider || "deepseek");
+      setProviderKeyInputs({});
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -45,14 +57,20 @@ export default function SettingsPage({ user, onNavigate }) {
     setNotice("");
     setError("");
     try {
+      // Only send keys the admin actually typed — omitted providers keep their saved key.
+      const providerApiKeys = Object.fromEntries(
+        Object.entries(providerKeyInputs).filter(([, value]) => value.trim()),
+      );
       const result = await saveSettings({
-        llm_api_key: apiKey.trim() ? apiKey : null,
         llm_chat_model: model,
+        llm_provider: llmProvider,
+        ...(Object.keys(providerApiKeys).length > 0 ? { provider_api_keys: providerApiKeys } : {}),
       });
       setSettings(result);
       setModel(result.llm_chat_model || "");
-      setApiKey("");
-      setNotice("Token settings saved.");
+      setLlmProvider(result.llm_provider || "deepseek");
+      setProviderKeyInputs({});
+      setNotice("Settings saved.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -60,20 +78,16 @@ export default function SettingsPage({ user, onNavigate }) {
     }
   }
 
-  async function handleClearToken() {
-    if (!window.confirm("Clear the saved token and fall back to .env if present?")) return;
+  async function handleClearProviderKey(providerId) {
+    if (!window.confirm(`Clear the saved key for ${providerId} and fall back to .env if present?`)) return;
 
     setBusy(true);
     setNotice("");
     setError("");
     try {
-      const result = await saveSettings({
-        llm_api_key: "",
-        llm_chat_model: model,
-      });
+      const result = await saveSettings({ provider_api_keys: { [providerId]: "" } });
       setSettings(result);
-      setApiKey("");
-      setNotice("Saved token cleared.");
+      setNotice(`Cleared the saved key for ${providerId}.`);
     } catch (clearError) {
       setError(clearError.message);
     } finally {
@@ -131,10 +145,11 @@ export default function SettingsPage({ user, onNavigate }) {
             "&:hover": { backgroundColor: "#1a3f35" },
           }}
         >
-          API token
+          LLM providers
         </Button>
         <Typography variant="body2" sx={{ color: "text.secondary" }}>
-          Saved values are kept on the backend and override the local .env file.
+          Saved values are kept on the backend and override the local .env file. Each provider
+          needs its own key configured before it appears as a model choice in Chat.
         </Typography>
       </Card>
 
@@ -142,73 +157,26 @@ export default function SettingsPage({ user, onNavigate }) {
       <Card sx={{ flex: 1, p: 3 }}>
         <Box sx={{ mb: "20px" }}>
           <Typography variant="subtitle2">Configuration</Typography>
-          <Typography variant="h2" sx={{ fontSize: 24 }}>API token</Typography>
+          <Typography variant="h2" sx={{ fontSize: 24 }}>LLM providers</Typography>
         </Box>
 
         {loading ? (
           <Box sx={{ py: 2 }}>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr 1fr 1fr" }, gap: 2, mb: 3 }}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Box key={i}>
-                  <Skeleton variant="text" width={60} height={16} />
-                  <Skeleton variant="text" width="80%" height={28} />
-                </Box>
-              ))}
-            </Box>
             <Skeleton variant="text" width="30%" height={20} sx={{ mb: 1 }} />
             <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
             <Skeleton variant="text" width="30%" height={20} sx={{ mb: 1 }} />
             <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Skeleton variant="rounded" width={120} height={40} />
-              <Skeleton variant="rounded" width={80} height={40} />
-              <Skeleton variant="rounded" width={140} height={40} />
-            </Box>
+            <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
+            <Skeleton variant="rounded" height={42} sx={{ mb: 2 }} />
           </Box>
         ) : (
           <>
-            {/* Status grid */}
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr 1fr 1fr" },
-                gap: 2,
-                mb: 3,
-              }}
-            >
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Status
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_configured ? "Configured" : "Not configured"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Token
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.masked_llm_api_key || "None"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Source
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_api_key_source || "missing"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: "#64716b", fontWeight: 800 }}>
-                  Model source
-                </Typography>
-                <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
-                  {settings?.llm_chat_model_source || "default"}
-                </Typography>
-              </Box>
-            </Box>
+            <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
+              Default provider status:{" "}
+              <strong>{settings?.llm_configured ? "Configured" : "Not configured"}</strong>
+              {" "}({settings?.llm_api_key_source || "missing"}), model{" "}
+              <strong>{settings?.llm_chat_model}</strong> ({settings?.llm_chat_model_source})
+            </Typography>
 
             {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -216,47 +184,96 @@ export default function SettingsPage({ user, onNavigate }) {
             <Box component="form" onSubmit={handleSave} sx={{ display: "grid", gap: 2 }}>
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                  New API key
+                  Default provider
                 </Typography>
                 <TextField
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="Leave blank to keep the current token"
-                  type="password"
-                  autoComplete="off"
+                  select
+                  value={llmProvider}
+                  onChange={(event) => setLlmProvider(event.target.value)}
                   size="small"
-                  fullWidth
-                />
+                  sx={{ maxWidth: 320 }}
+                >
+                  {PROVIDERS.map((provider) => (
+                    <MenuItem key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                  Leave this empty to keep the token currently in use.
+                  Used for chat messages that don't explicitly pick a model.
                 </Typography>
               </Box>
+
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                  Chat model
+                  Default chat model override
                 </Typography>
                 <TextField
                   value={model}
                   onChange={(event) => setModel(event.target.value)}
-                  placeholder="Enter the chat model name"
+                  placeholder="Leave blank to use the default provider's built-in model"
                   size="small"
-                  fullWidth
+                  sx={{ maxWidth: 320 }}
                 />
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Only applies to the default provider above.
+                </Typography>
               </Box>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+
+              <Typography variant="body2" sx={{ fontWeight: 800, mt: 1 }}>
+                Provider API keys
+              </Typography>
+              {PROVIDERS.map((provider) => (
+                <Box
+                  key={provider.id}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "140px 1fr auto" },
+                    gap: 1,
+                    alignItems: "center",
+                    p: 1.5,
+                    border: "1px solid #e2e5df",
+                    borderRadius: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{provider.label}</Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      {settings?.masked_provider_keys?.[provider.id] || "Not configured"}
+                    </Typography>
+                  </Box>
+                  <TextField
+                    value={providerKeyInputs[provider.id] || ""}
+                    onChange={(event) =>
+                      setProviderKeyInputs((current) => ({
+                        ...current,
+                        [provider.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Leave blank to keep the current key"
+                    type="password"
+                    autoComplete="off"
+                    size="small"
+                    fullWidth
+                  />
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    disabled={busy || !settings?.masked_provider_keys?.[provider.id]}
+                    onClick={() => handleClearProviderKey(provider.id)}
+                  >
+                    Clear
+                  </Button>
+                </Box>
+              ))}
+
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
                 <Button variant="contained" disabled={busy} type="submit">
                   {busy ? "Saving..." : "Save settings"}
                 </Button>
                 <Button variant="outlined" disabled={busy} onClick={loadSettings}>
                   Reload
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  disabled={busy}
-                  onClick={handleClearToken}
-                >
-                  Clear saved token
                 </Button>
               </Box>
             </Box>

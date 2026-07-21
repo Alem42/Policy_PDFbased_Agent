@@ -28,4 +28,5 @@ async def update_settings(
         if payload.llm_chat_model is not None
         else payload.deepseek_chat_model,
         llm_provider=payload.llm_provider,
+        provider_api_keys=payload.provider_api_keys,
     )

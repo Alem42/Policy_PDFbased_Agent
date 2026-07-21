@@ -43,14 +43,15 @@ class ChatHistoryRepository:
         evidence_sufficient: bool | None = None,
         response_mode: str | None = None,
         answer_mode: str | None = None,
+        model: str | None = None,
     ) -> str:
         with get_connection() as conn:
             row = conn.execute(
                 """
                 INSERT INTO chat_messages
                     (id, session_id, role, content, citations_json,
-                     evidence_sufficient, response_mode, answer_mode)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                     evidence_sufficient, response_mode, answer_mode, model)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -62,6 +63,7 @@ class ChatHistoryRepository:
                     evidence_sufficient,
                     response_mode,
                     answer_mode,
+                    model,
                 ),
             ).fetchone()
             conn.commit()
@@ -150,7 +152,7 @@ class ChatHistoryRepository:
             msgs = conn.execute(
                 """
                 SELECT id, session_id, role, content, citations_json,
-                       evidence_sufficient, response_mode, answer_mode, created_at
+                       evidence_sufficient, response_mode, answer_mode, model, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC

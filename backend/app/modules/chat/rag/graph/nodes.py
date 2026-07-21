@@ -133,17 +133,16 @@ def insufficient_evidence_node(state: PDFQAState) -> dict:
 
 def generate_answer_node(state: PDFQAState) -> dict:
     """Generate the final answer from the prepared document context."""
-    return {
-        "answer": generate_answer(
-            question=state["question"],
-            context=state["context"],
-            model=state.get("model"),
-            response_mode=_response_mode(state),
-            answer_mode=_answer_mode(state),
-            history=state.get("history", []),
-            citations=state.get("citations", []),
-        )
-    }
+    answer, resolved_model = generate_answer(
+        question=state["question"],
+        context=state["context"],
+        model=state.get("model"),
+        response_mode=_response_mode(state),
+        answer_mode=_answer_mode(state),
+        history=state.get("history", []),
+        citations=state.get("citations", []),
+    )
+    return {"answer": answer, "resolved_model": resolved_model}
 
 
 def route_after_evidence_check(state: PDFQAState) -> str:
