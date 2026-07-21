@@ -79,6 +79,11 @@ brew install tesseract          # macOS
 Without it, PDF processing still works normally -- pages that would need OCR
 are just left with empty text (logged as a warning) instead of being recognized.
 
+Uploads also accept Word (`.docx`), plain text (`.txt`), and Markdown (`.md`)
+files alongside PDFs -- see `app/modules/documents/extraction.py` for the
+per-extension extractor dispatch. These formats need no extra system
+dependencies beyond the pip packages.
+
 Start the API from `backend/`:
 
 ```powershell

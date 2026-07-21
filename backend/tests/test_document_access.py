@@ -45,7 +45,7 @@ def test_document_file_route_returns_pdf(monkeypatch, tmp_path) -> None:
     )
     monkeypatch.setattr(
         document_router,
-        "resolve_pdf",
+        "resolve_document_file",
         lambda identifier, include_restricted: pdf_path,
     )
 
