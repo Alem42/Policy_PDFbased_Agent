@@ -47,9 +47,7 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
             ProviderModels(
                 provider=provider,
                 provider_label=config["label"],
-                models=[
-                    ModelOption(id=f"{provider}/{m.id}", label=m.label) for m in models
-                ],
+                models=[ModelOption(id=f"{provider}/{m.id}", label=m.label) for m in models],
             )
         )
     return available
