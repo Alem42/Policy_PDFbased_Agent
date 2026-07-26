@@ -605,6 +605,14 @@ export default function ChatPage({
       }
     } finally {
       setBusy(false);
+      // Clear streaming flag if the connection closed before a "done" event arrived
+      setMessages((current) => {
+        const last = current[current.length - 1];
+        if (!last?.streaming) return current;
+        const next = [...current];
+        next[next.length - 1] = { ...last, streaming: false };
+        return next;
+      });
     }
   }
 

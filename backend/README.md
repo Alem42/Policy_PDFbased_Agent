@@ -112,9 +112,16 @@ options are:
 | `PERSISTENCE_BACKEND` | Crawler repository backend (`database` or in-memory fallback) | `database` |
 | `CRAWLING_ENABLED` | Allows non-dry-run crawls to contact remote sites | `false` |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl fallback credential | empty |
-| `LLM_BASE_URL` | Base URL for the OpenAI-compatible chat provider | DeepSeek API |
-| `LLM_API_KEY` | Chat-provider API key | empty |
-| `LLM_CHAT_MODEL` | Chat model override | `deepseek-v4-flash` |
+| `LLM_BASE_URL` | Base URL for the default chat provider | DeepSeek API |
+| `LLM_API_KEY` | Default chat-provider API key | empty |
+| `LLM_CHAT_MODEL` | Default chat model override | `deepseek-v4-flash` |
+| `OPENAI_API_KEY` | OpenAI API key (enables GPT-4o, o3, etc.) | empty |
+| `ANTHROPIC_API_KEY` | Anthropic API key (enables Claude models) | empty |
+| `GEMINI_API_KEY` | Google API key (enables Gemini models) | empty |
+| `EMBEDDING_MODEL_NAME` | Local embedding model for vector search | `BAAI/bge-small-en-v1.5` |
+| `DEFAULT_EMBEDDING_DIMENSIONS` | Output dimensions of the embedding model | `384` |
+| `MODEL_CACHE_DIR` | Path to cache downloaded HuggingFace models | `data/model_cache` |
+| `ADMIN_REGISTER_SECRET` | Secret required to register admin accounts | empty |
 
 See `app/core/config.py` for the complete list and validation rules. Never commit
 the populated `.env` file.
@@ -128,11 +135,12 @@ process stops.
 
 1. Create a PostgreSQL database and ensure the server has the `vector` extension.
 2. Apply `database/init.sql` to a fresh development database.
-3. Set the connection values in `.env`:
+3. Apply all migration files in order.
+4. Set the connection values in `.env`.
 
 ```dotenv
 DATABASE_ENABLED=true
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy
+DATABASE_URL=postgresql+asyncpg://appuser:yourpassword@localhost:5432/testdb
 DATABASE_POOL_PRE_PING=true
 PERSISTENCE_BACKEND=database
 ```
@@ -140,11 +148,20 @@ PERSISTENCE_BACKEND=database
 For example, with the PostgreSQL CLI installed:
 
 ```powershell
-psql -U postgres -d ai_policy -f database/init.sql
+# Fresh install — apply base schema first, then all migrations in order
+psql -U appuser -d testdb -f database/init.sql
+psql -U appuser -d testdb -f database/migrations/001_add_answer_mode.sql
+psql -U appuser -d testdb -f database/migrations/002_add_model_to_chat_messages.sql
 ```
 
-`database/init.sql` is a schema dump containing destructive `DROP` statements;
-use it for a fresh/local database, not as a production migration.
+**Important:** `database/init.sql` contains destructive `DROP … IF EXISTS` statements.
+Use it only for a fresh or local database, never to update an existing production instance.
+For existing databases, run only the numbered migration files in `database/migrations/`.
+
+When adding a new column or table:
+1. Add it to `init.sql` (keeps fresh installs in sync)
+2. Write a new `NNN_description.sql` in `database/migrations/` (for existing installs)
+3. Run the migration against the live database before deploying code that depends on it
 
 With `DATABASE_ENABLED=false`, the application can still start and expose its
 health endpoint, and crawler source/job APIs use their in-memory fallback. Routes
@@ -170,17 +187,47 @@ All application routes use the `/api/v1` prefix.
 | --- | --- |
 | Health | `GET /health` |
 | Authentication | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
-| Settings | `GET /settings`, `PUT /settings` |
+| Settings | `GET /settings`, `PUT /settings` (admin) |
 | Documents | list, search, detail, chunks, versions, and assets under `/documents` |
 | Crawled documents | list, search, detail, versions, and assets under `/crawled-documents` |
 | Crawl sources | CRUD under `/crawl-sources` |
 | Crawl jobs | list, detail, and create under `/crawl-jobs` |
 | PDF administration | upload, rescan, update, delete, and processing status under `/admin/documents` |
-| RAG chat | `POST /chat` |
+| RAG chat (streaming) | `POST /chat/ask-stream` — SSE streaming Q&A |
+| Chat models | `GET /chat/models` — available LLM providers and models |
+| Chat history | `GET /chat/sessions`, `GET /chat/sessions/{id}/messages` |
 
 The generated Swagger UI is the source of truth for request/response schemas.
 See [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) for the maintained endpoint
 index, access requirements, and example payloads.
+
+## RAG Pipeline
+
+The chat endpoint uses a LangGraph workflow with a 3-level evidence gate:
+
+```
+Question ──► embed query ──► pgvector ANN search ──► cross-encoder rerank
+                                                            │
+              ┌─────────────────────────────────────────────┘
+              ▼
+        Evidence Gate (3 levels)
+        1. Cosine distance ≤ 0.45         (vector similarity threshold)
+        2. Reranker score ≥ -7.0          (cross-encoder relevance score)
+        3. LLM semantic judge             (GPT/Claude confirms relevance)
+              │
+        pass ─┤─ fail ──► "insufficient evidence" refusal
+              │
+              ▼
+        Generate answer (streamed as SSE tokens)
+```
+
+The SSE event sequence for each question is:
+`retrieving → thinking → token × N → citations → done`
+
+Per-message model selection is supported: pass `"model": "openai/gpt-4o"` (or any
+`"provider/model-id"` from `GET /chat/models`) in the request body to override the
+default model for that message. The resolved model name is echoed back in the
+`citations` SSE event.
 
 ## Crawler safety
 

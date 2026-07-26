@@ -1,14 +1,38 @@
 services:
+
+  db:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-breadsqlpassword}
+      POSTGRES_DB: testdb
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # Schema is applied automatically on first start (files run in filename order)
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./backend/database/migrations/001_add_answer_mode.sql:/docker-entrypoint-initdb.d/02_migration_001.sql:ro
+      - ./backend/database/migrations/002_add_model_to_chat_messages.sql:/docker-entrypoint-initdb.d/03_migration_002.sql:ro
+      - ./backend/database/migrations/003_fix_policymaker_response_mode.sql:/docker-entrypoint-initdb.d/04_migration_003.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
-    network_mode: host
+    depends_on:
+      db:
+        condition: service_healthy
     env_file:
       - .env.production
     environment:
       HOME: /app/data
       HF_HOME: /app/data/model_cache/huggingface
-    user: "1000:1000"
+      DATABASE_ENABLED: "true"
+      DATABASE_URL: postgresql+asyncpg://appuser:${DB_PASSWORD:-breadsqlpassword}@db:5432/testdb
     volumes:
       - ./backend/data:/app/data
     restart: unless-stopped
@@ -21,13 +45,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
 
   web:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    network_mode: host
+    ports:
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -37,5 +62,6 @@ services:
       - caddy_config:/config
 
 volumes:
+  pg_data:
   caddy_data:
   caddy_config:
