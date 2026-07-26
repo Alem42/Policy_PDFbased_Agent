@@ -723,7 +723,7 @@ ALTER TABLE "public"."chat_sessions"
 
 ALTER TABLE "public"."chat_sessions"
   ADD CONSTRAINT "chat_sessions_response_mode_check"
-  CHECK (response_mode IN ('researcher', 'student'));
+  CHECK (response_mode IN ('researcher', 'policymaker', 'student'));
 
 -- ----------------------------
 -- Table structure for chat_messages
@@ -736,6 +736,8 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "citations_json"      jsonb       NOT NULL DEFAULT '[]',
   "evidence_sufficient" bool,
   "response_mode"       text        COLLATE "pg_catalog"."default",
+  "answer_mode"         text        COLLATE "pg_catalog"."default" DEFAULT 'analysis',
+  "model"               text        COLLATE "pg_catalog"."default",
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 
