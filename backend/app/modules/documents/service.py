@@ -13,6 +13,7 @@ from app.modules.documents.embeddings import (
     get_embedding_model_name,
     vector_literal,
 )
+from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.extraction import extract_document
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.ingestion.contextual_header import build_contextual_headers
@@ -64,10 +65,10 @@ def process_document(document_id: str) -> None:
         )
         embed_inputs = [
             f"{header}\n\n{chunk['text']}" if header else chunk["text"]
-            for header, chunk in zip(headers, chunks)
+            for header, chunk in zip(headers, chunks, strict=True)
         ]
         doc_language = metadata.get("language")
-        for chunk, header in zip(chunks, headers):
+        for chunk, header in zip(chunks, headers, strict=True):
             if header:
                 chunk.setdefault("metadata_json", {})["context_header"] = header
             chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
@@ -108,6 +109,18 @@ async def save_upload(upload: UploadFile) -> dict:
     if not document_file_store.is_valid_content(filename, content):
         raise ValueError(f"{filename} does not look like a valid file of its type.")
 
+    checksum = document_file_store.checksum(content)
+    # L1 exact-duplicate guard: identical bytes -> identical SHA-256. Check before
+    # writing to disk so a duplicate never touches the filesystem or the DB.
+    # TODO(L2): also compare a normalised extracted-text hash to catch re-saved /
+    #   re-compressed / reformatted copies (byte-different but content-same);
+    #   compute it after extraction and store it in a second column.
+    # TODO(L3): near-duplicate detection via document-embedding cosine similarity
+    #   (>~0.95) to catch lightly-edited versions; reuse the chunk embeddings.
+    existing = document_repository.find_by_checksum(checksum)
+    if existing:
+        raise DuplicateDocumentError(str(existing["id"]), existing["original_filename"])
+
     document_id = str(uuid4())
     path = document_file_store.save(filename, content, document_id)
     try:
@@ -117,7 +130,7 @@ async def save_upload(upload: UploadFile) -> dict:
             stored_filename=path.name,
             file_path=document_file_store.relative_path(path),
             content=content,
-            checksum=document_file_store.checksum(content),
+            checksum=checksum,
             mime_type=document_file_store.mime_type_for(filename),
         )
     except Exception:
@@ -136,16 +149,22 @@ def sync_existing_documents() -> None:
         content = path.read_bytes()
         if not document_file_store.is_valid_content(path.name, content):
             continue
-        document_id = document_repository.create(
-            document_id=str(uuid4()),
-            original_filename=path.name,
-            stored_filename=path.name,
-            file_path=relative_path,
-            content=content,
-            checksum=document_file_store.checksum(content),
-            mime_type=document_file_store.mime_type_for(path.name),
-            upsert=True,
-        )
+        # Skip files whose content already lives in the library under another path (L1).
+        if document_repository.find_by_checksum(document_file_store.checksum(content)):
+            continue
+        try:
+            document_id = document_repository.create(
+                document_id=str(uuid4()),
+                original_filename=path.name,
+                stored_filename=path.name,
+                file_path=relative_path,
+                content=content,
+                checksum=document_file_store.checksum(content),
+                mime_type=document_file_store.mime_type_for(path.name),
+                upsert=True,
+            )
+        except DuplicateDocumentError:
+            continue
         try:
             process_document(document_id)
         except Exception:

@@ -647,6 +647,8 @@ CREATE INDEX "idx_documents_status" ON "public"."documents" USING btree (
 -- Uniques structure for table documents
 -- ----------------------------
 ALTER TABLE "public"."documents" ADD CONSTRAINT "documents_file_path_key" UNIQUE ("file_path");
+-- L1 exact-duplicate guard: reject uploads whose content (SHA-256) already exists.
+ALTER TABLE "public"."documents" ADD CONSTRAINT "documents_sha256_key" UNIQUE ("sha256");
 
 -- ----------------------------
 -- Primary Key structure for table documents

@@ -151,9 +151,7 @@ def normalise_metadata(metadata: dict, filename: str, leaf_labels: list[str] | N
 def _build_excerpt(pages: list[dict]) -> str:
     """Weighted head/mid/tail sample so secondary areas aren't missed."""
     full = "\n".join(
-        f"[Page {page['page']}]\n{page.get('text', '')}\n"
-        for page in pages
-        if page.get("text")
+        f"[Page {page['page']}]\n{page.get('text', '')}\n" for page in pages if page.get("text")
     ).strip()
 
     budget = EXCERPT_HEAD_CHARS + EXCERPT_MID_CHARS + EXCERPT_TAIL_CHARS

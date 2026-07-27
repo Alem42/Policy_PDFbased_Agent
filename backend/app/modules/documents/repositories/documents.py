@@ -1,9 +1,21 @@
+from psycopg.errors import UniqueViolation
+
 from app.core.database import get_connection
+from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.repositories.helpers import looks_like_uuid
 
 
 class DocumentRepository:
     """Persists document identity, visibility, status, and file metadata."""
+
+    def find_by_checksum(self, checksum: str) -> dict | None:
+        """Return the existing document with this SHA-256, or None (L1 dedup)."""
+        with get_connection() as connection:
+            row = connection.execute(
+                "SELECT id, original_filename FROM documents WHERE sha256 = %s LIMIT 1",
+                (checksum,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def create(
         self,
@@ -29,28 +41,40 @@ class DocumentRepository:
             if upsert
             else ""
         )
-        with get_connection() as connection:
-            row = connection.execute(
-                f"""
-                INSERT INTO documents (
-                    id, original_filename, stored_filename, file_path,
-                    file_size, sha256, mime_type, status
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded')
-                {conflict_sql}
-                RETURNING id
-                """,
-                (
-                    document_id,
-                    original_filename,
-                    stored_filename,
-                    file_path,
-                    len(content),
-                    checksum,
-                    mime_type,
-                ),
-            ).fetchone()
-            connection.commit()
+        try:
+            with get_connection() as connection:
+                row = connection.execute(
+                    f"""
+                    INSERT INTO documents (
+                        id, original_filename, stored_filename, file_path,
+                        file_size, sha256, mime_type, status
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded')
+                    {conflict_sql}
+                    RETURNING id
+                    """,
+                    (
+                        document_id,
+                        original_filename,
+                        stored_filename,
+                        file_path,
+                        len(content),
+                        checksum,
+                        mime_type,
+                    ),
+                ).fetchone()
+                connection.commit()
+        except UniqueViolation as exc:
+            # Backstop for the L1 pre-check racing with a concurrent identical
+            # upload (or a same-content file under a different path): the
+            # sha256 UNIQUE constraint serialises it here.
+            if getattr(exc.diag, "constraint_name", "") == "documents_sha256_key":
+                existing = self.find_by_checksum(checksum)
+                if existing:
+                    raise DuplicateDocumentError(
+                        str(existing["id"]), existing["original_filename"]
+                    ) from exc
+            raise
         return str(row["id"])
 
     def set_status(
