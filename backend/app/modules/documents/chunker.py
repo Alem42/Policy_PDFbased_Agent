@@ -20,6 +20,13 @@ _ITEM_BUDGET = MAX_CHUNK_TOKENS - CHUNK_OVERLAP_TOKENS
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+")
 
 
+# TODO(structure-aware chunking): future work. Detect headings (numbering like
+# "3.2"/"Article 5", ALL-CAPS lines, or larger font via PyMuPDF get_text("dict"))
+# and use them as hard chunk boundaries + populate `section_title`, so a chunk
+# never straddles two sections. Optionally add semantic chunking (split where
+# adjacent-sentence embedding similarity drops). Deferred for now.
+
+
 class DocumentChunker:
     """Builds overlapping, paragraph-aligned retrieval chunks."""
 
@@ -47,15 +54,7 @@ class DocumentChunker:
                     "token_count": self._token_counter(text),
                 }
             )
-            overlap: list[dict] = []
-            overlap_tokens = 0
-            for item in reversed(current):
-                if overlap_tokens + item["token_count"] > CHUNK_OVERLAP_TOKENS:
-                    break
-                overlap.insert(0, item)
-                overlap_tokens += item["token_count"]
-            current = overlap
-            current_tokens = overlap_tokens
+            current, current_tokens = self._overlap_tail(current)
 
         for paragraph in paragraphs:
             if current and current_tokens + paragraph["token_count"] > MAX_CHUNK_TOKENS:
@@ -65,6 +64,28 @@ class DocumentChunker:
         if current:
             flush()
         return chunks
+
+    def _overlap_tail(self, items: list[dict]) -> tuple[list[dict], int]:
+        """Carry ~CHUNK_OVERLAP_TOKENS of trailing context into the next chunk.
+
+        Whole trailing paragraphs first. If the last paragraph alone already
+        exceeds the overlap budget, fall back to carrying its trailing SENTENCES
+        so overlap is never empty (fixes the long-final-paragraph zero-overlap
+        bug where two chunks shared no text at all).
+        """
+        overlap: list[dict] = []
+        overlap_tokens = 0
+        for item in reversed(items):
+            if overlap_tokens + item["token_count"] > CHUNK_OVERLAP_TOKENS:
+                break
+            overlap.insert(0, item)
+            overlap_tokens += item["token_count"]
+
+        if not overlap and items:
+            tail = _tail_sentences(items[-1], CHUNK_OVERLAP_TOKENS, self._token_counter)
+            if tail:
+                return [tail], tail["token_count"]
+        return overlap, overlap_tokens
 
     def _paragraphs(self, pages: list[dict]) -> list[dict]:
         paragraphs: list[dict] = []
@@ -86,6 +107,27 @@ class DocumentChunker:
                         _split_oversized_paragraph(page["page"], clean, self._token_counter)
                     )
         return paragraphs
+
+
+def _tail_sentences(item: dict, budget: int, token_counter: TokenCounter) -> dict | None:
+    """Build an overlap item from the trailing sentences of a long paragraph."""
+    carried: list[str] = []
+    tokens = 0
+    for sentence in reversed(_SENTENCE_BOUNDARY.split(item["text"])):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        sentence_tokens = token_counter(sentence)
+        if carried and tokens + sentence_tokens > budget:
+            break
+        carried.insert(0, sentence)
+        tokens += sentence_tokens
+        if tokens >= budget:  # took at least one sentence; stop once budget reached
+            break
+    if not carried:
+        return None
+    text = " ".join(carried)
+    return {"page": item["page"], "text": text, "token_count": token_counter(text)}
 
 
 def _split_oversized_paragraph(page: int, text: str, token_counter: TokenCounter) -> list[dict]:

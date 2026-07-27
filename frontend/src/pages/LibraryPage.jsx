@@ -7,6 +7,7 @@ import {
   TextField,
   Select,
   MenuItem,
+  ListSubheader,
   FormControl,
   Alert,
   Chip,
@@ -34,6 +35,7 @@ import {
   deleteDocument,
   getDocumentChunks,
   getDocumentDetail,
+  getTaxonomy,
   openDocumentFile,
   searchDocuments,
   updateDocument,
@@ -129,6 +131,7 @@ export default function LibraryPage({
   const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
   const [editDialog, setEditDialog] = useState({ open: false, document: null, form: EMPTY_EDIT_FORM, saving: false });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, document: null });
+  const [taxonomy, setTaxonomy] = useState([]); // [{ parent, children: [] }]
 
   function updateSearchParams(updates, { replace = false } = {}) {
     setSearchParams((current) => {
@@ -164,6 +167,35 @@ export default function LibraryPage({
         .filter(Boolean)
         .sort(),
     [documents],
+  );
+
+  // Load the two-level taxonomy once; the filter bar + edit dialog group by parent.
+  useEffect(() => {
+    getTaxonomy()
+      .then((result) => setTaxonomy(result.groups || []))
+      .catch(() => setTaxonomy([]));
+  }, []);
+
+  // Flat leaf labels (taxonomy order) for the edit autocomplete options.
+  const taxonomyLeaves = useMemo(
+    () => taxonomy.flatMap((group) => group.children || []),
+    [taxonomy],
+  );
+
+  // Leaf -> parent, so the autocomplete can group free-form values too.
+  const parentOfLeaf = useMemo(() => {
+    const map = {};
+    for (const group of taxonomy) {
+      for (const child of group.children || []) map[child] = group.parent;
+    }
+    return map;
+  }, [taxonomy]);
+
+  // Any leaf present on documents but not in the taxonomy (legacy tags) so the
+  // filter never hides an existing value.
+  const uncategorisedAreas = useMemo(
+    () => policyAreas.filter((area) => !(area in parentOfLeaf)),
+    [policyAreas, parentOfLeaf],
   );
 
   useEffect(() => {
@@ -494,13 +526,23 @@ export default function LibraryPage({
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={filterSelectSx}>
+        <FormControl size="small" sx={{ ...filterSelectSx, minWidth: 180 }}>
+          {/* Grouped by parent category; selecting a leaf filters by that subcategory. */}
           <Select value={areaFilter} onChange={(event) => {
             updateSearchParams({ policy_area: event.target.value, page: 1 });
           }}>
             <MenuItem value="all">All policy areas</MenuItem>
-            {policyAreas.map((area) => (
-              <MenuItem key={area} value={area}>{area}</MenuItem>
+            {taxonomy.flatMap((group) => [
+              <ListSubheader key={`h-${group.parent}`}>{group.parent}</ListSubheader>,
+              ...(group.children || []).map((child) => (
+                <MenuItem key={child} value={child} sx={{ pl: 3 }}>{child}</MenuItem>
+              )),
+            ])}
+            {uncategorisedAreas.length > 0 && (
+              <ListSubheader key="h-uncat">Uncategorised</ListSubheader>
+            )}
+            {uncategorisedAreas.map((area) => (
+              <MenuItem key={area} value={area} sx={{ pl: 3 }}>{area}</MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -948,7 +990,8 @@ export default function LibraryPage({
               freeSolo
               fullWidth
               size="small"
-              options={policyAreas}
+              options={taxonomyLeaves}
+              groupBy={(option) => parentOfLeaf[option] || "Other"}
               value={editDialog.form.policy_areas}
               onChange={(_, value) => updateEditField("policy_areas", value)}
               renderValue={(value, getItemProps) =>
@@ -958,7 +1001,7 @@ export default function LibraryPage({
                 })
               }
               renderInput={(params) => (
-                <TextField {...params} label="Policy areas" placeholder="Type and press enter" />
+                <TextField {...params} label="Policy areas" placeholder="Pick a subcategory or type" />
               )}
               sx={{ width: "100%" }}
             />

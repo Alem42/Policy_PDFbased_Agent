@@ -15,6 +15,8 @@ from app.modules.documents.embeddings import (
 )
 from app.modules.documents.extraction import extract_document
 from app.modules.documents.file_store import document_file_store
+from app.modules.documents.ingestion.contextual_header import build_contextual_headers
+from app.modules.documents.ingestion.language_detect import detect_language
 from app.modules.documents.ingestion.metadata_extractor import generate_document_metadata
 from app.modules.documents.repositories.content import document_content_repository
 from app.modules.documents.repositories.documents import document_repository
@@ -52,13 +54,30 @@ def process_document(document_id: str) -> None:
         document_repository.set_status(document_id, "annotated")
 
         chunks = document_chunker.chunk(pages)
-        chunk_vectors = embed_documents([chunk["text"] for chunk in chunks])
+        # Contextual retrieval: prepend an LLM situating sentence to the EMBEDDING
+        # input only; stored/displayed text stays original. Header kept for transparency.
+        headers = build_contextual_headers(
+            chunks,
+            title=metadata.get("title"),
+            summary=metadata.get("summary"),
+            model=model_name,
+        )
+        embed_inputs = [
+            f"{header}\n\n{chunk['text']}" if header else chunk["text"]
+            for header, chunk in zip(headers, chunks)
+        ]
+        doc_language = metadata.get("language")
+        for chunk, header in zip(chunks, headers):
+            if header:
+                chunk.setdefault("metadata_json", {})["context_header"] = header
+            chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
+        chunk_vectors = embed_documents(embed_inputs)
         embeddings = [vector_literal(vector) for vector in chunk_vectors]
         embedding_repository.replace_document_chunks(
             document_id,
             chunks,
             embeddings,
-            language=metadata.get("language"),
+            language=doc_language,
             embedding_model=get_embedding_model_name(),
         )
         document_repository.set_status(document_id, "ready")

@@ -9,8 +9,17 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
-from app.modules.documents.ingestion.taxonomy import POLICY_TAXONOMY, normalise_policy_areas
+from app.modules.documents.ingestion.language_detect import detect_language
+from app.modules.documents.ingestion.policy_matcher import match_policy_areas
+from app.modules.documents.taxonomy_service import get_leaf_labels, get_taxonomy_tree
 from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
+
+# Excerpt budget split across the document. Head is weighted heaviest because
+# policy docs front-load the important metadata (title, country, main themes);
+# the mid/tail slices surface secondary policy areas the head never mentions.
+EXCERPT_HEAD_CHARS = 9_000
+EXCERPT_MID_CHARS = 5_000
+EXCERPT_TAIL_CHARS = 2_000
 
 METADATA_PROMPT = """You extract structured metadata from policy documents.
 Return only valid JSON. Do not wrap it in markdown.
@@ -40,7 +49,10 @@ Rules:
 - "country_region", "source_type", "source_organisation", "stakeholders",
   "implementation_risks", "policy_areas", and "keywords" must all be English labels.
 - "publication_date" must use YYYY-MM-DD when known, otherwise null.
-- "policy_areas" must contain 3 to 6 labels selected only from this fixed taxonomy:
+- "policy_areas" must contain 3 to 6 SUBCATEGORY labels chosen only from the
+  taxonomy below. Pick the leaf subcategory wording (right-hand side), not the
+  parent. Copy the wording exactly.
+  Taxonomy (Parent: subcategories):
   {taxonomy}
 - "keywords" must contain 5 to 12 English keywords.
 - Translate titles and summaries to English when needed.
@@ -84,11 +96,17 @@ def _clean_date(value: object) -> str | None:
     return clean
 
 
+def _format_taxonomy(tree: list[dict]) -> str:
+    """Render the tree as 'Parent: childA, childB' lines for the prompt."""
+    return "\n  ".join(f"{g['parent']}: {', '.join(g['children'])}" for g in tree)
+
+
 def infer_language(text: str) -> str | None:
+    """Crude keyword fallback, used only when lingua returns nothing."""
     sample = text[:20_000].lower()
     if not sample.strip():
         return None
-    if re.search(r"[\u0400-\u04ff]", sample):
+    if re.search("[Ѐ-ӿ]", sample):  # Cyrillic block
         return "Bulgarian"
     if any(word in sample for word in ("transformaci", "polit", "digitalizaci")):
         return "Spanish"
@@ -97,13 +115,21 @@ def infer_language(text: str) -> str | None:
     return "English"
 
 
-def normalise_metadata(metadata: dict, filename: str) -> dict:
+def _resolve_language(metadata_language: str | None, excerpt: str) -> str | None:
+    """LLM value -> lingua detection -> crude heuristic."""
+    if metadata_language:
+        return metadata_language
+    return detect_language(excerpt) or infer_language(excerpt)
+
+
+def normalise_metadata(metadata: dict, filename: str, leaf_labels: list[str] | None = None) -> dict:
     year = metadata.get("year")
     try:
         year = int(year) if year is not None else None
     except (TypeError, ValueError):
         year = None
 
+    labels = leaf_labels if leaf_labels is not None else get_leaf_labels()
     return {
         "title": metadata.get("title") or filename,
         "summary": metadata.get("summary"),
@@ -113,7 +139,8 @@ def normalise_metadata(metadata: dict, filename: str) -> dict:
         "language": metadata.get("language"),
         "year": year,
         "publication_date": _clean_date(metadata.get("publication_date")),
-        "policy_areas": normalise_policy_areas(_clean_list(metadata.get("policy_areas"))),
+        # 方案①: snap free-form labels onto canonical taxonomy leaves via embeddings.
+        "policy_areas": match_policy_areas(_clean_list(metadata.get("policy_areas")), labels),
         "keywords": _clean_list(metadata.get("keywords")),
         "stakeholders": _clean_list(metadata.get("stakeholders")),
         "implementation_risks": _clean_list(metadata.get("implementation_risks")),
@@ -121,34 +148,41 @@ def normalise_metadata(metadata: dict, filename: str) -> dict:
     }
 
 
+def _build_excerpt(pages: list[dict]) -> str:
+    """Weighted head/mid/tail sample so secondary areas aren't missed."""
+    full = "\n".join(
+        f"[Page {page['page']}]\n{page.get('text', '')}\n"
+        for page in pages
+        if page.get("text")
+    ).strip()
+
+    budget = EXCERPT_HEAD_CHARS + EXCERPT_MID_CHARS + EXCERPT_TAIL_CHARS
+    if len(full) <= budget:
+        return full
+
+    head = full[:EXCERPT_HEAD_CHARS]
+    mid_start = max(EXCERPT_HEAD_CHARS, (len(full) - EXCERPT_MID_CHARS) // 2)
+    mid = full[mid_start : mid_start + EXCERPT_MID_CHARS]
+    tail = full[-EXCERPT_TAIL_CHARS:]
+    return "\n[...]\n".join([head, mid, tail])
+
+
 def generate_document_metadata(
     filename: str,
     pages: list[dict],
     model: str | None = None,
 ) -> tuple[dict, str | None]:
-    # Metadata uses a bounded excerpt instead of the full PDF to keep ingestion
-    # predictable for large documents and avoid excessive model context usage.
-    excerpt_parts: list[str] = []
-    used_characters = 0
-    for page in pages:
-        text = page.get("text", "")
-        if not text:
-            continue
-        section = f"[Page {page['page']}]\n{text}\n"
-        remaining = 16_000 - used_characters
-        if remaining <= 0:
-            break
-        excerpt_parts.append(section[:remaining])
-        used_characters += len(section)
+    excerpt = _build_excerpt(pages)
+    tree = get_taxonomy_tree()
+    leaf_labels = [child for group in tree for child in group["children"]]
 
-    excerpt = "\n".join(excerpt_parts).strip()
     if not excerpt:
-        return normalise_metadata({}, filename), None
+        return normalise_metadata({}, filename, leaf_labels), None
 
     api_key, _ = get_llm_api_key()
     if not api_key:
-        metadata = normalise_metadata({}, filename)
-        metadata["language"] = infer_language(excerpt)
+        metadata = normalise_metadata({}, filename, leaf_labels)
+        metadata["language"] = _resolve_language(None, excerpt)
         return metadata, None
 
     selected_model = model or get_llm_chat_model()[0]
@@ -170,10 +204,9 @@ def generate_document_metadata(
         {
             "excerpt": excerpt,
             "filename": filename,
-            "taxonomy": ", ".join(POLICY_TAXONOMY),
+            "taxonomy": _format_taxonomy(tree),
         }
     )
-    metadata = normalise_metadata(_extract_json(response), filename)
-    if not metadata.get("language"):
-        metadata["language"] = infer_language(excerpt)
+    metadata = normalise_metadata(_extract_json(response), filename, leaf_labels)
+    metadata["language"] = _resolve_language(metadata.get("language"), excerpt)
     return metadata, selected_model

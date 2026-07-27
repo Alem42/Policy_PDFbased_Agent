@@ -302,6 +302,22 @@ CREATE TABLE "public"."document_pages" (
 ;
 
 -- ----------------------------
+-- Table structure for policy_taxonomy (admin-editable two-level categories)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."policy_taxonomy" (
+  "id" uuid NOT NULL,
+  "parent" text COLLATE "pg_catalog"."default" NOT NULL,
+  "child" text COLLATE "pg_catalog"."default" NOT NULL,
+  "parent_order" int4 NOT NULL DEFAULT 0,
+  "child_order" int4 NOT NULL DEFAULT 0,
+  "source_ref" text COLLATE "pg_catalog"."default",
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "policy_taxonomy_parent_child_key" UNIQUE ("parent", "child")
+)
+;
+
+-- ----------------------------
 -- Table structure for documents
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."documents";

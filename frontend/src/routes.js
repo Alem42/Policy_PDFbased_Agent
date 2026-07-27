@@ -5,6 +5,7 @@ export const ROUTES = Object.freeze({
   history: "/history",
   library: "/library",
   admin: "/admin",
+  manage: "/manage",
   settings: "/settings",
   auth: "/login",
 });
@@ -15,6 +16,7 @@ export const VIEW_PATHS = Object.freeze({
   history: ROUTES.history,
   library: ROUTES.library,
   admin: ROUTES.admin,
+  manage: ROUTES.manage,
   settings: ROUTES.settings,
   auth: ROUTES.auth,
 });
