@@ -13,6 +13,11 @@ services:
       - ./backend/database/migrations/001_add_answer_mode.sql:/docker-entrypoint-initdb.d/02_migration_001.sql:ro
       - ./backend/database/migrations/002_add_model_to_chat_messages.sql:/docker-entrypoint-initdb.d/03_migration_002.sql:ro
       - ./backend/database/migrations/003_fix_policymaker_response_mode.sql:/docker-entrypoint-initdb.d/04_migration_003.sql:ro
+      # 004/005 are idempotent and no-op on a fresh DB (init.sql already has them),
+      # but keep the initdb sequence complete. NOTE: initdb.d only runs on a FRESH
+      # volume -- an existing pg_data volume must have new migrations applied manually.
+      - ./backend/database/migrations/004_add_policy_taxonomy.sql:/docker-entrypoint-initdb.d/05_migration_004.sql:ro
+      - ./backend/database/migrations/005_documents_sha256_unique.sql:/docker-entrypoint-initdb.d/06_migration_005.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s
