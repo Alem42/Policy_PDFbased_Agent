@@ -21,6 +21,7 @@ from app.modules.documents.admin_schemas import (
     DocumentProcessingStatus,
     ProcessingStatus,
 )
+from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.service import (
     delete_document as delete_document_record,
 )
@@ -91,6 +92,16 @@ async def upload_document(
             id=document_id,
             processing_status=_processing_status(row.get("status", "uploaded")),
         )
+    except DuplicateDocumentError as exc:
+        # 409 Conflict: identical content already in the library (L1 dedup).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": str(exc),
+                "existing_id": exc.existing_id,
+                "existing_filename": exc.existing_filename,
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

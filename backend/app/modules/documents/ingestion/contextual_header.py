@@ -26,7 +26,7 @@ from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
 
 logger = logging.getLogger(__name__)
 
-_MAX_WORKERS = 6           # parallel header calls per document
+_MAX_WORKERS = 6  # parallel header calls per document
 _CHUNK_SNIPPET_CHARS = 1200  # cap excerpt sent to the LLM
 _MAX_HEADER_CHARS = 240
 

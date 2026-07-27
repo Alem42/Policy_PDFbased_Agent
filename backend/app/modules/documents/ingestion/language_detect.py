@@ -18,8 +18,20 @@ logger = logging.getLogger(__name__)
 
 # Restrict the model set (memory scales with language count). Extend as needed.
 _LANGUAGE_NAMES = [
-    "ENGLISH", "FRENCH", "SPANISH", "GERMAN", "PORTUGUESE", "ITALIAN", "DUTCH",
-    "BULGARIAN", "RUSSIAN", "UKRAINIAN", "ARABIC", "CHINESE", "JAPANESE", "KOREAN",
+    "ENGLISH",
+    "FRENCH",
+    "SPANISH",
+    "GERMAN",
+    "PORTUGUESE",
+    "ITALIAN",
+    "DUTCH",
+    "BULGARIAN",
+    "RUSSIAN",
+    "UKRAINIAN",
+    "ARABIC",
+    "CHINESE",
+    "JAPANESE",
+    "KOREAN",
 ]
 
 _MIN_CHARS = 20  # below this, detection is unreliable; return None
