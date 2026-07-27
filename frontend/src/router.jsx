@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, useOutletContext } from "react-router-dom";
 import App from "./App";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminManagementPage from "./pages/AdminManagementPage";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -97,6 +98,11 @@ function SettingsRoute() {
   return <SettingsPage user={user} onNavigate={navigateToView} />;
 }
 
+function ManageRoute() {
+  const { user, navigateToView } = useOutletContext();
+  return <AdminManagementPage user={user} onNavigate={navigateToView} />;
+}
+
 function HistoryRoute() {
   const { navigateToView } = useOutletContext();
   return <HistoryPage onNavigate={navigateToView} />;
@@ -113,6 +119,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.history.slice(1), element: <HistoryRoute /> },
       { path: ROUTES.library.slice(1), element: <LibraryRoute /> },
       { path: ROUTES.admin.slice(1), element: <AdminRoute /> },
+      { path: ROUTES.manage.slice(1), element: <ManageRoute /> },
       { path: ROUTES.settings.slice(1), element: <SettingsRoute /> },
       { path: ROUTES.auth.slice(1), element: <AuthRoute /> },
       { path: "*", element: <Navigate to={ROUTES.chat} replace /> },

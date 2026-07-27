@@ -370,3 +370,19 @@ export function saveSettings(settings) {
 export function getProcessingStatus(documentId) {
   return request(`/admin/documents/${encodeURIComponent(documentId)}/processing-status`);
 }
+
+// ── Policy taxonomy (two-level categories) ──────────────────────────────────
+
+// Returns { groups: [{ parent, children: [], source_ref }] }
+export function getTaxonomy() {
+  return request("/taxonomy");
+}
+
+// Admin-only: replace the whole taxonomy tree.
+export function saveTaxonomy(groups) {
+  return request("/admin/taxonomy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ groups }),
+  });
+}

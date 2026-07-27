@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 from app.core.database import get_connection
@@ -25,9 +26,9 @@ class EmbeddingRepository:
                     """
                     INSERT INTO document_chunks (
                         id, document_id, chunk_index, page_start, page_end,
-                        section_title, language, text, token_count
+                        section_title, language, text, token_count, metadata_json
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     (
                         chunk_id,
@@ -36,9 +37,10 @@ class EmbeddingRepository:
                         chunk["page_start"],
                         chunk["page_end"],
                         chunk["section_title"],
-                        language,
+                        chunk.get("language") or language,  # per-chunk lang, else doc-level
                         chunk["text"],
                         chunk["token_count"],
+                        json.dumps(chunk.get("metadata_json", {})),  # holds context_header
                     ),
                 )
                 connection.execute(
