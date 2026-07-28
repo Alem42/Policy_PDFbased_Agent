@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Card,
@@ -35,6 +35,7 @@ import {
   deleteDocument,
   getDocumentChunks,
   getDocumentDetail,
+  getProcessingStatus,
   getTaxonomy,
   openDocumentFile,
   rescanFile,
@@ -74,6 +75,87 @@ const SEARCH_PARAM_DEFAULTS = {
 };
 
 const filterSelectSx = { minWidth: 140, "& .MuiSelect-select": { py: "10px" } };
+
+const TERMINAL_PROCESSING = new Set(["ready", "indexed", "failed"]);
+
+function processingColor(status) {
+  if (status === "ready" || status === "indexed") return "success.main";
+  if (status === "failed") return "error.main";
+  return "text.secondary";
+}
+
+// Self-contained processing status for one row. Renders the list value by
+// default; when `rescanSignal` changes (a rescan was triggered for THIS doc), it
+// polls only this document's status until it settles — updating just this cell,
+// with no whole-table refetch or flicker. On completion it pulls fresh
+// pages/chunks once.
+function ProcessingCell({ document, rescanSignal }) {
+  const [live, setLive] = useState({
+    status: document.status,
+    pages: document.page_count || 0,
+    chunks: document.chunk_count || 0,
+  });
+
+  // Re-sync if the underlying row data changes (e.g. a normal list refetch).
+  useEffect(() => {
+    setLive({
+      status: document.status,
+      pages: document.page_count || 0,
+      chunks: document.chunk_count || 0,
+    });
+  }, [document.status, document.page_count, document.chunk_count]);
+
+  useEffect(() => {
+    if (!rescanSignal) return undefined;
+    let cancelled = false;
+    let timer = null;
+    setLive((prev) => ({ ...prev, status: "processing" }));
+    async function tick() {
+      try {
+        const result = await getProcessingStatus(document.id);
+        if (cancelled) return;
+        setLive((prev) => ({ ...prev, status: result.status || prev.status }));
+        if (TERMINAL_PROCESSING.has(result.status)) {
+          try {
+            const detail = await getDocumentDetail(document.id);
+            if (!cancelled) {
+              setLive({
+                status: detail.status || result.status,
+                pages: detail.page_count || 0,
+                chunks: detail.chunk_count || 0,
+              });
+            }
+          } catch {
+            /* keep the polled status */
+          }
+          return; // settled -> stop polling
+        }
+      } catch {
+        /* transient error: keep last known status */
+      }
+      if (!cancelled) timer = setTimeout(tick, 2000);
+    }
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [rescanSignal, document.id]);
+
+  return (
+    <>
+      <Typography variant="body2" sx={{ fontWeight: 800, color: processingColor(live.status) }}>
+        {live.status || "unknown"}
+      </Typography>
+      <Typography variant="body2" sx={{ color: "text.secondary" }}>
+        {live.pages} pages
+      </Typography>
+      <Typography variant="body2" sx={{ color: "text.secondary" }}>
+        {live.chunks} chunks
+      </Typography>
+    </>
+  );
+}
 
 const EMPTY_EDIT_FORM = {
   title: "",
@@ -127,13 +209,8 @@ export default function LibraryPage({
   const [openChunkId, setOpenChunkId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const rescanPollRef = useRef(null);
-  useEffect(
-    () => () => {
-      if (rescanPollRef.current) clearInterval(rescanPollRef.current);
-    },
-    [],
-  );
+  // Per-row rescan trigger: bumping a doc's counter makes its ProcessingCell poll.
+  const [rescanSignals, setRescanSignals] = useState({});
 
   // Re-fetch documents when the embedding model changes (so any model-derived
   // detail refreshes). The Processing status itself is model-independent.
@@ -428,17 +505,8 @@ export default function LibraryPage({
     setError("");
     try {
       await rescanFile(document.id);
-      // Poll so the Processing status updates live (queued -> ... -> ready) without
-      // a manual page refresh. Self-clears after ~60s or on unmount.
-      if (rescanPollRef.current) clearInterval(rescanPollRef.current);
-      let ticks = 0;
-      rescanPollRef.current = setInterval(() => {
-        refreshSearch();
-        if (++ticks >= 30) {
-          clearInterval(rescanPollRef.current);
-          rescanPollRef.current = null;
-        }
-      }, 2000);
+      // Signal this row's ProcessingCell to start polling its own status.
+      setRescanSignals((prev) => ({ ...prev, [document.id]: (prev[document.id] || 0) + 1 }));
     } catch (rescanError) {
       setError(rescanError.message);
     }
@@ -707,26 +775,10 @@ export default function LibraryPage({
 
               {/* Processing cell */}
               <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 800,
-                    color:
-                      document.status === "ready"
-                        ? "success.main"
-                        : document.status === "failed"
-                          ? "error.main"
-                          : "text.secondary",
-                  }}
-                >
-                  {document.status || "unknown"}
-                </Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  {document.page_count || 0} pages
-                </Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  {document.chunk_count || 0} chunks
-                </Typography>
+                <ProcessingCell
+                  document={document}
+                  rescanSignal={rescanSignals[document.id] || 0}
+                />
                 {user?.role === "admin" && (
                   <Typography variant="body2" sx={{ color: "text.secondary" }}>
                     {document.approved ? "approved" : "not approved"} / {document.access_level}
