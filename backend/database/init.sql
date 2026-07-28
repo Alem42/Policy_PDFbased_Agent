@@ -318,6 +318,18 @@ CREATE TABLE IF NOT EXISTS "public"."policy_taxonomy" (
 ;
 
 -- ----------------------------
+-- Table structure for embedding_settings (admin-tunable embedding config, one JSON row)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."embedding_settings" (
+  "id" int4 NOT NULL DEFAULT 1,
+  "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "embedding_settings_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "embedding_settings_singleton" CHECK ("id" = 1)
+)
+;
+
+-- ----------------------------
 -- Table structure for documents
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."documents";

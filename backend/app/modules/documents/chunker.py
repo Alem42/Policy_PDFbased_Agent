@@ -8,14 +8,15 @@ from app.modules.documents.embeddings import (
 
 TokenCounter = Callable[[str], int]
 
+# Defaults; the active budget is admin-tunable (Manage > Embedding) and passed
+# into chunk() at call time. The constants keep existing callers/tests unchanged.
 MAX_CHUNK_TOKENS = 480
 CHUNK_OVERLAP_TOKENS = 120
 
-# Any single paragraph-level item (natural paragraph, sentence-split piece,
-# or hard-sliced fragment) must leave room for CHUNK_OVERLAP_TOKENS worth of
-# carry-over from the previous chunk, otherwise overlap + one full-budget
-# item can exceed MAX_CHUNK_TOKENS on its own.
-_ITEM_BUDGET = MAX_CHUNK_TOKENS - CHUNK_OVERLAP_TOKENS
+# Any single paragraph-level item (natural paragraph, sentence-split piece, or
+# hard-sliced fragment) must leave room for the overlap carried from the previous
+# chunk, otherwise overlap + one full-budget item can exceed the max on its own.
+# item_budget = max_tokens - overlap (computed per call).
 
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+")
 
@@ -33,8 +34,18 @@ class DocumentChunker:
     def __init__(self, token_counter: TokenCounter = estimate_token_count) -> None:
         self._token_counter = token_counter
 
-    def chunk(self, pages: list[dict]) -> list[dict]:
-        paragraphs = self._paragraphs(pages)
+    def chunk(
+        self,
+        pages: list[dict],
+        max_tokens: int = MAX_CHUNK_TOKENS,
+        overlap: int = CHUNK_OVERLAP_TOKENS,
+    ) -> list[dict]:
+        # Keep the params sane so a small budget can't make item_budget <= 0.
+        max_tokens = max(64, int(max_tokens))
+        overlap = max(0, min(int(overlap), max_tokens // 2))
+        item_budget = max_tokens - overlap
+
+        paragraphs = self._paragraphs(pages, item_budget)
         chunks: list[dict] = []
         current: list[dict] = []
         current_tokens = 0
@@ -54,10 +65,10 @@ class DocumentChunker:
                     "token_count": self._token_counter(text),
                 }
             )
-            current, current_tokens = self._overlap_tail(current)
+            current, current_tokens = self._overlap_tail(current, overlap)
 
         for paragraph in paragraphs:
-            if current and current_tokens + paragraph["token_count"] > MAX_CHUNK_TOKENS:
+            if current and current_tokens + paragraph["token_count"] > max_tokens:
                 flush()
             current.append(paragraph)
             current_tokens += paragraph["token_count"]
@@ -65,29 +76,29 @@ class DocumentChunker:
             flush()
         return chunks
 
-    def _overlap_tail(self, items: list[dict]) -> tuple[list[dict], int]:
-        """Carry ~CHUNK_OVERLAP_TOKENS of trailing context into the next chunk.
+    def _overlap_tail(self, items: list[dict], overlap: int) -> tuple[list[dict], int]:
+        """Carry ~overlap tokens of trailing context into the next chunk.
 
         Whole trailing paragraphs first. If the last paragraph alone already
         exceeds the overlap budget, fall back to carrying its trailing SENTENCES
         so overlap is never empty (fixes the long-final-paragraph zero-overlap
         bug where two chunks shared no text at all).
         """
-        overlap: list[dict] = []
-        overlap_tokens = 0
+        tail: list[dict] = []
+        tail_tokens = 0
         for item in reversed(items):
-            if overlap_tokens + item["token_count"] > CHUNK_OVERLAP_TOKENS:
+            if tail_tokens + item["token_count"] > overlap:
                 break
-            overlap.insert(0, item)
-            overlap_tokens += item["token_count"]
+            tail.insert(0, item)
+            tail_tokens += item["token_count"]
 
-        if not overlap and items:
-            tail = _tail_sentences(items[-1], CHUNK_OVERLAP_TOKENS, self._token_counter)
-            if tail:
-                return [tail], tail["token_count"]
-        return overlap, overlap_tokens
+        if not tail and items and overlap > 0:
+            sentences = _tail_sentences(items[-1], overlap, self._token_counter)
+            if sentences:
+                return [sentences], sentences["token_count"]
+        return tail, tail_tokens
 
-    def _paragraphs(self, pages: list[dict]) -> list[dict]:
+    def _paragraphs(self, pages: list[dict], item_budget: int) -> list[dict]:
         paragraphs: list[dict] = []
         for page in pages:
             for raw_paragraph in re.split(r"\n\s*\n+", page["text"]):
@@ -95,7 +106,7 @@ class DocumentChunker:
                 if not clean:
                     continue
                 token_count = self._token_counter(clean)
-                if token_count <= _ITEM_BUDGET:
+                if token_count <= item_budget:
                     paragraphs.append(
                         {"page": page["page"], "text": clean, "token_count": token_count}
                     )
@@ -104,7 +115,9 @@ class DocumentChunker:
                     # paragraph (no blank-line break) is too big on its own
                     # and would otherwise be emitted as one oversized chunk.
                     paragraphs.extend(
-                        _split_oversized_paragraph(page["page"], clean, self._token_counter)
+                        _split_oversized_paragraph(
+                            page["page"], clean, self._token_counter, item_budget
+                        )
                     )
         return paragraphs
 
@@ -130,8 +143,10 @@ def _tail_sentences(item: dict, budget: int, token_counter: TokenCounter) -> dic
     return {"page": item["page"], "text": text, "token_count": token_counter(text)}
 
 
-def _split_oversized_paragraph(page: int, text: str, token_counter: TokenCounter) -> list[dict]:
-    """Break a paragraph that exceeds _ITEM_BUDGET into smaller pieces.
+def _split_oversized_paragraph(
+    page: int, text: str, token_counter: TokenCounter, item_budget: int
+) -> list[dict]:
+    """Break a paragraph that exceeds item_budget into smaller pieces.
 
     Splits on sentence boundaries first; a "sentence" that is still too long
     on its own (e.g. unpunctuated text) falls back to a binary-searched
@@ -152,11 +167,11 @@ def _split_oversized_paragraph(page: int, text: str, token_counter: TokenCounter
         if not sentence:
             continue
         sentence_tokens = token_counter(sentence)
-        if sentence_tokens > _ITEM_BUDGET:
+        if sentence_tokens > item_budget:
             flush_piece()
-            pieces.extend(_hard_slice(page, sentence, token_counter))
+            pieces.extend(_hard_slice(page, sentence, token_counter, item_budget))
             continue
-        if piece_text and piece_tokens + sentence_tokens > _ITEM_BUDGET:
+        if piece_text and piece_tokens + sentence_tokens > item_budget:
             flush_piece()
         piece_text = f"{piece_text} {sentence}".strip()
         piece_tokens += sentence_tokens
@@ -164,12 +179,14 @@ def _split_oversized_paragraph(page: int, text: str, token_counter: TokenCounter
     return pieces
 
 
-def _hard_slice(page: int, text: str, token_counter: TokenCounter) -> list[dict]:
-    """Cut unpunctuated text into _ITEM_BUDGET-sized pieces via binary search."""
+def _hard_slice(
+    page: int, text: str, token_counter: TokenCounter, item_budget: int
+) -> list[dict]:
+    """Cut unpunctuated text into item_budget-sized pieces via binary search."""
     pieces: list[dict] = []
     remaining = text
     while remaining:
-        if token_counter(remaining) <= _ITEM_BUDGET:
+        if token_counter(remaining) <= item_budget:
             pieces.append(
                 {"page": page, "text": remaining, "token_count": token_counter(remaining)}
             )
@@ -177,7 +194,7 @@ def _hard_slice(page: int, text: str, token_counter: TokenCounter) -> list[dict]
         low, high = 1, len(remaining)
         while low < high:
             mid = (low + high + 1) // 2
-            if token_counter(remaining[:mid]) <= _ITEM_BUDGET:
+            if token_counter(remaining[:mid]) <= item_budget:
                 low = mid
             else:
                 high = mid - 1

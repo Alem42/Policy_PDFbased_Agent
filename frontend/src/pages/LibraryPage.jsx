@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Card,
@@ -37,6 +37,7 @@ import {
   getDocumentDetail,
   getTaxonomy,
   openDocumentFile,
+  rescanFile,
   searchDocuments,
   updateDocument,
 } from "../api";
@@ -126,6 +127,24 @@ export default function LibraryPage({
   const [openChunkId, setOpenChunkId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const rescanPollRef = useRef(null);
+  useEffect(
+    () => () => {
+      if (rescanPollRef.current) clearInterval(rescanPollRef.current);
+    },
+    [],
+  );
+
+  // Re-fetch documents when the embedding model changes (so any model-derived
+  // detail refreshes). The Processing status itself is model-independent.
+  useEffect(() => {
+    function onConfig() {
+      setSearchVersion((current) => current + 1);
+    }
+    window.addEventListener("embedding-config-changed", onConfig);
+    return () => window.removeEventListener("embedding-config-changed", onConfig);
+  }, []);
+
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
   const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
@@ -248,11 +267,6 @@ export default function LibraryPage({
 
   function refreshSearch() {
     setSearchVersion((current) => current + 1);
-  }
-
-  async function handleRefresh() {
-    await onRefresh();
-    refreshSearch();
   }
 
   async function handleDocumentsChanged(documentIds) {
@@ -410,17 +424,23 @@ export default function LibraryPage({
     if (document) action(document);
   }
 
-  async function handleRescan() {
-    setBusy(true);
+  async function handleRescanFile(document) {
     setError("");
     try {
-      await onRescan();
-      refreshSearch();
-      closeDrawer();
+      await rescanFile(document.id);
+      // Poll so the Processing status updates live (queued -> ... -> ready) without
+      // a manual page refresh. Self-clears after ~60s or on unmount.
+      if (rescanPollRef.current) clearInterval(rescanPollRef.current);
+      let ticks = 0;
+      rescanPollRef.current = setInterval(() => {
+        refreshSearch();
+        if (++ticks >= 30) {
+          clearInterval(rescanPollRef.current);
+          rescanPollRef.current = null;
+        }
+      }, 2000);
     } catch (rescanError) {
       setError(rescanError.message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -483,16 +503,6 @@ export default function LibraryPage({
             : "Browse available documents, inspect metadata, and add relevant sources to your chat context."}
         </Typography>
       </Box>
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        <Button variant="outlined" disabled={busy} onClick={handleRefresh}>
-          Refresh
-        </Button>
-        {user?.role === "admin" && (
-          <Button variant="contained" disabled={busy} onClick={handleRescan}>
-            {busy ? "Working..." : "Rescan files"}
-          </Button>
-        )}
-      </Box>
       </Box>
 
       {user?.role === "admin" && <DocumentUpload compact onUploaded={handleDocumentsChanged} />}
@@ -526,11 +536,17 @@ export default function LibraryPage({
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ ...filterSelectSx, minWidth: 180 }}>
+        <FormControl size="small" sx={{ ...filterSelectSx, minWidth: 180, maxWidth: 220 }}>
           {/* Grouped by parent category; selecting a leaf filters by that subcategory. */}
-          <Select value={areaFilter} onChange={(event) => {
-            updateSearchParams({ policy_area: event.target.value, page: 1 });
-          }}>
+          <Select
+            value={areaFilter}
+            onChange={(event) => {
+              updateSearchParams({ policy_area: event.target.value, page: 1 });
+            }}
+            // Cap the popup height/width so it stays a compact scrollable dropdown.
+            MenuProps={{ PaperProps: { style: { maxHeight: 300, maxWidth: 280 } } }}
+            sx={{ "& .MuiSelect-select": { overflow: "hidden", textOverflow: "ellipsis" } }}
+          >
             <MenuItem value="all">All policy areas</MenuItem>
             {taxonomy.flatMap((group) => [
               <ListSubheader key={`h-${group.parent}`}>{group.parent}</ListSubheader>,
@@ -855,6 +871,9 @@ export default function LibraryPage({
         {user?.role === "admin" && <Divider />}
         {user?.role === "admin" && (
           <MenuItem onClick={() => runMoreAction(openEditDialog)}>Edit</MenuItem>
+        )}
+        {user?.role === "admin" && (
+          <MenuItem onClick={() => runMoreAction(handleRescanFile)}>Rescan file</MenuItem>
         )}
         {user?.role === "admin" && (
           <MenuItem

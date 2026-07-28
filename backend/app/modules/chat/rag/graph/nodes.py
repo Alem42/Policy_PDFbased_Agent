@@ -1,6 +1,6 @@
-from app.modules.chat.rag.evidence import (  # noqa: F401 (MAX_VECTOR_DISTANCE used below)
-    MAX_VECTOR_DISTANCE,
+from app.modules.chat.rag.evidence import (
     assess_evidence_sufficiency,
+    max_vector_distance,
 )
 from app.modules.chat.rag.generation import (
     check_evidence_sufficiency_llm,
@@ -59,10 +59,9 @@ def retrieve_context_node(state: PDFQAState) -> dict:
     # query can legitimately return 0 nearest-neighbours even when embeddings exist.
     has_embeddings = documents_have_embeddings(_identifiers(state))
 
-    # Only use chunks that are actually close to the query.
-    relevant_chunks = [
-        c for c in raw_chunks if float(c.get("distance", 1.0)) <= MAX_VECTOR_DISTANCE
-    ]
+    # Only use chunks that are actually close to the query (live, admin-tunable cutoff).
+    threshold = max_vector_distance()
+    relevant_chunks = [c for c in raw_chunks if float(c.get("distance", 1.0)) <= threshold]
     context_source = relevant_chunks or state["pages"]
     context, truncated = format_context(context_source)
 

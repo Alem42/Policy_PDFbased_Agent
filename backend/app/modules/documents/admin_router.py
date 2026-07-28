@@ -28,6 +28,7 @@ from app.modules.documents.service import (
 from app.modules.documents.service import (
     get_document_detail,
     process_document,
+    reembed_library,
     rescan_library,
     save_upload,
 )
@@ -126,6 +127,32 @@ async def rescan_documents(_: AdminUser) -> dict:
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/reembed")
+async def reembed_documents(_: AdminUser) -> dict:
+    """Re-embed existing chunks into the active model's table (after a model switch).
+
+    Reuses stored chunks (no re-extract / re-chunk), so other models' vectors are
+    preserved and switching back stays instant.
+    """
+    try:
+        logger.info("Re-embed requested, running in thread pool")
+        return await asyncio.to_thread(reembed_library)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/{document_id}/rescan", status_code=status.HTTP_202_ACCEPTED)
+async def rescan_document(
+    document_id: UUID,
+    background_tasks: BackgroundTasks,
+    _: AdminUser,
+) -> dict:
+    """Reprocess ONE document (re-extract, re-chunk, re-metadata, re-embed active model)."""
+    background_tasks.add_task(_run_process_document, str(document_id))
+    logger.info("Single-document rescan queued: %s", document_id)
+    return {"id": str(document_id), "processing_status": "queued"}
 
 
 @router.patch("/{document_id}", response_model=AdminDocumentMetadataUpdate)

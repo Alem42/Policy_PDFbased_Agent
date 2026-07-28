@@ -7,7 +7,6 @@ import ChatPage from "./pages/ChatPage";
 import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import LibraryPage from "./pages/LibraryPage";
-import SettingsPage from "./pages/SettingsPage";
 import { ROUTES } from "./routes";
 
 function HomeRoute() {
@@ -93,11 +92,6 @@ function AdminRoute() {
   );
 }
 
-function SettingsRoute() {
-  const { user, navigateToView } = useOutletContext();
-  return <SettingsPage user={user} onNavigate={navigateToView} />;
-}
-
 function ManageRoute() {
   const { user, navigateToView } = useOutletContext();
   return <AdminManagementPage user={user} onNavigate={navigateToView} />;
@@ -120,7 +114,8 @@ export const router = createBrowserRouter([
       { path: ROUTES.library.slice(1), element: <LibraryRoute /> },
       { path: ROUTES.admin.slice(1), element: <AdminRoute /> },
       { path: ROUTES.manage.slice(1), element: <ManageRoute /> },
-      { path: ROUTES.settings.slice(1), element: <SettingsRoute /> },
+      // Token Settings merged into Manage; keep the old path working.
+      { path: ROUTES.settings.slice(1), element: <Navigate to={ROUTES.manage} replace /> },
       { path: ROUTES.auth.slice(1), element: <AuthRoute /> },
       { path: "*", element: <Navigate to={ROUTES.chat} replace /> },
     ],

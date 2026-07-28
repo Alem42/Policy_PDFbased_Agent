@@ -5,7 +5,6 @@ import ChatIcon from "@mui/icons-material/ChatOutlined";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooksOutlined";
 import DashboardIcon from "@mui/icons-material/DashboardOutlined";
 import TuneIcon from "@mui/icons-material/TuneOutlined";
-import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 
 const PUBLIC_ITEMS = [
   // { view: "home", label: "Overview", icon: <HomeIcon fontSize="small" /> },
@@ -15,8 +14,7 @@ const PUBLIC_ITEMS = [
 
 const ADMIN_ITEMS = [
   { view: "admin", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> },
-  { view: "manage", label: "Global Management", icon: <TuneIcon fontSize="small" /> },
-  { view: "settings", label: "Token Settings", icon: <SettingsIcon fontSize="small" /> },
+  { view: "manage", label: "Management", icon: <TuneIcon fontSize="small" /> },
 ];
 
 export default function AppMenu({ currentView, user, onNavigate }) {
