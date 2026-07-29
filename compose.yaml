@@ -22,6 +22,7 @@ services:
       - ./backend/database/migrations/007_add_reranking_settings.sql:/docker-entrypoint-initdb.d/08_migration_007.sql:ro
       - ./backend/database/migrations/008_add_model_catalog.sql:/docker-entrypoint-initdb.d/09_migration_008.sql:ro
       - ./backend/database/migrations/009_add_model_providers.sql:/docker-entrypoint-initdb.d/10_migration_009.sql:ro
+      - ./backend/database/migrations/010_update_deepseek_v4_catalog.sql:/docker-entrypoint-initdb.d/11_migration_010.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

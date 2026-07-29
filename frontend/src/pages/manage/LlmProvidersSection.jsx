@@ -323,7 +323,8 @@ export default function LlmProvidersSection({
                 ))}
               </TextField>
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                Used for chat messages that don't explicitly pick a model.
+                Only providers with a chat endpoint appear here. Other registered
+                providers can still store API keys below.
               </Typography>
             </Box>
 
@@ -352,7 +353,8 @@ export default function LlmProvidersSection({
                 ))}
               </TextField>
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                Models come from this provider's chat endpoints below.
+                This exact model id is sent to the provider API. Models come from
+                this provider's chat endpoints below.
               </Typography>
             </Box>
 

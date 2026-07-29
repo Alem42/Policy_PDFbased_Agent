@@ -17,13 +17,13 @@ PROVIDER_CONFIGS: dict[str, dict] = {
     "deepseek": {
         "label": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "default_model": "deepseek-chat",
+        "default_model": "deepseek-v4-flash",
         # DeepSeek-specific: disable chain-of-thought "thinking" tokens so the
         # response returns the final answer only, without internal reasoning text.
         "extra_body": {"thinking": {"type": "disabled"}},
         "models": [
-            {"id": "deepseek-chat", "label": "DeepSeek Chat"},
-            {"id": "deepseek-reasoner", "label": "DeepSeek Reasoner"},
+            {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+            {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
         ],
     },
     "openai": {

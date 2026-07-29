@@ -13,7 +13,11 @@ from uuid import uuid4
 
 from app.core.config import get_settings
 from app.core.database import get_connection
-from app.modules.catalog.data import DEFAULT_CATALOG, DEFAULT_PROVIDERS
+from app.modules.catalog.data import (
+    DEFAULT_CATALOG,
+    DEFAULT_PROVIDERS,
+    DEPRECATED_CATALOG_KEYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,13 @@ class ModelCatalogRepository:
     def seed(self, entries: list[dict]) -> None:
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    DELETE FROM model_catalog
+                    WHERE provider = %s AND capability = %s AND model = %s
+                    """,
+                    DEPRECATED_CATALOG_KEYS,
+                )
                 cursor.executemany(
                     _UPSERT_SQL,
                     [self._values(entry, order) for order, entry in enumerate(entries)],

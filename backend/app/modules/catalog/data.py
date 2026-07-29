@@ -128,6 +128,11 @@ PROVIDER_PRESETS: list[dict] = [
     },
 ]
 
+DEPRECATED_CATALOG_KEYS = [
+    ("deepseek", "chat", "deepseek-chat"),
+    ("deepseek", "chat", "deepseek-reasoner"),
+]
+
 _ZHIPU = "https://open.bigmodel.cn/api/paas/v4"
 
 
@@ -236,8 +241,9 @@ DEFAULT_CATALOG.extend(
             model,
             "https://api.deepseek.com",
             "/chat/completions",
+            notes="Supports thinking and non-thinking modes",
         )
-        for model in ("deepseek-chat", "deepseek-reasoner")
+        for model in ("deepseek-v4-flash", "deepseek-v4-pro")
     ]
 )
 DEFAULT_CATALOG.extend(

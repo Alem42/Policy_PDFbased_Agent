@@ -30,7 +30,7 @@ def test_default_chat_and_openai_embedding_endpoints_are_catalogued():
     assert any(
         entry["provider"] == "deepseek"
         and entry["capability"] == "chat"
-        and entry["model"] == "deepseek-chat"
+        and entry["model"] == "deepseek-v4-flash"
         for entry in catalog["entries"]
     )
     assert any(
