@@ -7,6 +7,7 @@ import {
   Card,
   Checkbox,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -25,9 +26,12 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/Delete";
 import EditOutlinedIcon from "@mui/icons-material/Edit";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SendIcon from "@mui/icons-material/Send";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
@@ -150,6 +154,167 @@ function flattenModelLabels(providerGroups) {
 function getModelLabel(modelLookup, modelId) {
   if (!modelId) return null;
   return modelLookup[modelId] || modelId;
+}
+
+// Collapsible tool-call trace for one assistant turn, GPT-style: expanded
+// while the agent is still deciding what to do, collapses to a one-line
+// summary the moment the real answer starts streaming (still expandable to
+// review afterward).
+function ReasoningSteps({ steps, expanded, onToggle, active }) {
+  if (!steps?.length) return null;
+  const summary = active
+    ? steps[steps.length - 1]?.label || "Working…"
+    : `Reasoning · ${steps.length} step${steps.length !== 1 ? "s" : ""}`;
+
+  return (
+    <Box sx={{ mb: 1 }}>
+      <Button
+        size="small"
+        variant="text"
+        onClick={onToggle}
+        startIcon={
+          active ? (
+            <CircularProgress size={12} thickness={6} sx={{ color: "#63706a" }} />
+          ) : expanded ? (
+            <ExpandLessIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <ExpandMoreIcon sx={{ fontSize: 16 }} />
+          )
+        }
+        sx={{
+          textTransform: "none",
+          color: "#63706a",
+          fontSize: 12,
+          fontStyle: active ? "italic" : "normal",
+          py: 0.25,
+          px: 0.5,
+          minWidth: 0,
+          "&:hover": { bgcolor: "transparent", color: "#214f42" },
+        }}
+      >
+        {summary}
+      </Button>
+      <Collapse in={expanded || active}>
+        <Box sx={{ pl: 1.75, ml: 0.75, mt: 0.5, borderLeft: "2px solid #e2e5df" }}>
+          {steps.map((step, i) => (
+            <Box key={`${step.tool}-${i}`} sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.35 }}>
+              {step.status === "running" ? (
+                <CircularProgress size={12} thickness={6} sx={{ color: "#214f42", flexShrink: 0 }} />
+              ) : (
+                <CheckCircleOutlineIcon
+                  sx={{
+                    fontSize: 14,
+                    flexShrink: 0,
+                    color: step.evidenceSufficient === false ? "#bf360c" : "#214f42",
+                  }}
+                />
+              )}
+              <Typography variant="caption" sx={{ color: "#4a5a54", fontSize: 12 }}>
+                {step.label}
+                {step.status === "done" && step.evidenceSufficient === true && " — found relevant sources"}
+                {step.status === "done" && step.evidenceSufficient === false && " — not enough evidence"}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+// Claude-Code-style inline permission prompt: a bordered card with a
+// numbered, keyboard-selectable list of options, rendered directly in the
+// chat flow instead of a modal dialog. confirm_websearch is a light,
+// one-off question; confirm_import is visually flagged as a permanent,
+// shared-library-changing action so the two are never mistaken for each
+// other.
+function ConfirmPrompt({ confirm, busy, onAnswer }) {
+  if (!confirm) return null;
+  const isImport = confirm.type === "confirm_import";
+  const options = isImport
+    ? [
+        { value: true, label: "Yes, import this page into the knowledge base" },
+        { value: false, label: "No, just answer without importing" },
+      ]
+    : (confirm.options || ["Yes", "No"]).map((option) => ({ value: option, label: option }));
+  const accent = isImport ? "#b45309" : "#214f42";
+  const accentBg = isImport ? "#fff8f0" : "#fafaf8";
+  const accentBorder = isImport ? "#fcd9a8" : "#d9d8d0";
+  const accentHoverBg = isImport ? "#ffedd5" : "#eef2ec";
+
+  return (
+    <Box
+      sx={{
+        border: "1px solid",
+        borderColor: accentBorder,
+        borderRadius: 2,
+        bgcolor: accentBg,
+        p: 2,
+        mb: 2,
+      }}
+    >
+      <Typography variant="body2" sx={{ fontWeight: 800, color: isImport ? accent : "inherit" }}>
+        {isImport ? "⚠ Import into the knowledge base?" : "Search the web?"}
+      </Typography>
+      {isImport && (
+        <Box sx={{ mt: 0.5, mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{confirm.title}</Typography>
+          <Typography variant="caption" sx={{ color: "#63706a", wordBreak: "break-all" }}>
+            {confirm.url}
+          </Typography>
+        </Box>
+      )}
+      <Typography variant="body2" sx={{ color: "#4a5a54", mt: isImport ? 0 : 0.5, mb: 1.5 }}>
+        {confirm.question ||
+          (isImport
+            ? "This permanently adds the page to the shared knowledge base — every user will be able to find it."
+            : "The selected documents don't have enough information. Search the web for this answer?")}
+      </Typography>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+        {options.map((option, i) => (
+          <Box
+            key={String(option.value)}
+            onClick={() => !busy && onAnswer(option.value)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.25,
+              px: 1.25,
+              py: 0.85,
+              borderRadius: 1.5,
+              cursor: busy ? "default" : "pointer",
+              border: "1px solid transparent",
+              opacity: busy ? 0.6 : 1,
+              "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+            }}
+          >
+            <Box
+              sx={{
+                width: 20,
+                height: 20,
+                borderRadius: "5px",
+                border: "1.5px solid",
+                borderColor: accent,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                fontWeight: 800,
+                color: accent,
+                flexShrink: 0,
+              }}
+            >
+              {i + 1}
+            </Box>
+            <Typography variant="body2">{option.label}</Typography>
+          </Box>
+        ))}
+      </Box>
+      <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#98a29c" }}>
+        Press a number key to choose.
+      </Typography>
+    </Box>
+  );
 }
 
 function formatSessionDate(dateStr) {
@@ -319,6 +484,29 @@ export default function ChatPage({
       document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }, [citationDrawer.open, citationDrawer.focusIndex]);
+
+  // Claude-Code-style quick select: press a number key to pick that option
+  // of the pending confirm_websearch/confirm_import prompt; Escape declines.
+  useEffect(() => {
+    if (!pendingConfirm || confirmBusy) return undefined;
+    const isImport = pendingConfirm.type === "confirm_import";
+    const options = isImport
+      ? [true, false]
+      : pendingConfirm.options || ["Yes", "No"];
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        handleConfirmResponse(isImport ? false : "No");
+        return;
+      }
+      const index = Number(event.key) - 1;
+      if (Number.isInteger(index) && index >= 0 && index < options.length) {
+        handleConfirmResponse(options[index]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingConfirm, confirmBusy]);
 
   if (!user) {
     return (
@@ -545,7 +733,10 @@ export default function ChatPage({
   function ensureStreamingPlaceholder(current) {
     const last = current[current.length - 1];
     if (last?.role === "assistant" && last.streaming) return [...current];
-    return [...current, { role: "assistant", content: "", streaming: true, responseMode, answerMode }];
+    return [
+      ...current,
+      { role: "assistant", content: "", streaming: true, responseMode, answerMode, steps: [], showSteps: true },
+    ];
   }
 
   // Shared by handleSubmit (new turn) and handleConfirmResponse (resumed
@@ -558,14 +749,41 @@ export default function ChatPage({
         setMessages((current) => {
           const next = ensureStreamingPlaceholder(current);
           const last = next[next.length - 1];
-          next[next.length - 1] = { ...last, toolStatus: TOOL_STATUS_LABEL[evt.tool] || "Working…" };
+          const steps = [
+            ...(last.steps || []),
+            { tool: evt.tool, label: TOOL_STATUS_LABEL[evt.tool] || evt.tool, status: "running" },
+          ];
+          next[next.length - 1] = { ...last, steps, showSteps: true };
+          return next;
+        });
+      } else if (evt.type === "tool_result") {
+        setMessages((current) => {
+          const last = current[current.length - 1];
+          if (!last?.steps?.length) return current;
+          const steps = [...last.steps];
+          for (let i = steps.length - 1; i >= 0; i -= 1) {
+            if (steps[i].tool === evt.tool && steps[i].status === "running") {
+              steps[i] = { ...steps[i], status: "done", evidenceSufficient: evt.evidence_sufficient };
+              break;
+            }
+          }
+          const next = [...current];
+          next[next.length - 1] = { ...last, steps };
           return next;
         });
       } else if (evt.type === "token") {
         setMessages((current) => {
           const next = ensureStreamingPlaceholder(current);
           const last = next[next.length - 1];
-          next[next.length - 1] = { ...last, content: last.content + evt.value, toolStatus: null };
+          const isFirstToken = !last.content;
+          next[next.length - 1] = {
+            ...last,
+            content: last.content + evt.value,
+            // Auto-collapse the reasoning trace the moment the real answer
+            // starts arriving (GPT-style) -- but only once, so a user who
+            // re-expands it while more tokens stream in isn't fought.
+            showSteps: isFirstToken ? false : last.showSteps,
+          };
           return next;
         });
       } else if (evt.type === "confirm_websearch" || evt.type === "confirm_import") {
@@ -597,7 +815,7 @@ export default function ChatPage({
           const next = [...current];
           const last = next[next.length - 1];
           if (!last?.streaming) return current;
-          next[next.length - 1] = { ...last, streaming: false, toolStatus: null };
+          next[next.length - 1] = { ...last, streaming: false };
           return next;
         });
       }
@@ -663,6 +881,16 @@ export default function ChatPage({
         return next;
       });
     }
+  }
+
+  function toggleSteps(messageIndex) {
+    setMessages((current) => {
+      const target = current[messageIndex];
+      if (!target) return current;
+      const next = [...current];
+      next[messageIndex] = { ...target, showSteps: !target.showSteps };
+      return next;
+    });
   }
 
   function handleQuestionKeyDown(event) {
@@ -1046,13 +1274,13 @@ export default function ChatPage({
                         "& a": { color: "#214f42" },
                       }}
                     >
-                      {message.toolStatus && !message.content && (
-                        <Typography
-                          variant="caption"
-                          sx={{ display: "block", color: "#63706a", fontStyle: "italic", mb: 0.5 }}
-                        >
-                          {message.toolStatus}
-                        </Typography>
+                      {message.role === "assistant" && (
+                        <ReasoningSteps
+                          steps={message.steps}
+                          expanded={Boolean(message.showSteps)}
+                          onToggle={() => toggleSteps(index)}
+                          active={Boolean(message.streaming) && !message.content}
+                        />
                       )}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
@@ -1103,6 +1331,7 @@ export default function ChatPage({
                 </Box>
               );
             })}
+            <ConfirmPrompt confirm={pendingConfirm} busy={confirmBusy} onAnswer={handleConfirmResponse} />
             {busy && !messages[messages.length - 1]?.streaming && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
                 <Box sx={{ display: "flex", gap: "4px", alignItems: "center" }}>
@@ -1637,65 +1866,6 @@ export default function ChatPage({
         </DialogActions>
       </Dialog>
 
-      {/* Web search confirmation -- one-off, only affects this answer */}
-      <Dialog
-        open={pendingConfirm?.type === "confirm_websearch"}
-        onClose={() => handleConfirmResponse("No")}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Search the web?</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            {pendingConfirm?.question || "The selected documents don't have enough information. Search the web for this answer?"}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          {(pendingConfirm?.options || ["Yes", "No"]).map((option) => (
-            <Button
-              key={option}
-              variant={option === "No" ? "text" : "contained"}
-              disabled={confirmBusy}
-              onClick={() => handleConfirmResponse(option)}
-            >
-              {option}
-            </Button>
-          ))}
-        </DialogActions>
-      </Dialog>
-
-      {/* Knowledge-base import confirmation -- permanent, admin-only action,
-          deliberately styled and worded differently from the web-search
-          confirmation above so the two are never mistaken for each other. */}
-      <Dialog
-        open={pendingConfirm?.type === "confirm_import"}
-        onClose={() => handleConfirmResponse(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ color: "warning.dark" }}>Import into the knowledge base?</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            This permanently adds the page to the shared knowledge base — every user will be able to
-            find it, not just this conversation.
-          </Alert>
-          <Typography variant="subtitle2">{pendingConfirm?.title}</Typography>
-          <Typography variant="body2" sx={{ color: "#63706a", wordBreak: "break-all" }}>
-            {pendingConfirm?.url}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button disabled={confirmBusy} onClick={() => handleConfirmResponse(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="warning"
-            disabled={confirmBusy}
-            onClick={() => handleConfirmResponse(true)}
-          >
-            Import
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

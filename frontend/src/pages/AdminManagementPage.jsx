@@ -5,6 +5,7 @@ import TaxonomySection from "./manage/TaxonomySection";
 import LlmProvidersSection from "./manage/LlmProvidersSection";
 import EmbeddingSection from "./manage/EmbeddingSection";
 import RerankingSection from "./manage/RerankingSection";
+import WebSearchSection from "./manage/WebSearchSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
@@ -34,6 +35,12 @@ const SECTIONS = [
     label: "Reranker",
     desc: "Choose the reranker (local cross-encoder or a /rerank API such as Zhipu), tune its evidence floor, or turn it off.",
     Component: RerankingSection,
+  },
+  {
+    id: "web-search",
+    label: "Web search",
+    desc: "Choose the web search provider and its API key, used by the chat agent's search_web and import_web_page tools.",
+    Component: WebSearchSection,
   },
 ];
 
