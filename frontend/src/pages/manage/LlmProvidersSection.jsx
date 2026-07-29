@@ -54,7 +54,10 @@ const PROVIDERS = [
 ];
 
 // LLM provider + API key configuration (renders inside the Manage content card).
-export default function LlmProvidersSection() {
+export default function LlmProvidersSection({
+  configurationVersion = 0,
+  onConfigurationChanged,
+}) {
   const [settings, setSettings] = useState(null);
   const [llmProvider, setLlmProvider] = useState("deepseek");
   const [model, setModel] = useState("");
@@ -101,7 +104,7 @@ export default function LlmProvidersSection() {
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [configurationVersion]);
 
   // Key list = chat providers + any distinct catalog providers (one key per company).
   const keyProviders = [...PROVIDERS];
@@ -148,6 +151,7 @@ export default function LlmProvidersSection() {
       const r = await getModelCatalog();
       setCatalog(r.entries || []);
       setEndpointForm(EMPTY_ENDPOINT);
+      onConfigurationChanged?.();
     } catch (addError) {
       setCatalogError(addError.message);
     } finally {
@@ -175,6 +179,7 @@ export default function LlmProvidersSection() {
       setLlmProvider(result.llm_provider || "deepseek");
       setProviderKeyInputs({});
       setNotice("Settings saved.");
+      onConfigurationChanged?.();
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -192,6 +197,7 @@ export default function LlmProvidersSection() {
       const result = await saveSettings({ provider_api_keys: { [providerId]: "" } });
       setSettings(result);
       setNotice(`Cleared the saved key for ${providerId}.`);
+      onConfigurationChanged?.();
     } catch (clearError) {
       setError(clearError.message);
     } finally {
@@ -241,6 +247,7 @@ export default function LlmProvidersSection() {
       setSettings(result);
       setModelDialogOpen(false);
       setNotice(`Updated the model list for ${modelDialogProvider}.`);
+      onConfigurationChanged?.();
     } catch (saveError) {
       setModelDialogError(saveError.message);
     } finally {

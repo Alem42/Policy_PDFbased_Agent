@@ -99,7 +99,11 @@ function SubCard({ title, children }) {
 }
 
 // Embedding model configuration (renders inside the Manage content card).
-export default function EmbeddingSection({ onNavigate }) {
+export default function EmbeddingSection({
+  onNavigate,
+  configurationVersion = 0,
+  onConfigurationChanged,
+}) {
   const [form, setForm] = useState(DEFAULTS);
   const [status, setStatus] = useState(null); // backend-reported active state, if any
   const [connected, setConnected] = useState(false); // whether the backend endpoint exists yet
@@ -164,7 +168,7 @@ export default function EmbeddingSection({ onNavigate }) {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [configurationVersion]);
 
   const targetModel = form.provider === "local" ? form.local_model : form.api_model;
 
@@ -256,6 +260,7 @@ export default function EmbeddingSection({ onNavigate }) {
       setStatus(result.status || null);
       setConnected(true);
       setNotice("Embedding settings saved. Re-embed the library for the change to take effect.");
+      onConfigurationChanged?.();
       // Tell the header (and any listener) to refresh the active-model display.
       window.dispatchEvent(new Event("embedding-config-changed"));
     } catch (saveError) {

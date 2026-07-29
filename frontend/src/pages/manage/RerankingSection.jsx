@@ -61,7 +61,11 @@ function SubCard({ title, children }) {
 }
 
 // Reranker (cross-encoder) configuration (renders inside the Manage content card).
-export default function RerankingSection({ onNavigate }) {
+export default function RerankingSection({
+  onNavigate,
+  configurationVersion = 0,
+  onConfigurationChanged,
+}) {
   const [form, setForm] = useState(DEFAULTS);
   const [status, setStatus] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -107,7 +111,7 @@ export default function RerankingSection({ onNavigate }) {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [configurationVersion]);
 
   function payload() {
     // Empty min_score -> null (use the provider default on the backend).
@@ -127,6 +131,7 @@ export default function RerankingSection({ onNavigate }) {
       setStatus(result.status || null);
       setConnected(true);
       setNotice("Reranker settings saved. Takes effect immediately for new questions.");
+      onConfigurationChanged?.();
     } catch (saveError) {
       setError(
         connected

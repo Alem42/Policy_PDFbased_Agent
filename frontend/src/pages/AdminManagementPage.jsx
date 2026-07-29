@@ -53,6 +53,8 @@ export default function AdminManagementPage({ user, onNavigate }) {
   const [order, setOrder] = useState(loadOrder);
   // Entering /manage shows the top (default) section.
   const [activeId, setActiveId] = useState(() => loadOrder()[0]);
+  const [mountedIds, setMountedIds] = useState(() => new Set([loadOrder()[0]]));
+  const [configurationVersion, setConfigurationVersion] = useState(0);
   const dragId = useRef(null);
 
   if (user?.role !== "admin") {
@@ -72,11 +74,19 @@ export default function AdminManagementPage({ user, onNavigate }) {
 
   const ordered = order.map((id) => SECTIONS.find((s) => s.id === id)).filter(Boolean);
   const active = SECTIONS.find((s) => s.id === activeId) || ordered[0];
-  const ActiveComponent = active.Component;
+  function activateSection(sectionId) {
+    setActiveId(sectionId);
+    setMountedIds((current) => {
+      if (current.has(sectionId)) return current;
+      const next = new Set(current);
+      next.add(sectionId);
+      return next;
+    });
+  }
 
   function handleChildNavigate(target, options) {
     if (SECTIONS.some((section) => section.id === target)) {
-      setActiveId(target);
+      activateSection(target);
       return;
     }
     onNavigate(target, options);
@@ -158,7 +168,7 @@ export default function AdminManagementPage({ user, onNavigate }) {
                   sx={{ fontSize: 18, color: selected ? "rgba(255,255,255,0.7)" : "#b6bdb5" }}
                 />
                 <Button
-                  onClick={() => setActiveId(section.id)}
+                  onClick={() => activateSection(section.id)}
                   sx={{
                     flex: 1,
                     minWidth: 0,
@@ -215,7 +225,26 @@ export default function AdminManagementPage({ user, onNavigate }) {
 
       {/* Main content: active section */}
       <Card sx={{ flex: 1, p: 3 }}>
-        <ActiveComponent user={user} onNavigate={handleChildNavigate} />
+        {ordered
+          .filter((section) => mountedIds.has(section.id))
+          .map((section) => {
+            const SectionComponent = section.Component;
+            return (
+              <Box
+                key={section.id}
+                sx={{ display: section.id === active.id ? "block" : "none" }}
+              >
+                <SectionComponent
+                  user={user}
+                  onNavigate={handleChildNavigate}
+                  configurationVersion={configurationVersion}
+                  onConfigurationChanged={() =>
+                    setConfigurationVersion((version) => version + 1)
+                  }
+                />
+              </Box>
+            );
+          })}
       </Card>
     </Box>
   );
