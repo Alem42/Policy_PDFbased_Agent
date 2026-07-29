@@ -10,6 +10,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
+from app.modules.chat.rag.agent.state import citation_key
 from app.modules.chat.rag.evidence import (
     assess_evidence_sufficiency,
     max_vector_distance,
@@ -47,6 +48,41 @@ def _tool_message(tool_call_id: str, payload: dict) -> ToolMessage:
     return ToolMessage(content=json.dumps(payload, default=str), tool_call_id=tool_call_id)
 
 
+def _number_citations(
+    existing: list[dict], candidates: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """Assign each candidate the exact [N] number it will have once merged.
+
+    A tool call has no way to know the running citation total from earlier
+    calls in the same turn — the model would otherwise have to guess numbers,
+    which is exactly what caused citation markers to point at the wrong
+    source (e.g. a [4] the model meant as a web result landing on an
+    unrelated PDF chunk instead). `existing` is this turn's already-numbered
+    citations (via InjectedState); duplicates reuse their existing number,
+    genuinely new ones get the next free number in order.
+
+    Returns (numbered_results_for_the_model, brand_new_citations_to_merge).
+    """
+    existing_numbers = {citation_key(c): c.get("number") for c in existing}
+    numbered_results: list[dict] = []
+    new_citations: list[dict] = []
+    seen_this_call: set = set()
+    next_number = len(existing) + 1
+    for candidate in candidates:
+        key = citation_key(candidate)
+        if key in existing_numbers:
+            numbered_results.append({**candidate, "number": existing_numbers[key]})
+            continue
+        if key in seen_this_call:
+            continue
+        seen_this_call.add(key)
+        numbered = {**candidate, "number": next_number}
+        numbered_results.append(numbered)
+        new_citations.append(numbered)
+        next_number += 1
+    return numbered_results, new_citations
+
+
 def _run_retrieval_pipeline(
     question: str,
     identifiers: list[str],
@@ -82,6 +118,7 @@ async def search_internal_documents(
     filenames: Annotated[list[str], InjectedState("filenames")],
     top_k: Annotated[int, InjectedState("top_k")],
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
+    citations: Annotated[list[dict], InjectedState("citations")],
 ) -> Command:
     """Search only the documents selected for this conversation.
 
@@ -89,7 +126,8 @@ async def search_internal_documents(
     includes `evidence_sufficient` — computed by the same deterministic
     cosine-distance/reranker gate the classic answer path uses, not your own
     judgement — telling you whether these documents actually support an
-    answer.
+    answer. Each result has a `number`: cite it with exactly that [N], never
+    a guessed or recomputed one.
     """
     identifiers = document_ids or filenames or []
 
@@ -99,16 +137,17 @@ async def search_internal_documents(
         )
 
     result = await asyncio.to_thread(_run)
-    citations = [dict(c, source_type="document") for c in result.get("citations", [])]
+    raw_citations = [dict(c, source_type="document") for c in result.get("citations", [])]
+    numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {
         "evidence_sufficient": result.get("evidence_sufficient", False),
         "reason": result.get("evidence_reason"),
-        "results": citations,
+        "results": numbered_results,
     }
     return Command(
         update={
             "messages": [_tool_message(tool_call_id, payload)],
-            "citations": citations,
+            "citations": new_citations,
         }
     )
 
@@ -119,13 +158,15 @@ async def search_full_corpus(
     tool_call_id: Annotated[str, InjectedToolCallId],
     top_k: Annotated[int, InjectedState("top_k")],
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
+    citations: Annotated[list[dict], InjectedState("citations")],
 ) -> Command:
     """Search the ENTIRE document library, not just documents selected for
     this conversation.
 
     Only call this after search_internal_documents reports
     evidence_sufficient=false — e.g. another user may have already imported
-    relevant material into the shared library.
+    relevant material into the shared library. Each result has a `number`:
+    cite it with exactly that [N], never a guessed or recomputed one.
     """
 
     def _run() -> tuple[bool, str | None, list[dict]]:
@@ -145,12 +186,13 @@ async def search_full_corpus(
         return sufficient, reason, relevant
 
     sufficient, reason, relevant = await asyncio.to_thread(_run)
-    citations = [_document_citation(c) for c in relevant]
-    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": citations}
+    raw_citations = [_document_citation(c) for c in relevant]
+    numbered_results, new_citations = _number_citations(citations, raw_citations)
+    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
     return Command(
         update={
             "messages": [_tool_message(tool_call_id, payload)],
-            "citations": citations,
+            "citations": new_citations,
         }
     )
 
@@ -224,14 +266,20 @@ def _score_web_results(
 
 
 @tool
-async def search_web(query: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
+async def search_web(
+    query: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    citations: Annotated[list[dict], InjectedState("citations")],
+) -> Command:
     """Search the public web. Results are checked against the same
     relevance gate as document evidence (cosine distance + reranker score)
     before being usable as citations.
 
     Only call this after search_internal_documents AND search_full_corpus
     both report evidence_sufficient=false, and after the user has confirmed
-    (via ask_user) or already explicitly asked for a web search.
+    (via ask_user) or already explicitly asked for a web search. Each result
+    has a `number`: cite it with exactly that [N], never a guessed or
+    recomputed one.
     """
     provider = get_active_web_search_provider()
     try:
@@ -241,7 +289,7 @@ async def search_web(query: str, tool_call_id: Annotated[str, InjectedToolCallId
         return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
 
     sufficient, reason, candidates = await asyncio.to_thread(_score_web_results, query, results)
-    citations = [
+    raw_citations = [
         {
             "title": c["title"],
             "source_url": c["url"],
@@ -251,11 +299,12 @@ async def search_web(query: str, tool_call_id: Annotated[str, InjectedToolCallId
         for c in candidates
         if c["passed"]
     ]
-    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": citations}
+    numbered_results, new_citations = _number_citations(citations, raw_citations)
+    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
     return Command(
         update={
             "messages": [_tool_message(tool_call_id, payload)],
-            "citations": citations,
+            "citations": new_citations,
         }
     )
 
@@ -267,6 +316,7 @@ async def import_web_page(
     tool_call_id: Annotated[str, InjectedToolCallId],
     is_admin: Annotated[bool, InjectedState("is_admin")],
     user_id: Annotated[str, InjectedState("user_id")],
+    citations: Annotated[list[dict], InjectedState("citations")],
 ) -> Command:
     """Permanently import a web page into the shared knowledge base so every
     user can find it later via search_internal_documents/search_full_corpus.
@@ -309,22 +359,24 @@ async def import_web_page(
         imported_by=user_id,
         imported_via="web_search",
     )
-    citation = {
+    raw_citation = {
         "document_id": document["id"],
         "title": document.get("title") or document.get("name"),
         "source_url": document.get("source_url") or page.url or url,
         "source_type": "document",
     }
+    numbered_results, new_citations = _number_citations(citations, [raw_citation])
     payload = {
         "imported": True,
         "was_duplicate": was_duplicate,
         "document_id": document["id"],
-        "title": citation["title"],
+        "title": raw_citation["title"],
+        "number": numbered_results[0]["number"],
     }
     return Command(
         update={
             "messages": [_tool_message(tool_call_id, payload)],
-            "citations": [citation],
+            "citations": new_citations,
         }
     )
 

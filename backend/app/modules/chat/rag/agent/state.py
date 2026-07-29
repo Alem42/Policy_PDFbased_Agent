@@ -8,19 +8,26 @@ from langgraph.graph.message import add_messages
 from app.modules.chat.rag.graph.state import AnswerMode, ResponseMode
 
 
-def add_citations(existing: list[dict] | None, new: list[dict] | None) -> list[dict]:
-    """Reducer: append newly-surfaced citations, de-duplicated by identity.
+def citation_key(citation: dict) -> tuple:
+    """Identity of a citation: a document chunk (document_id + chunk_id) or a
+    live web result (source_url) — whichever of those the tool result carried.
 
-    A citation identifies a document chunk (document_id + chunk_id) or a live
-    web result (source_url) — whichever of those the tool result carried.
+    Shared with agent/tools.py, which numbers each tool result's citations
+    against this same identity *before* they reach this reducer — a tool call
+    has no other way to know the running [N] total from earlier calls in the
+    same turn, and letting the model guess numbers causes exactly the citation
+    mismatch this was built to prevent (see agent/tools.py::_number_citations).
     """
+    return (citation.get("document_id"), citation.get("chunk_id"), citation.get("source_url"))
+
+
+def add_citations(existing: list[dict] | None, new: list[dict] | None) -> list[dict]:
+    """Reducer: append newly-surfaced citations, de-duplicated by identity."""
     existing = existing or []
     merged = list(existing)
-    seen = {
-        (c.get("document_id"), c.get("chunk_id"), c.get("source_url")) for c in existing
-    }
+    seen = {citation_key(c) for c in existing}
     for citation in new or []:
-        key = (citation.get("document_id"), citation.get("chunk_id"), citation.get("source_url"))
+        key = citation_key(citation)
         if key in seen:
             continue
         seen.add(key)

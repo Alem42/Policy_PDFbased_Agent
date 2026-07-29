@@ -6,7 +6,7 @@ from langgraph.prebuilt import ToolNode
 
 from app.modules.chat.rag.agent.prompts import get_agent_system_prompt
 from app.modules.chat.rag.agent.state import AgentState
-from app.modules.chat.rag.agent.tools import ALL_TOOLS, import_web_page
+from app.modules.chat.rag.agent.tools import ALL_TOOLS, import_web_page, search_internal_documents
 from app.modules.chat.rag.checkpointer import get_checkpointer
 from app.modules.chat.rag.generation import create_chat_client, resolve_generation_target
 
@@ -15,8 +15,18 @@ from app.modules.chat.rag.generation import create_chat_client, resolve_generati
 # never even sees it in the tool schema offered to the model.
 NON_ADMIN_TOOLS = [t for t in ALL_TOOLS if t is not import_web_page]
 
+# Document Analysis mode (answer_mode != "chat", including policymaker, which
+# is always forced to "analysis") stays strictly document-grounded: only
+# search_internal_documents is offered, so the model can only answer from the
+# selected documents or say it can't — no full-corpus/web escalation, no
+# import. That escalation belongs to Open Discussion mode, which already
+# permits going beyond the selected documents (see agent/prompts.py).
+ANALYSIS_MODE_TOOLS = [search_internal_documents]
 
-def _tools_for(is_admin: bool) -> list:
+
+def _tools_for(is_admin: bool, answer_mode: str) -> list:
+    if answer_mode != "chat":
+        return ANALYSIS_MODE_TOOLS
     return ALL_TOOLS if is_admin else NON_ADMIN_TOOLS
 
 
@@ -29,7 +39,7 @@ async def agent_node(state: AgentState) -> dict:
 
     provider, selected_model, _config = resolve_generation_target(state.get("model"))
     client = create_chat_client(provider, selected_model)
-    llm_with_tools = client.bind_tools(_tools_for(is_admin))
+    llm_with_tools = client.bind_tools(_tools_for(is_admin, answer_mode))
 
     system_prompt = get_agent_system_prompt(response_mode, answer_mode, is_admin=is_admin)
     messages = [SystemMessage(content=system_prompt), *state["messages"]]
