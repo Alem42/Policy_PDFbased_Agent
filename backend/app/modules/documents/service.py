@@ -311,6 +311,18 @@ def documents_have_embeddings(identifiers: list[str]) -> bool:
         return False
 
 
+def _rerank_or_dense(question: str, candidates: list[dict], limit: int) -> list[dict]:
+    """Apply the admin-toggleable reranker to vector candidates, or fall back
+    to dense-vector ranking when reranking is off or fails."""
+    if not reranker_enabled():
+        return candidates[:limit]
+    try:
+        return rerank_chunks(question, candidates, limit=limit)
+    except Exception:
+        logger.exception("Reranking failed; returning dense-vector ranking instead.")
+        return candidates[:limit]
+
+
 def retrieve_relevant_chunks(
     question: str,
     identifiers: list[str],
@@ -329,19 +341,27 @@ def retrieve_relevant_chunks(
         [str(document["id"]) for document in documents],
         limit=candidate_limit,
     )
+    return _rerank_or_dense(question, candidates, limit)
 
-    # Reranking is admin-toggleable (Manage > Reranker); when off, use dense ranking.
-    if not reranker_enabled():
-        return candidates[:limit]
-    try:
-        return rerank_chunks(
-            question,
-            candidates,
-            limit=limit,
-        )
-    except Exception:
-        logger.exception("Reranking failed; returning dense-vector ranking instead.")
-        return candidates[:limit]
+
+def search_full_corpus(
+    question: str,
+    limit: int = 8,
+    include_restricted: bool = False,
+) -> list[dict]:
+    """Vector search across the ENTIRE indexed corpus, not just selected documents.
+
+    Used by the agent's search_full_corpus tool when the caller's selected
+    documents don't have enough evidence to answer from.
+    """
+    query_vector = vector_literal(embed_query(question))
+    candidate_limit = max(limit * 3, 20)
+    candidates = embedding_repository.retrieve_all(
+        query_vector,
+        limit=candidate_limit,
+        include_restricted=include_restricted,
+    )
+    return _rerank_or_dense(question, candidates, limit)
 
 
 def copy_file_into_library(source_path: Path) -> str:
