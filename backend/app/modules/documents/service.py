@@ -23,8 +23,9 @@ from app.modules.documents.repositories.documents import document_repository
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.repositories.helpers import row_to_metadata
 from app.modules.documents.repositories.processing_jobs import processing_job_repository
-from app.modules.documents.reranker import rerank_chunks
 from app.modules.embedding import service as embedding
+from app.modules.reranking.service import enabled as reranker_enabled
+from app.modules.reranking.service import rerank as rerank_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +330,8 @@ def retrieve_relevant_chunks(
         limit=candidate_limit,
     )
 
-    # Reranking is admin-toggleable (Manage > Embedding); when off, use dense ranking.
-    if not embedding.reranker_enabled():
+    # Reranking is admin-toggleable (Manage > Reranker); when off, use dense ranking.
+    if not reranker_enabled():
         return candidates[:limit]
     try:
         return rerank_chunks(

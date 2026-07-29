@@ -411,6 +411,28 @@ export function testEmbeddingConnection(payload) {
   });
 }
 
+// ── Reranking settings (admin) ─────────────────────────────────────────────
+
+export function getRerankingSettings() {
+  return request("/admin/reranking");
+}
+
+export function saveRerankingSettings(payload) {
+  return request("/admin/reranking", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testRerankingConnection(payload) {
+  return request("/admin/reranking/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }

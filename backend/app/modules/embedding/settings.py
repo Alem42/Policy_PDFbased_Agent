@@ -68,8 +68,8 @@ class EmbeddingConfig(BaseModel):
 
     # Retrieval / evidence knobs (calibrated per embedding model).
     distance_metric: Literal["cosine", "l2", "ip"] = "cosine"
-    evidence_distance_threshold: float = 0.45
-    reranker_enabled: bool = True
+    evidence_distance_threshold: float = 0.70
+    # (reranker settings moved to the reranking package / Manage > Reranker)
 
     def active_model_id(self) -> str:
         """Human identifier of the model currently in use."""

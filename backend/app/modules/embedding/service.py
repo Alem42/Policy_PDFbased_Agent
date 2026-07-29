@@ -89,10 +89,6 @@ def evidence_distance_threshold() -> float:
     return active_config().evidence_distance_threshold
 
 
-def reranker_enabled() -> bool:
-    return active_config().reranker_enabled
-
-
 def active_vector_table() -> str:
     """Name of the vector table for the active model (one table per model)."""
     cfg = active_config()

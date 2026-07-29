@@ -44,7 +44,6 @@ const DEFAULTS = {
   token_counting: "auto", // "auto" | "model" | "tiktoken"
   distance_metric: "cosine", // "cosine" | "l2" | "ip"
   evidence_distance_threshold: 0.45,
-  reranker_enabled: true,
 };
 
 // Curated local models fastembed can download by name (weights + tokenizer + dim
@@ -211,14 +210,6 @@ export default function EmbeddingSection() {
         severity: "info",
         label: "Evidence distance threshold",
         message: "Takes effect immediately for new questions. No re-embedding needed.",
-      });
-    }
-    if (form.reranker_enabled !== initial.reranker_enabled) {
-      c.push({
-        key: "rerank",
-        severity: "info",
-        label: "Reranker",
-        message: "Enables/disables cross-encoder reranking. Takes effect immediately for new questions.",
       });
     }
     return c;
@@ -561,15 +552,9 @@ export default function EmbeddingSection() {
               />
             </Field>
           </Box>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.reranker_enabled}
-                onChange={(e) => set("reranker_enabled", e.target.checked)}
-              />
-            }
-            label="Enable cross-encoder reranker (local, independent of the embedding model)"
-          />
+          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+            The reranker (cross-encoder) is configured separately in Manage → Reranker.
+          </Typography>
         </SubCard>
 
         <Divider sx={{ my: 1 }} />
