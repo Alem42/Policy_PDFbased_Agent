@@ -8,7 +8,11 @@ base URL", so the embedding/reranker pages can offer a pick-a-model dropdown
 from __future__ import annotations
 
 from app.modules.catalog.data import CAPABILITIES
-from app.modules.catalog.repository import catalog_entries, model_catalog_repository
+from app.modules.catalog.repository import (
+    catalog_entries,
+    invalidate_catalog_cache,
+    model_catalog_repository,
+)
 
 
 def get_catalog(capability: str | None = None) -> dict:
@@ -43,4 +47,5 @@ def add_entry(payload: dict) -> dict:
         "notes": payload.get("notes"),
     }
     model_catalog_repository.add(entry)
+    invalidate_catalog_cache()
     return entry

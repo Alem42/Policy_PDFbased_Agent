@@ -8,6 +8,7 @@ endpoint facts. Falls back to the in-code default if the table is unavailable.
 from __future__ import annotations
 
 import logging
+from threading import Lock
 from uuid import uuid4
 
 from app.core.config import get_settings
@@ -20,6 +21,19 @@ _COLUMNS = (
     "provider, provider_label, capability, model, base_url, endpoint, "
     "dimensions, openai_compatible, notes, sort_order"
 )
+_UPSERT_SQL = """
+    INSERT INTO model_catalog
+        (id, provider, provider_label, capability, model, base_url, endpoint,
+         dimensions, openai_compatible, notes, sort_order)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (provider, capability, model) DO UPDATE
+    SET provider_label = EXCLUDED.provider_label,
+        base_url = EXCLUDED.base_url,
+        endpoint = EXCLUDED.endpoint,
+        dimensions = EXCLUDED.dimensions,
+        openai_compatible = EXCLUDED.openai_compatible,
+        notes = EXCLUDED.notes
+"""
 
 
 class ModelCatalogRepository:
@@ -30,8 +44,11 @@ class ModelCatalogRepository:
 
     def seed(self, entries: list[dict]) -> None:
         with get_connection() as connection:
-            for order, entry in enumerate(entries):
-                self._upsert(connection, entry, order)
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    _UPSERT_SQL,
+                    [self._values(entry, order) for order, entry in enumerate(entries)],
+                )
             connection.commit()
 
     def add(self, entry: dict) -> None:
@@ -52,38 +69,36 @@ class ModelCatalogRepository:
 
     @staticmethod
     def _upsert(connection, entry: dict, order: int) -> None:
-        connection.execute(
-            """
-            INSERT INTO model_catalog
-                (id, provider, provider_label, capability, model, base_url, endpoint,
-                 dimensions, openai_compatible, notes, sort_order)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (provider, capability, model) DO UPDATE
-            SET provider_label = EXCLUDED.provider_label,
-                base_url = EXCLUDED.base_url,
-                endpoint = EXCLUDED.endpoint,
-                dimensions = EXCLUDED.dimensions,
-                openai_compatible = EXCLUDED.openai_compatible,
-                notes = EXCLUDED.notes
-            """,
-            (
-                str(uuid4()),
-                entry["provider"],
-                entry.get("provider_label", entry["provider"]),
-                entry["capability"],
-                entry["model"],
-                entry.get("base_url", ""),
-                entry.get("endpoint", ""),
-                entry.get("dimensions"),
-                entry.get("openai_compatible", True),
-                entry.get("notes"),
-                order,
-            ),
+        connection.execute(_UPSERT_SQL, ModelCatalogRepository._values(entry, order))
+
+    @staticmethod
+    def _values(entry: dict, order: int) -> tuple:
+        return (
+            str(uuid4()),
+            entry["provider"],
+            entry.get("provider_label", entry["provider"]),
+            entry["capability"],
+            entry["model"],
+            entry.get("base_url", ""),
+            entry.get("endpoint", ""),
+            entry.get("dimensions"),
+            entry.get("openai_compatible", True),
+            entry.get("notes"),
+            order,
         )
 
 
 model_catalog_repository = ModelCatalogRepository()
 _defaults_synced = False
+_catalog_cache: tuple[dict, ...] | None = None
+_catalog_cache_lock = Lock()
+
+
+def invalidate_catalog_cache() -> None:
+    """Clear cached catalog rows after an admin/crawler write."""
+    global _catalog_cache
+    with _catalog_cache_lock:
+        _catalog_cache = None
 
 
 def catalog_entries(capability: str | None = None) -> list[dict]:
@@ -91,26 +106,30 @@ def catalog_entries(capability: str | None = None) -> list[dict]:
 
     Falls back to the in-code default if the DB is unavailable.
     """
-    global _defaults_synced
+    global _catalog_cache, _defaults_synced
     if not get_settings().database_enabled:
         return [
-            entry
+            dict(entry)
             for entry in DEFAULT_CATALOG
             if not capability or entry["capability"] == capability
         ]
-    try:
-        # Upsert defaults once per process. This keeps an existing deployment
-        # in sync when the checked-in Zhipu reference expands, while preserving
-        # all administrator-added rows.
-        if not _defaults_synced:
-            model_catalog_repository.seed(DEFAULT_CATALOG)
-            _defaults_synced = True
-        rows = model_catalog_repository.list(capability)
-        return rows or [
-            entry
-            for entry in DEFAULT_CATALOG
-            if not capability or entry["capability"] == capability
-        ]
-    except Exception as exc:
-        logger.warning("model_catalog unavailable, using in-code default: %s", exc)
-        return [e for e in DEFAULT_CATALOG if not capability or e["capability"] == capability]
+    with _catalog_cache_lock:
+        if _catalog_cache is None:
+            try:
+                # Upsert defaults once per process. The lock also prevents the
+                # parallel catalog/settings requests on the admin page from
+                # performing the same seed and SELECT twice.
+                if not _defaults_synced:
+                    model_catalog_repository.seed(DEFAULT_CATALOG)
+                    _defaults_synced = True
+                rows = model_catalog_repository.list()
+                _catalog_cache = tuple(dict(row) for row in (rows or DEFAULT_CATALOG))
+            except Exception as exc:
+                logger.warning("model_catalog unavailable, using in-code default: %s", exc)
+                _catalog_cache = tuple(dict(entry) for entry in DEFAULT_CATALOG)
+        rows = _catalog_cache
+    return [
+        dict(entry)
+        for entry in rows
+        if not capability or entry["capability"] == capability
+    ]

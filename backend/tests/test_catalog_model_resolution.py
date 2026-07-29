@@ -1,3 +1,4 @@
+from app.modules.catalog import repository as catalog_repository
 from app.modules.catalog import service as catalog_service
 from app.modules.embedding import service as embedding_service
 from app.modules.embedding.settings import EmbeddingConfig
@@ -51,3 +52,80 @@ def test_manual_embedding_keeps_manually_entered_credentials():
     )
 
     assert embedding_service._resolved_config(config) == config
+
+
+def test_database_catalog_is_loaded_once_and_filtered_from_cache(monkeypatch):
+    calls = {"seed": 0, "list": 0}
+    rows = [
+        {
+            "provider": "zhipu",
+            "provider_label": "Zhipu 智谱",
+            "capability": "embedding",
+            "model": "embedding-3",
+            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "endpoint": "/embeddings",
+            "dimensions": 2048,
+            "openai_compatible": True,
+            "notes": None,
+            "sort_order": 0,
+        },
+        {
+            "provider": "zhipu",
+            "provider_label": "Zhipu 智谱",
+            "capability": "rerank",
+            "model": "rerank",
+            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "endpoint": "/rerank",
+            "dimensions": None,
+            "openai_compatible": True,
+            "notes": None,
+            "sort_order": 1,
+        },
+    ]
+
+    monkeypatch.setattr(
+        catalog_repository,
+        "get_settings",
+        lambda: type("Settings", (), {"database_enabled": True})(),
+    )
+    monkeypatch.setattr(catalog_repository, "_defaults_synced", False)
+    monkeypatch.setattr(
+        catalog_repository.model_catalog_repository,
+        "seed",
+        lambda entries: calls.__setitem__("seed", calls["seed"] + 1),
+    )
+
+    def list_rows():
+        calls["list"] += 1
+        return rows
+
+    monkeypatch.setattr(catalog_repository.model_catalog_repository, "list", list_rows)
+    catalog_repository.invalidate_catalog_cache()
+
+    try:
+        assert len(catalog_repository.catalog_entries("embedding")) == 1
+        assert len(catalog_repository.catalog_entries("rerank")) == 1
+        assert len(catalog_repository.catalog_entries()) == 2
+        assert calls == {"seed": 1, "list": 1}
+    finally:
+        catalog_repository.invalidate_catalog_cache()
+
+
+def test_catalog_write_invalidates_cache(monkeypatch):
+    invalidated = {"called": False}
+    monkeypatch.setattr(catalog_service.model_catalog_repository, "add", lambda entry: None)
+    monkeypatch.setattr(
+        catalog_service,
+        "invalidate_catalog_cache",
+        lambda: invalidated.__setitem__("called", True),
+    )
+
+    catalog_service.add_entry(
+        {
+            "provider": "test",
+            "capability": "embedding",
+            "model": "test-embedding",
+        }
+    )
+
+    assert invalidated["called"] is True
