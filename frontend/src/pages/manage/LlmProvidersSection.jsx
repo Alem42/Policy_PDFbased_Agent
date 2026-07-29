@@ -109,14 +109,20 @@ export default function LlmProvidersSection() {
   for (const entry of catalog) {
     if (!known.has(entry.provider)) {
       known.add(entry.provider);
-      keyProviders.push({ id: entry.provider, label: entry.provider_label });
+      keyProviders.push({
+        id: entry.provider,
+        label: entry.provider_label_display || entry.provider_label,
+      });
     }
   }
   const catalogProviders = Array.from(
     new Map(
       catalog.map((entry) => [
         entry.provider,
-        { id: entry.provider, label: entry.provider_label },
+        {
+          id: entry.provider,
+          label: entry.provider_label_display || entry.provider_label,
+        },
       ]),
     ).values(),
   ).sort((a, b) => a.label.localeCompare(b.label));
@@ -481,11 +487,14 @@ export default function LlmProvidersSection() {
                     borderRadius: 1.5,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{entry.provider_label}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {entry.provider_label_display || entry.provider_label}
+                  </Typography>
                   <Chip label={entry.capability} size="small" sx={{ height: 20, fontSize: 11, justifySelf: "start" }} />
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.model}{entry.dimensions ? ` · ${entry.dimensions}d` : ""}
+                      {entry.model_display || entry.model}
+                      {entry.dimensions ? ` · ${entry.dimensions}d` : ""}
                     </Typography>
                     <Typography variant="caption" sx={{ color: "text.secondary", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {entry.base_url}{entry.endpoint}

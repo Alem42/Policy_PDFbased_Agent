@@ -7,6 +7,8 @@ base URL", so the embedding/reranker pages can offer a pick-a-model dropdown
 
 from __future__ import annotations
 
+import re
+
 from app.modules.catalog.data import CAPABILITIES
 from app.modules.catalog.repository import (
     catalog_entries,
@@ -14,9 +16,70 @@ from app.modules.catalog.repository import (
     model_catalog_repository,
 )
 
+_ASCII_WORD = re.compile(r"[A-Za-z]")
+_HAN_CHARACTER = re.compile(r"[\u3400-\u9fff]")
+_ENGLISH_TRANSLATIONS = {
+    "智谱": "Zhipu",
+    "可选维度 256/512/1024/2048": "Optional dimensions: 256/512/1024/2048",
+    "固定 1024 维": "Fixed at 1024 dimensions",
+    "文本重排序": "Text reranking",
+    "对话补全": "Chat completions",
+    "对话补全（异步）": "Async chat completions",
+    "图像生成": "Image generation",
+    "图像生成（异步）": "Async image generation",
+    "文本分词器": "Text tokenizer",
+    "文本转语音": "Text to speech",
+    "语音转文本": "Speech to text",
+    "音色复刻": "Voice cloning",
+    "音色列表": "Voice list",
+    "删除音色": "Delete voice",
+    "文档解析": "Document parsing",
+    "查询异步结果": "Async result lookup",
+    "视频生成（异步）": "Async video generation",
+}
+
+
+def _is_chinese_only(value: str | None) -> bool:
+    return bool(value and _HAN_CHARACTER.search(value) and not _ASCII_WORD.search(value))
+
+
+def _humanize(value: str) -> str:
+    return value.replace("_", " ").replace("-", " ").strip().title()
+
+
+def _english_display(value: str | None, *, fallback: str) -> str | None:
+    if not value or not _is_chinese_only(value):
+        return value
+    return _ENGLISH_TRANSLATIONS.get(value, fallback)
+
+
+def _present_entry(entry: dict) -> dict:
+    """Add English UI labels without changing persisted lookup identifiers."""
+    capability = _humanize(entry["capability"])
+    endpoint = entry.get("endpoint") or ""
+    provider_fallback = _humanize(entry["provider"]) or "Provider"
+    model_fallback = f"{capability} endpoint"
+    if endpoint:
+        model_fallback = f"{model_fallback} ({endpoint})"
+    return {
+        **entry,
+        "provider_label_display": _english_display(
+            entry.get("provider_label"),
+            fallback=provider_fallback,
+        ),
+        "model_display": _english_display(entry.get("model"), fallback=model_fallback),
+        "notes_display": _english_display(
+            entry.get("notes"),
+            fallback=f"{capability} capability",
+        ),
+    }
+
 
 def get_catalog(capability: str | None = None) -> dict:
-    return {"capabilities": CAPABILITIES, "entries": catalog_entries(capability)}
+    return {
+        "capabilities": CAPABILITIES,
+        "entries": [_present_entry(entry) for entry in catalog_entries(capability)],
+    }
 
 
 def find_entry(provider: str, model: str, capability: str | None = None) -> dict | None:

@@ -33,7 +33,10 @@ export default function CatalogModelPicker({
   for (const e of entries) {
     if (!seen.has(e.provider)) {
       seen.add(e.provider);
-      providers.push({ id: e.provider, label: e.provider_label });
+      providers.push({
+        id: e.provider,
+        label: e.provider_label_display || e.provider_label,
+      });
     }
   }
   const models = entries.filter((e) => e.provider === provider);
@@ -159,9 +162,9 @@ export default function CatalogModelPicker({
             <MenuItem value=""><em>Select a model…</em></MenuItem>
             {models.map((e) => (
               <MenuItem key={e.model} value={e.model}>
-                {e.model}
+                {e.model_display || e.model}
                 {e.dimensions ? ` · ${e.dimensions}d` : ""}
-                {e.notes ? ` · ${e.notes}` : ""}
+                {(e.notes_display || e.notes) ? ` · ${e.notes_display || e.notes}` : ""}
               </MenuItem>
             ))}
           </TextField>

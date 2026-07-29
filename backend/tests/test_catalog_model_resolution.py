@@ -18,6 +18,55 @@ def test_catalog_is_filtered_by_capability():
     assert {entry["capability"] for entry in rerank_entries} == {"rerank"}
 
 
+def test_chinese_only_catalog_text_gets_an_english_display_label(monkeypatch):
+    monkeypatch.setattr(
+        catalog_service,
+        "catalog_entries",
+        lambda capability=None: [
+            {
+                "provider": "zhipu",
+                "provider_label": "智谱",
+                "capability": "voice",
+                "model": "音色列表",
+                "base_url": "https://example.test",
+                "endpoint": "/voice/list",
+                "notes": "仅中文说明",
+            }
+        ],
+    )
+
+    entry = catalog_service.get_catalog()["entries"][0]
+
+    assert entry["provider_label_display"] == "Zhipu"
+    assert entry["model_display"] == "Voice list"
+    assert entry["notes_display"] == "Voice capability"
+    assert entry["model"] == "音色列表"
+
+
+def test_mixed_or_english_catalog_text_is_preserved(monkeypatch):
+    monkeypatch.setattr(
+        catalog_service,
+        "catalog_entries",
+        lambda capability=None: [
+            {
+                "provider": "zhipu",
+                "provider_label": "Zhipu 智谱",
+                "capability": "embedding",
+                "model": "embedding-3",
+                "base_url": "https://example.test",
+                "endpoint": "/embeddings",
+                "notes": "Variable dimensions",
+            }
+        ],
+    )
+
+    entry = catalog_service.get_catalog()["entries"][0]
+
+    assert entry["provider_label_display"] == "Zhipu 智谱"
+    assert entry["model_display"] == "embedding-3"
+    assert entry["notes_display"] == "Variable dimensions"
+
+
 def test_embedding_catalog_pick_resolves_central_key(monkeypatch):
     monkeypatch.setattr(
         catalog_service,
