@@ -113,6 +113,7 @@ def _run_retrieval_pipeline(
 @tool
 async def search_internal_documents(
     query: str,
+    decision_reason: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     document_ids: Annotated[list[str], InjectedState("document_ids")],
     filenames: Annotated[list[str], InjectedState("filenames")],
@@ -127,7 +128,8 @@ async def search_internal_documents(
     cosine-distance/reranker gate the classic answer path uses, not your own
     judgement — telling you whether these documents actually support an
     answer. Each result has a `number`: cite it with exactly that [N], never
-    a guessed or recomputed one.
+    a guessed or recomputed one. Briefly state why you chose this action in
+    `decision_reason`; it is shown as a concise UI trace, not hidden reasoning.
     """
     identifiers = document_ids or filenames or []
 
@@ -155,6 +157,7 @@ async def search_internal_documents(
 @tool
 async def search_full_corpus(
     query: str,
+    decision_reason: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     top_k: Annotated[int, InjectedState("top_k")],
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
@@ -168,6 +171,7 @@ async def search_full_corpus(
     in the user's question. Each result has a `number`: cite it with exactly
     that [N], never a guessed or recomputed one. The ReAct loop enforces a
     small per-turn call budget, so materially reformulate any second query.
+    Briefly state why you chose this action in `decision_reason`.
     """
 
     def _run() -> tuple[bool, str | None, list[dict]]:
@@ -199,14 +203,19 @@ async def search_full_corpus(
 
 
 @tool
-def ask_user(question: str, options: list[str] | None = None) -> str:
+def ask_user(
+    question: str,
+    decision_reason: str,
+    options: list[str] | None = None,
+) -> str:
     """Pause and ask the user to confirm whether to search the public web.
 
     Use this when retrieved documents don't actually support the user's
     question, including when a similarity heuristic says they are relevant
     but the excerpts miss a critical subject, country, organisation, or time
     period. Do NOT use it if the user already explicitly requested web search
-    (go straight to search_web instead).
+    (go straight to search_web instead). Briefly state why confirmation is
+    needed in `decision_reason`.
     """
     answer = interrupt(
         {"type": "confirm_websearch", "question": question, "options": options or ["Yes", "No"]}
@@ -302,6 +311,7 @@ def _score_web_results(
 @tool
 async def search_web(
     query: str,
+    decision_reason: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     citations: Annotated[list[dict], InjectedState("citations")],
 ) -> Command:
@@ -313,7 +323,8 @@ async def search_web(
     both report evidence_sufficient=false, and after the user has confirmed
     (via ask_user) or already explicitly asked for a web search. Each result
     has a `number`: cite it with exactly that [N], never a guessed or
-    recomputed one.
+    recomputed one. Briefly state why web search is the next action in
+    `decision_reason`.
     """
     provider = get_active_web_search_provider()
     try:

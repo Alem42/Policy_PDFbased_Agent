@@ -74,6 +74,10 @@ Tool call budgets apply only to the current user question. Every new user
 question starts with fresh budgets. Never infer that a tool is unavailable
 now because an earlier question in this chat exhausted its budget.
 
+For every search or ask_user tool call, include `decision_reason`: one short,
+user-readable sentence explaining why that action is the appropriate next
+step. Do not include private chain-of-thought or a long reasoning transcript.
+
 1. search_internal_documents — ALWAYS call this first.
    - If evidence_sufficient=true, you very likely have what you need: call
      prepare_final_answer with a concise writing plan and the exact citation

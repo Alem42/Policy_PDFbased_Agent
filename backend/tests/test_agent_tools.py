@@ -125,6 +125,18 @@ def test_open_discussion_mode_offers_full_tool_set() -> None:
     assert admin_names - non_admin_names == {"import_web_page"}
 
 
+def test_search_and_confirmation_tools_require_display_reason() -> None:
+    tools_by_name = {tool.name: tool for tool in ALL_TOOLS}
+    for name in (
+        "search_internal_documents",
+        "search_full_corpus",
+        "ask_user",
+        "search_web",
+    ):
+        schema = tools_by_name[name].args_schema.model_json_schema()
+        assert "decision_reason" in schema["required"]
+
+
 def test_exhausted_tool_is_removed_from_next_agent_turn() -> None:
     names = {
         tool.name
@@ -145,7 +157,10 @@ def test_record_tool_call_increments_only_selected_action() -> None:
         tool_calls=[
             {
                 "name": "search_full_corpus",
-                "args": {"query": "Russia policy"},
+                "args": {
+                    "query": "Russia policy",
+                    "decision_reason": "The selected files did not cover Russia.",
+                },
                 "id": "call-1",
                 "type": "tool_call",
             }
@@ -157,6 +172,14 @@ def test_record_tool_call_increments_only_selected_action() -> None:
     assert update["tool_call_counts"] == {
         "search_internal_documents": 1,
         "search_full_corpus": 1,
+    }
+    assert update["last_tool_call"] == {
+        "tool": "search_full_corpus",
+        "query": "Russia policy",
+        "decision_reason": "The selected files did not cover Russia.",
+        "question": None,
+        "url": None,
+        "title": None,
     }
 
 

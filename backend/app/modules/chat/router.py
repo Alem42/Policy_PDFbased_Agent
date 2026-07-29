@@ -180,6 +180,39 @@ def _sse(obj: dict) -> str:
     return f"data: {_json.dumps(obj, default=str)}\n\n"
 
 
+def _tool_result_event(message: Any) -> dict:
+    """Return a compact, user-readable tool result summary for the trace UI."""
+    result: dict = {}
+    try:
+        parsed = _json.loads(message.content)
+        if isinstance(parsed, dict):
+            result = parsed
+    except (TypeError, ValueError):
+        pass
+
+    results = result.get("results")
+    result_count = len(results) if isinstance(results, list) else None
+    source_titles: list[str] = []
+    if isinstance(results, list):
+        for item in results:
+            title = item.get("title") if isinstance(item, dict) else None
+            if title and title not in source_titles:
+                source_titles.append(str(title))
+            if len(source_titles) == 5:
+                break
+
+    return {
+        "type": "tool_result",
+        "tool": getattr(message, "name", None),
+        "evidence_sufficient": result.get("evidence_sufficient"),
+        "evidence_reason": result.get("reason") or result.get("error"),
+        "result_count": result_count,
+        "source_titles": source_titles,
+        "answer_plan": result.get("answer_plan"),
+        "citation_numbers": result.get("citation_numbers"),
+    }
+
+
 async def _stream_agent_events(
     graph_input: dict | Command,
     *,
@@ -237,25 +270,14 @@ async def _stream_agent_events(
                     interrupted = True
                     break  # paused — client must call /chat/resume to continue
 
-                if "agent" in chunk:
-                    last = chunk["agent"]["messages"][-1]
-                    for call in getattr(last, "tool_calls", None) or []:
-                        yield _sse({"type": "tool_call", "tool": call.get("name")})
+                if "record_tool_call" in chunk:
+                    call = chunk["record_tool_call"].get("last_tool_call")
+                    if call:
+                        yield _sse({"type": "tool_call", **call})
 
                 if "tools" in chunk:
                     for message in chunk["tools"].get("messages", []):
-                        result: dict = {}
-                        try:
-                            result = _json.loads(message.content)
-                        except (TypeError, ValueError):
-                            pass
-                        yield _sse(
-                            {
-                                "type": "tool_result",
-                                "tool": getattr(message, "name", None),
-                                "evidence_sufficient": result.get("evidence_sufficient"),
-                            }
-                        )
+                        yield _sse(_tool_result_event(message))
 
         if interrupted:
             return

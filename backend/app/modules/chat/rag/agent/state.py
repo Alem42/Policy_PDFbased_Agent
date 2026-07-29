@@ -56,5 +56,6 @@ class AgentState(TypedDict):
     is_admin: NotRequired[bool]
     user_id: NotRequired[str]
     tool_call_counts: NotRequired[dict[str, int]]
+    last_tool_call: NotRequired[dict]
     citations: Annotated[list[dict], add_citations]
     resolved_model: NotRequired[str | None]

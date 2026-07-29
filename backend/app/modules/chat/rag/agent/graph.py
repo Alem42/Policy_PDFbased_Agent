@@ -183,9 +183,20 @@ def record_tool_call_node(state: AgentState) -> dict:
     if len(calls) != 1:
         raise RuntimeError("Exactly one tool call is required per ReAct turn.")
     tool_name = calls[0]["name"]
+    tool_args = dict(calls[0].get("args") or {})
     counts = dict(state.get("tool_call_counts", {}))
     counts[tool_name] = counts.get(tool_name, 0) + 1
-    return {"tool_call_counts": counts}
+    return {
+        "tool_call_counts": counts,
+        "last_tool_call": {
+            "tool": tool_name,
+            "query": tool_args.get("query"),
+            "decision_reason": tool_args.get("decision_reason"),
+            "question": tool_args.get("question"),
+            "url": tool_args.get("url"),
+            "title": tool_args.get("title"),
+        },
+    }
 
 
 def route_after_tools(state: AgentState) -> str:

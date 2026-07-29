@@ -197,23 +197,78 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
       <Collapse in={expanded || active}>
         <Box sx={{ pl: 1.75, ml: 0.75, mt: 0.5, borderLeft: "2px solid #e2e5df" }}>
           {steps.map((step, i) => (
-            <Box key={`${step.tool}-${i}`} sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.35 }}>
+            <Box
+              key={`${step.tool}-${i}`}
+              sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 0.55 }}
+            >
               {step.status === "running" ? (
-                <CircularProgress size={12} thickness={6} sx={{ color: "#214f42", flexShrink: 0 }} />
+                <CircularProgress
+                  size={12}
+                  thickness={6}
+                  sx={{ color: "#214f42", flexShrink: 0, mt: 0.3 }}
+                />
               ) : (
                 <CheckCircleOutlineIcon
                   sx={{
                     fontSize: 14,
                     flexShrink: 0,
+                    mt: 0.2,
                     color: step.evidenceSufficient === false ? "#bf360c" : "#214f42",
                   }}
                 />
               )}
-              <Typography variant="caption" sx={{ color: "#4a5a54", fontSize: 12 }}>
-                {step.label}
-                {step.status === "done" && step.evidenceSufficient === true && " — found relevant sources"}
-                {step.status === "done" && step.evidenceSufficient === false && " — not enough evidence"}
-              </Typography>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography variant="caption" sx={{ color: "#4a5a54", fontSize: 12 }}>
+                  {step.label}
+                  {step.status === "done" && step.evidenceSufficient === true && " — found relevant sources"}
+                  {step.status === "done" && step.evidenceSufficient === false && " — not enough evidence"}
+                </Typography>
+                {(step.query || step.question || step.url) && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5, overflowWrap: "anywhere" }}
+                  >
+                    <Box component="span" sx={{ fontWeight: 600 }}>Query: </Box>
+                    {step.query || step.question || step.url}
+                  </Typography>
+                )}
+                {step.decisionReason && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Why: </Box>
+                    {step.decisionReason}
+                  </Typography>
+                )}
+                {step.status === "done" && Number.isInteger(step.resultCount) && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Result: </Box>
+                    {step.resultCount} candidate source{step.resultCount === 1 ? "" : "s"}
+                  </Typography>
+                )}
+                {step.evidenceReason && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Evidence: </Box>
+                    {step.evidenceReason}
+                  </Typography>
+                )}
+                {step.sourceTitles?.length > 0 && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Sources: </Box>
+                    {step.sourceTitles.join(" · ")}
+                  </Typography>
+                )}
+                {step.answerPlan && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Answer plan: </Box>
+                    {step.answerPlan}
+                  </Typography>
+                )}
+                {step.citationNumbers?.length > 0 && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Planned citations: </Box>
+                    {step.citationNumbers.map((number) => `[${number}]`).join(", ")}
+                  </Typography>
+                )}
+              </Box>
             </Box>
           ))}
         </Box>
@@ -752,7 +807,16 @@ export default function ChatPage({
           const last = next[next.length - 1];
           const steps = [
             ...(last.steps || []),
-            { tool: evt.tool, label: TOOL_STATUS_LABEL[evt.tool] || evt.tool, status: "running" },
+            {
+              tool: evt.tool,
+              label: TOOL_STATUS_LABEL[evt.tool] || evt.tool,
+              status: "running",
+              query: evt.query || null,
+              decisionReason: evt.decision_reason || null,
+              question: evt.question || null,
+              url: evt.url || null,
+              title: evt.title || null,
+            },
           ];
           next[next.length - 1] = { ...last, steps, showSteps: true };
           return next;
@@ -764,7 +828,16 @@ export default function ChatPage({
           const steps = [...last.steps];
           for (let i = steps.length - 1; i >= 0; i -= 1) {
             if (steps[i].tool === evt.tool && steps[i].status === "running") {
-              steps[i] = { ...steps[i], status: "done", evidenceSufficient: evt.evidence_sufficient };
+              steps[i] = {
+                ...steps[i],
+                status: "done",
+                evidenceSufficient: evt.evidence_sufficient,
+                evidenceReason: evt.evidence_reason || null,
+                resultCount: Number.isInteger(evt.result_count) ? evt.result_count : null,
+                sourceTitles: Array.isArray(evt.source_titles) ? evt.source_titles : [],
+                answerPlan: evt.answer_plan || null,
+                citationNumbers: Array.isArray(evt.citation_numbers) ? evt.citation_numbers : [],
+              };
               break;
             }
           }
