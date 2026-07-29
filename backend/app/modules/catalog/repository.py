@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from app.core.config import get_settings
 from app.core.database import get_connection
-from app.modules.catalog.data import DEFAULT_CATALOG
+from app.modules.catalog.data import DEFAULT_CATALOG, DEFAULT_PROVIDERS
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,76 @@ class ModelCatalogRepository:
 
 
 model_catalog_repository = ModelCatalogRepository()
+
+
+class ModelProviderRepository:
+    def seed(self, providers: list[dict]) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO model_providers
+                        (id, label, base_url, is_custom, sort_order, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, now())
+                    ON CONFLICT (id) DO UPDATE
+                    SET label = EXCLUDED.label,
+                        base_url = EXCLUDED.base_url,
+                        is_custom = EXCLUDED.is_custom,
+                        updated_at = now()
+                    """,
+                    [
+                        (
+                            provider["id"],
+                            provider["label"],
+                            provider.get("base_url", ""),
+                            bool(provider.get("is_custom", False)),
+                            order,
+                        )
+                        for order, provider in enumerate(providers)
+                    ],
+                )
+            connection.commit()
+
+    def add(self, provider: dict) -> None:
+        with get_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO model_providers
+                    (id, label, base_url, is_custom, sort_order, updated_at)
+                VALUES (%s, %s, %s, %s, %s, now())
+                ON CONFLICT (id) DO UPDATE
+                SET label = EXCLUDED.label,
+                    base_url = EXCLUDED.base_url,
+                    is_custom = EXCLUDED.is_custom,
+                    updated_at = now()
+                """,
+                (
+                    provider["id"],
+                    provider["label"],
+                    provider.get("base_url", ""),
+                    bool(provider.get("is_custom", False)),
+                    provider.get("sort_order", 1000),
+                ),
+            )
+            connection.commit()
+
+    def list(self) -> list[dict]:
+        with get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, label, base_url, is_custom, sort_order
+                FROM model_providers
+                ORDER BY is_custom, sort_order, label
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+model_provider_repository = ModelProviderRepository()
 _defaults_synced = False
+_provider_defaults_synced = False
 _catalog_cache: tuple[dict, ...] | None = None
+_provider_cache: tuple[dict, ...] | None = None
 _catalog_cache_lock = Lock()
 
 
@@ -99,6 +167,32 @@ def invalidate_catalog_cache() -> None:
     global _catalog_cache
     with _catalog_cache_lock:
         _catalog_cache = None
+
+
+def invalidate_provider_cache() -> None:
+    global _provider_cache
+    with _catalog_cache_lock:
+        _provider_cache = None
+
+
+def provider_entries() -> list[dict]:
+    """Return active providers, cached after the first database read."""
+    global _provider_cache, _provider_defaults_synced
+    if not get_settings().database_enabled:
+        return [dict(provider) for provider in DEFAULT_PROVIDERS]
+    with _catalog_cache_lock:
+        if _provider_cache is None:
+            try:
+                if not _provider_defaults_synced:
+                    model_provider_repository.seed(DEFAULT_PROVIDERS)
+                    _provider_defaults_synced = True
+                rows = model_provider_repository.list()
+                _provider_cache = tuple(dict(row) for row in (rows or DEFAULT_PROVIDERS))
+            except Exception as exc:
+                logger.warning("model_providers unavailable, using in-code defaults: %s", exc)
+                _provider_cache = tuple(dict(provider) for provider in DEFAULT_PROVIDERS)
+        rows = _provider_cache
+    return [dict(provider) for provider in rows]
 
 
 def catalog_entries(capability: str | None = None) -> list[dict]:

@@ -447,6 +447,20 @@ SELECT setval('"public"."test_table_id_seq"', 1, false);
 CREATE INDEX "idx_app_users_uid" ON "public"."app_users" USING btree (
   "uid" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
 );
+
+-- ----------------------------
+-- Table structure for model_providers (provider registry, no API keys)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."model_providers" (
+  "id" text NOT NULL,
+  "label" text NOT NULL,
+  "base_url" text NOT NULL DEFAULT '',
+  "is_custom" boolean NOT NULL DEFAULT false,
+  "sort_order" int NOT NULL DEFAULT 0,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "model_providers_pkey" PRIMARY KEY ("id")
+);
 CREATE INDEX "idx_app_users_username" ON "public"."app_users" USING btree (
   "username" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
 );

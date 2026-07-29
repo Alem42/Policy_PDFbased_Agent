@@ -178,3 +178,52 @@ def test_catalog_write_invalidates_cache(monkeypatch):
     )
 
     assert invalidated["called"] is True
+
+
+def test_add_provider_uses_preset_and_invalidates_provider_cache(monkeypatch):
+    saved = {}
+    invalidated = {"called": False}
+    monkeypatch.setattr(
+        catalog_service.model_provider_repository,
+        "add",
+        lambda provider: saved.update(provider),
+    )
+    monkeypatch.setattr(
+        catalog_service,
+        "invalidate_provider_cache",
+        lambda: invalidated.__setitem__("called", True),
+    )
+
+    result = catalog_service.add_provider(
+        {"preset_id": "cohere", "name": "Cohere"}
+    )
+
+    assert result["id"] == "cohere"
+    assert result["base_url"] == "https://api.cohere.com/v2"
+    assert saved == result
+    assert invalidated["called"] is True
+
+
+def test_unlisted_provider_id_is_generated_from_name(monkeypatch):
+    monkeypatch.setattr(
+        catalog_service.model_provider_repository,
+        "add",
+        lambda provider: None,
+    )
+    monkeypatch.setattr(catalog_service, "invalidate_provider_cache", lambda: None)
+
+    result = catalog_service.add_provider(
+        {"name": "My Internal Gateway", "base_url": "https://llm.example/v1"}
+    )
+
+    assert result["id"] == "my_internal_gateway"
+    assert result["label"] == "My Internal Gateway"
+
+
+def test_custom_provider_presets_are_ordered_last():
+    presets = catalog_service.get_catalog()["provider_presets"]
+
+    first_custom = next(index for index, item in enumerate(presets) if item["is_custom"])
+    assert all(not item["is_custom"] for item in presets[:first_custom])
+    assert all(item["is_custom"] for item in presets[first_custom:])
+    assert presets[-1]["id"] == "custom"

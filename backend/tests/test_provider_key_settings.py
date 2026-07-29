@@ -48,3 +48,21 @@ def test_unknown_provider_key_is_not_accepted(monkeypatch):
     service.update_public_settings(provider_api_keys={"not-in-catalog": "secret"})
 
     assert state["value"].provider_api_keys == {}
+
+
+def test_registered_provider_can_save_a_key_without_model_endpoints(monkeypatch):
+    state = _memory_settings(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "_known_provider_ids",
+        lambda: {"deepseek", "my_internal_gateway"},
+    )
+
+    service.update_public_settings(
+        provider_api_keys={"my_internal_gateway": "internal-secret"}
+    )
+
+    assert (
+        state["value"].provider_api_keys["my_internal_gateway"]
+        == "internal-secret"
+    )

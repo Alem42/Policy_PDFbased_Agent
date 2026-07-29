@@ -27,6 +27,107 @@ CAPABILITIES = [
     "async_result",
 ]
 
+# Providers shown immediately on a new installation. Custom/self-hosted is
+# intentionally not active by default; admins can add it from PROVIDER_PRESETS.
+DEFAULT_PROVIDERS: list[dict] = [
+    {
+        "id": "zhipu",
+        "label": "Zhipu 智谱",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "is_custom": False,
+    },
+    {
+        "id": "deepseek",
+        "label": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "is_custom": False,
+    },
+    {
+        "id": "openai",
+        "label": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "anthropic",
+        "label": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "gemini",
+        "label": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "is_custom": False,
+    },
+]
+
+# Searchable choices for Add provider. These are provider-level presets only;
+# endpoint/model rows remain explicit catalog entries.
+PROVIDER_PRESETS: list[dict] = [
+    *DEFAULT_PROVIDERS,
+    {
+        "id": "cohere",
+        "label": "Cohere",
+        "base_url": "https://api.cohere.com/v2",
+        "is_custom": False,
+    },
+    {
+        "id": "mistral",
+        "label": "Mistral AI",
+        "base_url": "https://api.mistral.ai/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "voyage",
+        "label": "Voyage AI",
+        "base_url": "https://api.voyageai.com/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "jina",
+        "label": "Jina AI",
+        "base_url": "https://api.jina.ai/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "siliconflow",
+        "label": "SiliconFlow",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "together",
+        "label": "Together AI",
+        "base_url": "https://api.together.xyz/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "groq",
+        "label": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "is_custom": False,
+    },
+    {
+        "id": "ollama",
+        "label": "Ollama (self-hosted)",
+        "base_url": "http://localhost:11434/v1",
+        "is_custom": True,
+    },
+    {
+        "id": "vllm",
+        "label": "vLLM (self-hosted)",
+        "base_url": "http://localhost:8000/v1",
+        "is_custom": True,
+    },
+    {
+        "id": "custom",
+        "label": "Custom / self-hosted",
+        "base_url": "",
+        "is_custom": True,
+    },
+]
+
 _ZHIPU = "https://open.bigmodel.cn/api/paas/v4"
 
 

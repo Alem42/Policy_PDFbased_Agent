@@ -16,7 +16,11 @@ def _known_provider_ids() -> set[str]:
     try:
         from app.modules.catalog.service import get_catalog
 
-        providers.update(entry["provider"] for entry in get_catalog()["entries"])
+        catalog = get_catalog()
+        providers.update(provider["id"] for provider in catalog.get("providers", []))
+        # Backward compatibility for databases that have catalog rows created
+        # before the provider registry migration is applied.
+        providers.update(entry["provider"] for entry in catalog["entries"])
     except Exception:
         # The catalog already has its own database fallback, but settings must
         # remain usable even if catalog initialization itself fails.
