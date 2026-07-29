@@ -77,6 +77,8 @@ export default function LlmProvidersSection() {
   const [endpointForm, setEndpointForm] = useState(EMPTY_ENDPOINT);
   const [catalogBusy, setCatalogBusy] = useState(false);
   const [catalogError, setCatalogError] = useState("");
+  const [catalogProviderFilter, setCatalogProviderFilter] = useState("all");
+  const [catalogCapabilityFilter, setCatalogCapabilityFilter] = useState("all");
 
   async function loadSettings() {
     setLoading(true);
@@ -110,6 +112,21 @@ export default function LlmProvidersSection() {
       keyProviders.push({ id: entry.provider, label: entry.provider_label });
     }
   }
+  const catalogProviders = Array.from(
+    new Map(
+      catalog.map((entry) => [
+        entry.provider,
+        { id: entry.provider, label: entry.provider_label },
+      ]),
+    ).values(),
+  ).sort((a, b) => a.label.localeCompare(b.label));
+  const catalogCapabilities = [...new Set(catalog.map((entry) => entry.capability))].sort();
+  const filteredCatalog = catalog.filter(
+    (entry) =>
+      (catalogProviderFilter === "all" || entry.provider === catalogProviderFilter) &&
+      (catalogCapabilityFilter === "all" ||
+        entry.capability === catalogCapabilityFilter),
+  );
 
   async function handleAddEndpoint() {
     setCatalogBusy(true);
@@ -407,9 +424,53 @@ export default function LlmProvidersSection() {
 
           <Collapse in={showCatalog}>
             <Box sx={{ mt: 2, display: "grid", gap: 1 }}>
-              {catalog.map((entry, index) => (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  mb: 0.5,
+                }}
+              >
+                <TextField
+                  select
+                  label="Company"
+                  value={catalogProviderFilter}
+                  onChange={(event) => setCatalogProviderFilter(event.target.value)}
+                  size="small"
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="all">All companies</MenuItem>
+                  {catalogProviders.map((provider) => (
+                    <MenuItem key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Function"
+                  value={catalogCapabilityFilter}
+                  onChange={(event) => setCatalogCapabilityFilter(event.target.value)}
+                  size="small"
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="all">All functions</MenuItem>
+                  {catalogCapabilities.map((capability) => (
+                    <MenuItem key={capability} value={capability}>
+                      {capability}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Showing {filteredCatalog.length} of {catalog.length}
+                </Typography>
+              </Box>
+
+              {filteredCatalog.map((entry, index) => (
                 <Box
-                  key={index}
+                  key={`${entry.provider}-${entry.capability}-${entry.model}-${index}`}
                   sx={{
                     display: "grid",
                     gridTemplateColumns: { xs: "1fr", sm: "160px 96px 1fr" },
@@ -432,6 +493,14 @@ export default function LlmProvidersSection() {
                   </Box>
                 </Box>
               ))}
+              {filteredCatalog.length === 0 && (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", py: 2, textAlign: "center" }}
+                >
+                  No endpoints match these filters.
+                </Typography>
+              )}
 
               {/* Add an endpoint manually (crawler will do this in bulk later) */}
               <Box sx={{ mt: 1, p: 1.5, border: "1px solid #e2e5df", borderRadius: 2, display: "grid", gap: 1 }}>
