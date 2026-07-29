@@ -8,6 +8,8 @@ from app.modules.crawling.routers.jobs import router as crawl_jobs_router
 from app.modules.crawling.routers.sources import router as crawl_sources_router
 from app.modules.documents.admin_router import router as admin_documents_router
 from app.modules.documents.router import router as documents_router
+from app.modules.embedding.router import router as embedding_admin_router
+from app.modules.reranking.router import router as reranking_admin_router
 from app.modules.documents.taxonomy_router import router as taxonomy_router
 from app.modules.settings.router import router as settings_router
 from app.modules.system.router import router as system_router
@@ -20,6 +22,8 @@ api_router.include_router(chat_router)
 api_router.include_router(chat_history_router)
 api_router.include_router(documents_router)
 api_router.include_router(admin_documents_router)
+api_router.include_router(embedding_admin_router)
+api_router.include_router(reranking_admin_router)
 api_router.include_router(taxonomy_router)
 api_router.include_router(settings_router)
 api_router.include_router(crawl_sources_router)

@@ -35,8 +35,10 @@ import {
   deleteDocument,
   getDocumentChunks,
   getDocumentDetail,
+  getProcessingStatus,
   getTaxonomy,
   openDocumentFile,
+  rescanFile,
   searchDocuments,
   updateDocument,
 } from "../api";
@@ -73,6 +75,87 @@ const SEARCH_PARAM_DEFAULTS = {
 };
 
 const filterSelectSx = { minWidth: 140, "& .MuiSelect-select": { py: "10px" } };
+
+const TERMINAL_PROCESSING = new Set(["ready", "indexed", "failed"]);
+
+function processingColor(status) {
+  if (status === "ready" || status === "indexed") return "success.main";
+  if (status === "failed") return "error.main";
+  return "text.secondary";
+}
+
+// Self-contained processing status for one row. Renders the list value by
+// default; when `rescanSignal` changes (a rescan was triggered for THIS doc), it
+// polls only this document's status until it settles — updating just this cell,
+// with no whole-table refetch or flicker. On completion it pulls fresh
+// pages/chunks once.
+function ProcessingCell({ document, rescanSignal }) {
+  const [live, setLive] = useState({
+    status: document.status,
+    pages: document.page_count || 0,
+    chunks: document.chunk_count || 0,
+  });
+
+  // Re-sync if the underlying row data changes (e.g. a normal list refetch).
+  useEffect(() => {
+    setLive({
+      status: document.status,
+      pages: document.page_count || 0,
+      chunks: document.chunk_count || 0,
+    });
+  }, [document.status, document.page_count, document.chunk_count]);
+
+  useEffect(() => {
+    if (!rescanSignal) return undefined;
+    let cancelled = false;
+    let timer = null;
+    setLive((prev) => ({ ...prev, status: "processing" }));
+    async function tick() {
+      try {
+        const result = await getProcessingStatus(document.id);
+        if (cancelled) return;
+        setLive((prev) => ({ ...prev, status: result.status || prev.status }));
+        if (TERMINAL_PROCESSING.has(result.status)) {
+          try {
+            const detail = await getDocumentDetail(document.id);
+            if (!cancelled) {
+              setLive({
+                status: detail.status || result.status,
+                pages: detail.page_count || 0,
+                chunks: detail.chunk_count || 0,
+              });
+            }
+          } catch {
+            /* keep the polled status */
+          }
+          return; // settled -> stop polling
+        }
+      } catch {
+        /* transient error: keep last known status */
+      }
+      if (!cancelled) timer = setTimeout(tick, 2000);
+    }
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [rescanSignal, document.id]);
+
+  return (
+    <>
+      <Typography variant="body2" sx={{ fontWeight: 800, color: processingColor(live.status) }}>
+        {live.status || "unknown"}
+      </Typography>
+      <Typography variant="body2" sx={{ color: "text.secondary" }}>
+        {live.pages} pages
+      </Typography>
+      <Typography variant="body2" sx={{ color: "text.secondary" }}>
+        {live.chunks} chunks
+      </Typography>
+    </>
+  );
+}
 
 const EMPTY_EDIT_FORM = {
   title: "",
@@ -126,6 +209,19 @@ export default function LibraryPage({
   const [openChunkId, setOpenChunkId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Per-row rescan trigger: bumping a doc's counter makes its ProcessingCell poll.
+  const [rescanSignals, setRescanSignals] = useState({});
+
+  // Re-fetch documents when the embedding model changes (so any model-derived
+  // detail refreshes). The Processing status itself is model-independent.
+  useEffect(() => {
+    function onConfig() {
+      setSearchVersion((current) => current + 1);
+    }
+    window.addEventListener("embedding-config-changed", onConfig);
+    return () => window.removeEventListener("embedding-config-changed", onConfig);
+  }, []);
+
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [moreMenuDocument, setMoreMenuDocument] = useState(null);
   const [addedPopover, setAddedPopover] = useState({ anchorEl: null, document: null, success: true });
@@ -248,11 +344,6 @@ export default function LibraryPage({
 
   function refreshSearch() {
     setSearchVersion((current) => current + 1);
-  }
-
-  async function handleRefresh() {
-    await onRefresh();
-    refreshSearch();
   }
 
   async function handleDocumentsChanged(documentIds) {
@@ -410,17 +501,14 @@ export default function LibraryPage({
     if (document) action(document);
   }
 
-  async function handleRescan() {
-    setBusy(true);
+  async function handleRescanFile(document) {
     setError("");
     try {
-      await onRescan();
-      refreshSearch();
-      closeDrawer();
+      await rescanFile(document.id);
+      // Signal this row's ProcessingCell to start polling its own status.
+      setRescanSignals((prev) => ({ ...prev, [document.id]: (prev[document.id] || 0) + 1 }));
     } catch (rescanError) {
       setError(rescanError.message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -483,16 +571,6 @@ export default function LibraryPage({
             : "Browse available documents, inspect metadata, and add relevant sources to your chat context."}
         </Typography>
       </Box>
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        <Button variant="outlined" disabled={busy} onClick={handleRefresh}>
-          Refresh
-        </Button>
-        {user?.role === "admin" && (
-          <Button variant="contained" disabled={busy} onClick={handleRescan}>
-            {busy ? "Working..." : "Rescan files"}
-          </Button>
-        )}
-      </Box>
       </Box>
 
       {user?.role === "admin" && <DocumentUpload compact onUploaded={handleDocumentsChanged} />}
@@ -526,11 +604,17 @@ export default function LibraryPage({
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ ...filterSelectSx, minWidth: 180 }}>
+        <FormControl size="small" sx={{ ...filterSelectSx, minWidth: 180, maxWidth: 220 }}>
           {/* Grouped by parent category; selecting a leaf filters by that subcategory. */}
-          <Select value={areaFilter} onChange={(event) => {
-            updateSearchParams({ policy_area: event.target.value, page: 1 });
-          }}>
+          <Select
+            value={areaFilter}
+            onChange={(event) => {
+              updateSearchParams({ policy_area: event.target.value, page: 1 });
+            }}
+            // Cap the popup height/width so it stays a compact scrollable dropdown.
+            MenuProps={{ PaperProps: { style: { maxHeight: 300, maxWidth: 280 } } }}
+            sx={{ "& .MuiSelect-select": { overflow: "hidden", textOverflow: "ellipsis" } }}
+          >
             <MenuItem value="all">All policy areas</MenuItem>
             {taxonomy.flatMap((group) => [
               <ListSubheader key={`h-${group.parent}`}>{group.parent}</ListSubheader>,
@@ -691,26 +775,10 @@ export default function LibraryPage({
 
               {/* Processing cell */}
               <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 800,
-                    color:
-                      document.status === "ready"
-                        ? "success.main"
-                        : document.status === "failed"
-                          ? "error.main"
-                          : "text.secondary",
-                  }}
-                >
-                  {document.status || "unknown"}
-                </Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  {document.page_count || 0} pages
-                </Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  {document.chunk_count || 0} chunks
-                </Typography>
+                <ProcessingCell
+                  document={document}
+                  rescanSignal={rescanSignals[document.id] || 0}
+                />
                 {user?.role === "admin" && (
                   <Typography variant="body2" sx={{ color: "text.secondary" }}>
                     {document.approved ? "approved" : "not approved"} / {document.access_level}
@@ -855,6 +923,9 @@ export default function LibraryPage({
         {user?.role === "admin" && <Divider />}
         {user?.role === "admin" && (
           <MenuItem onClick={() => runMoreAction(openEditDialog)}>Edit</MenuItem>
+        )}
+        {user?.role === "admin" && (
+          <MenuItem onClick={() => runMoreAction(handleRescanFile)}>Rescan file</MenuItem>
         )}
         {user?.role === "admin" && (
           <MenuItem

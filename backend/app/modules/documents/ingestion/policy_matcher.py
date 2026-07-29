@@ -17,9 +17,8 @@ import logging
 import math
 from functools import lru_cache
 
-from app.core.config import get_settings
-from app.modules.documents.embeddings import embed_documents
 from app.modules.documents.ingestion.taxonomy import normalise_policy_areas
+from app.modules.embedding import service as embedding
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +33,13 @@ MAX_POLICY_AREAS = 6
 
 @lru_cache(maxsize=8)
 def _embed_labels(model_name: str, labels: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
-    """Cache leaf-label vectors per (model, label-set). model_name is the cache key."""
-    vectors = embed_documents(list(labels))
+    """Cache leaf-label vectors per (model, label-set).
+
+    model_name is the active embedding model — keying on it means a model switch
+    lands on a fresh entry, so we never compare label vectors from one model
+    against document vectors from another (the local-hashing-v1 trap).
+    """
+    vectors = embedding.embed_documents(list(labels))
     return tuple(tuple(v) for v in vectors)
 
 
@@ -58,9 +62,9 @@ def match_policy_areas(values: list[str], leaf_labels: list[str]) -> list[str]:
         return normalise_policy_areas(values, leaf_labels or None)
 
     try:
-        model_name = get_settings().embedding_model_name
+        model_name = embedding.active_model_id()
         label_vectors = _embed_labels(model_name, tuple(leaf_labels))
-        value_vectors = embed_documents(cleaned)
+        value_vectors = embedding.embed_documents(cleaned)
     except Exception as exc:
         logger.warning("Embedding match unavailable, using exact match: %s", exc)
         return normalise_policy_areas(values, leaf_labels)

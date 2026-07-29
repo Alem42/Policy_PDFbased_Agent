@@ -154,6 +154,22 @@ export function rescanDocuments() {
   });
 }
 
+// Re-embed existing chunks into the active embedding model's vector table.
+// Cheaper than a rescan (no re-extract/re-chunk) and preserves other models'
+// vectors — used after switching the embedding model.
+export function reembedLibrary() {
+  return request("/admin/documents/reembed", {
+    method: "POST",
+  });
+}
+
+// Reprocess a single document (re-extract, re-chunk, re-metadata, re-embed).
+export function rescanFile(documentId) {
+  return request(`/admin/documents/${encodeURIComponent(documentId)}/rescan`, {
+    method: "POST",
+  });
+}
+
 export async function getDocumentDetail(documentId) {
   return normaliseDocument(await request(`/documents/${encodeURIComponent(documentId)}`));
 }
@@ -369,6 +385,52 @@ export function saveSettings(settings) {
 
 export function getProcessingStatus(documentId) {
   return request(`/admin/documents/${encodeURIComponent(documentId)}/processing-status`);
+}
+
+// ── Embedding settings (admin) ─────────────────────────────────────────────
+// Backend endpoints TBD; the Manage > Embedding page degrades gracefully to a
+// local draft when these 404, so the interface can be wired later.
+
+export function getEmbeddingSettings() {
+  return request("/admin/embedding");
+}
+
+export function saveEmbeddingSettings(payload) {
+  return request("/admin/embedding", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testEmbeddingConnection(payload) {
+  return request("/admin/embedding/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── Reranking settings (admin) ─────────────────────────────────────────────
+
+export function getRerankingSettings() {
+  return request("/admin/reranking");
+}
+
+export function saveRerankingSettings(payload) {
+  return request("/admin/reranking", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testRerankingConnection(payload) {
+  return request("/admin/reranking/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────

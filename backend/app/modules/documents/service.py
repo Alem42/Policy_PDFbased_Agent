@@ -10,7 +10,6 @@ from app.modules.documents.chunker import document_chunker
 from app.modules.documents.embeddings import (
     embed_documents,
     embed_query,
-    get_embedding_model_name,
     vector_literal,
 )
 from app.modules.documents.exceptions import DuplicateDocumentError
@@ -24,7 +23,9 @@ from app.modules.documents.repositories.documents import document_repository
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.repositories.helpers import row_to_metadata
 from app.modules.documents.repositories.processing_jobs import processing_job_repository
-from app.modules.documents.reranker import rerank_chunks
+from app.modules.embedding import service as embedding
+from app.modules.reranking.service import enabled as reranker_enabled
+from app.modules.reranking.service import rerank as rerank_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,10 @@ def process_document(document_id: str) -> None:
         document_content_repository.upsert_generated_metadata(document_id, metadata, model_name)
         document_repository.set_status(document_id, "annotated")
 
-        chunks = document_chunker.chunk(pages)
+        # Admin-tunable chunk size (Manage > Embedding). Clamped to a sane ceiling;
+        # if it exceeds the model's input limit, the model truncates/errs per chunk.
+        chunk_budget = min(max(embedding.active_config().chunk_token_budget, 64), 8000)
+        chunks = document_chunker.chunk(pages, max_tokens=chunk_budget)
         # Contextual retrieval: prepend an LLM situating sentence to the EMBEDDING
         # input only; stored/displayed text stays original. Header kept for transparency.
         headers = build_contextual_headers(
@@ -79,7 +83,6 @@ def process_document(document_id: str) -> None:
             chunks,
             embeddings,
             language=doc_language,
-            embedding_model=get_embedding_model_name(),
         )
         document_repository.set_status(document_id, "ready")
         processing_job_repository.finish(
@@ -179,6 +182,41 @@ def rescan_library(reprocess_existing: bool = True) -> dict:
     for document_id in document_ids:
         process_document(document_id)
     return {"rescanned": True, "reprocessed": len(document_ids)}
+
+
+def reembed_document(document_id: str) -> int:
+    """Embed a document's EXISTING chunks into the active model's vector table.
+
+    Reuses the stored chunks + contextual headers (no re-extract, no re-chunk),
+    so other models' vectors are untouched. Used after switching embedding model
+    to populate the new model's table.
+    """
+    rows = embedding_repository.chunks_for_reembed(document_id)
+    if not rows:
+        return 0
+    inputs = [
+        f"{row['context_header']}\n\n{row['text']}" if row.get("context_header") else row["text"]
+        for row in rows
+    ]
+    literals = [vector_literal(vector) for vector in embed_documents(inputs)]
+    embedding_repository.store_vectors([row["chunk_id"] for row in rows], literals)
+    return len(rows)
+
+
+def reembed_library() -> dict:
+    """Re-embed every document's existing chunks for the active model."""
+    document_ids = document_repository.all_document_ids()
+    chunk_total = 0
+    for document_id in document_ids:
+        try:
+            chunk_total += reembed_document(document_id)
+        except Exception:
+            logger.exception("Re-embed failed for document %s", document_id)
+    return {
+        "documents": len(document_ids),
+        "chunks": chunk_total,
+        "model": embedding.active_model_id(),
+    }
 
 
 def list_documents(
@@ -292,6 +330,9 @@ def retrieve_relevant_chunks(
         limit=candidate_limit,
     )
 
+    # Reranking is admin-toggleable (Manage > Reranker); when off, use dense ranking.
+    if not reranker_enabled():
+        return candidates[:limit]
     try:
         return rerank_chunks(
             question,
