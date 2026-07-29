@@ -25,8 +25,12 @@ class RerankingConfig(BaseModel):
     enabled: bool = True
     provider: Literal["local", "api"] = "local"
     local_model: str = DEFAULT_LOCAL_RERANKER
-    api_base_url: str = ""  # blank -> reuse the embedding API base URL
-    api_key: str = ""  # blank -> reuse the embedding API key
+    # api_provider = catalog provider id (e.g. "zhipu"); base URL from the catalog,
+    # key from the central provider-key store. api_base_url/api_key are manual/legacy
+    # fallbacks only. Blank api_provider + blank creds -> reuse the embedding creds.
+    api_provider: str = ""
+    api_base_url: str = ""
+    api_key: str = ""
     api_model: str = "rerank"
     # Evidence floor for the reranker score. None -> provider default. Score
     # scales differ (local logits vs API [0,1]) so this must be recalibrated.

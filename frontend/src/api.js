@@ -433,6 +433,23 @@ export function testRerankingConnection(payload) {
   });
 }
 
+// ── Model catalog (admin) ──────────────────────────────────────────────────
+// Known provider/model/endpoint reference (no keys). Powers the pick-a-model
+// dropdowns on the embedding/reranker pages.
+
+export function getModelCatalog(capability) {
+  const query = capability ? `?capability=${encodeURIComponent(capability)}` : "";
+  return request(`/admin/catalog${query}`);
+}
+
+export function addCatalogEntry(payload) {
+  return request("/admin/catalog", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }

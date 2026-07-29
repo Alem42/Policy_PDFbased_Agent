@@ -12,10 +12,37 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  Collapse,
+  Divider,
+  Chip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/Delete";
-import { getSettings, saveSettings } from "../../api";
+import { getSettings, saveSettings, getModelCatalog, addCatalogEntry } from "../../api";
+
+const CAPABILITIES = [
+  "chat",
+  "chat_async",
+  "embedding",
+  "rerank",
+  "image",
+  "image_async",
+  "video",
+  "audio",
+  "voice",
+  "tokenizer",
+  "ocr",
+  "async_result",
+];
+const EMPTY_ENDPOINT = {
+  provider: "",
+  provider_label: "",
+  capability: "embedding",
+  model: "",
+  base_url: "",
+  endpoint: "",
+  dimensions: "",
+};
 
 // Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
 const PROVIDERS = [
@@ -27,7 +54,10 @@ const PROVIDERS = [
 ];
 
 // LLM provider + API key configuration (renders inside the Manage content card).
-export default function LlmProvidersSection() {
+export default function LlmProvidersSection({
+  configurationVersion = 0,
+  onConfigurationChanged,
+}) {
   const [settings, setSettings] = useState(null);
   const [llmProvider, setLlmProvider] = useState("deepseek");
   const [model, setModel] = useState("");
@@ -44,9 +74,21 @@ export default function LlmProvidersSection() {
   const [modelDialogBusy, setModelDialogBusy] = useState(false);
   const [modelDialogError, setModelDialogError] = useState("");
 
+  // Model catalog (known provider/model endpoints, no keys).
+  const [catalog, setCatalog] = useState([]);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [endpointForm, setEndpointForm] = useState(EMPTY_ENDPOINT);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogProviderFilter, setCatalogProviderFilter] = useState("all");
+  const [catalogCapabilityFilter, setCatalogCapabilityFilter] = useState("all");
+
   async function loadSettings() {
     setLoading(true);
     setError("");
+    getModelCatalog()
+      .then((r) => setCatalog(r.entries || []))
+      .catch(() => setCatalog([]));
     try {
       const result = await getSettings();
       setSettings(result);
@@ -62,7 +104,60 @@ export default function LlmProvidersSection() {
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [configurationVersion]);
+
+  // Key list = chat providers + any distinct catalog providers (one key per company).
+  const keyProviders = [...PROVIDERS];
+  const known = new Set(PROVIDERS.map((p) => p.id));
+  for (const entry of catalog) {
+    if (!known.has(entry.provider)) {
+      known.add(entry.provider);
+      keyProviders.push({
+        id: entry.provider,
+        label: entry.provider_label_display || entry.provider_label,
+      });
+    }
+  }
+  const catalogProviders = Array.from(
+    new Map(
+      catalog.map((entry) => [
+        entry.provider,
+        {
+          id: entry.provider,
+          label: entry.provider_label_display || entry.provider_label,
+        },
+      ]),
+    ).values(),
+  ).sort((a, b) => a.label.localeCompare(b.label));
+  const catalogCapabilities = [...new Set(catalog.map((entry) => entry.capability))].sort();
+  const filteredCatalog = catalog.filter(
+    (entry) =>
+      (catalogProviderFilter === "all" || entry.provider === catalogProviderFilter) &&
+      (catalogCapabilityFilter === "all" ||
+        entry.capability === catalogCapabilityFilter),
+  );
+
+  async function handleAddEndpoint() {
+    setCatalogBusy(true);
+    setCatalogError("");
+    try {
+      await addCatalogEntry({
+        ...endpointForm,
+        provider: endpointForm.provider.trim(),
+        model: endpointForm.model.trim(),
+        base_url: endpointForm.base_url.trim(),
+        dimensions: endpointForm.dimensions === "" ? null : Number(endpointForm.dimensions),
+      });
+      const r = await getModelCatalog();
+      setCatalog(r.entries || []);
+      setEndpointForm(EMPTY_ENDPOINT);
+      onConfigurationChanged?.();
+    } catch (addError) {
+      setCatalogError(addError.message);
+    } finally {
+      setCatalogBusy(false);
+    }
+  }
 
   async function handleSave(event) {
     event.preventDefault();
@@ -84,6 +179,7 @@ export default function LlmProvidersSection() {
       setLlmProvider(result.llm_provider || "deepseek");
       setProviderKeyInputs({});
       setNotice("Settings saved.");
+      onConfigurationChanged?.();
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -101,6 +197,7 @@ export default function LlmProvidersSection() {
       const result = await saveSettings({ provider_api_keys: { [providerId]: "" } });
       setSettings(result);
       setNotice(`Cleared the saved key for ${providerId}.`);
+      onConfigurationChanged?.();
     } catch (clearError) {
       setError(clearError.message);
     } finally {
@@ -150,6 +247,7 @@ export default function LlmProvidersSection() {
       setSettings(result);
       setModelDialogOpen(false);
       setNotice(`Updated the model list for ${modelDialogProvider}.`);
+      onConfigurationChanged?.();
     } catch (saveError) {
       setModelDialogError(saveError.message);
     } finally {
@@ -263,7 +361,7 @@ export default function LlmProvidersSection() {
                 Manage models
               </Button>
             </Box>
-            {PROVIDERS.map((provider) => (
+            {keyProviders.map((provider) => (
               <Box
                 key={provider.id}
                 sx={{
@@ -317,6 +415,151 @@ export default function LlmProvidersSection() {
               </Button>
             </Box>
           </Box>
+
+          {/* Model catalog: known provider/model endpoints (no keys) */}
+          <Divider sx={{ my: 3 }} />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+            <Typography variant="body2" sx={{ fontWeight: 800 }}>
+              API endpoints ({catalog.length})
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", flex: 1, minWidth: 120 }}>
+              Provider/model reference used by the Embedding &amp; Reranker pages. Keys are entered above.
+            </Typography>
+            <Button size="small" variant="outlined" onClick={() => setShowCatalog((v) => !v)}>
+              {showCatalog ? "Hide endpoints" : "Show all endpoints"}
+            </Button>
+            {/* TODO(crawler): auto-populate the catalog by scanning provider docs.
+                Wire to a backend crawler / web-search job later; POST /admin/catalog. */}
+            <Button size="small" variant="text" disabled title="Coming soon">
+              Rescan (crawler)
+            </Button>
+          </Box>
+
+          <Collapse in={showCatalog}>
+            <Box sx={{ mt: 2, display: "grid", gap: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  mb: 0.5,
+                }}
+              >
+                <TextField
+                  select
+                  label="Company"
+                  value={catalogProviderFilter}
+                  onChange={(event) => setCatalogProviderFilter(event.target.value)}
+                  size="small"
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="all">All companies</MenuItem>
+                  {catalogProviders.map((provider) => (
+                    <MenuItem key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Function"
+                  value={catalogCapabilityFilter}
+                  onChange={(event) => setCatalogCapabilityFilter(event.target.value)}
+                  size="small"
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="all">All functions</MenuItem>
+                  {catalogCapabilities.map((capability) => (
+                    <MenuItem key={capability} value={capability}>
+                      {capability}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Showing {filteredCatalog.length} of {catalog.length}
+                </Typography>
+              </Box>
+
+              {filteredCatalog.map((entry, index) => (
+                <Box
+                  key={`${entry.provider}-${entry.capability}-${entry.model}-${index}`}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "160px 96px 1fr" },
+                    gap: 1,
+                    alignItems: "center",
+                    p: 1,
+                    border: "1px solid #eef0ec",
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {entry.provider_label_display || entry.provider_label}
+                  </Typography>
+                  <Chip label={entry.capability} size="small" sx={{ height: 20, fontSize: 11, justifySelf: "start" }} />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.model_display || entry.model}
+                      {entry.dimensions ? ` · ${entry.dimensions}d` : ""}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.base_url}{entry.endpoint}
+                    </Typography>
+                  </Box>
+                </Box>
+              ))}
+              {filteredCatalog.length === 0 && (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", py: 2, textAlign: "center" }}
+                >
+                  No endpoints match these filters.
+                </Typography>
+              )}
+
+              {/* Add an endpoint manually (crawler will do this in bulk later) */}
+              <Box sx={{ mt: 1, p: 1.5, border: "1px solid #e2e5df", borderRadius: 2, display: "grid", gap: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>Add an endpoint</Typography>
+                {catalogError && <Alert severity="error">{catalogError}</Alert>}
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                  <TextField
+                    label="Provider id" value={endpointForm.provider} size="small" placeholder="zhipu"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, provider: e.target.value, provider_label: f.provider_label || e.target.value }))}
+                  />
+                  <TextField
+                    select label="Capability" value={endpointForm.capability} size="small"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, capability: e.target.value }))}
+                  >
+                    {CAPABILITIES.map((cap) => (<MenuItem key={cap} value={cap}>{cap}</MenuItem>))}
+                  </TextField>
+                  <TextField
+                    label="Model" value={endpointForm.model} size="small" placeholder="embedding-3"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, model: e.target.value }))}
+                  />
+                  <TextField
+                    label="Dimensions (optional)" value={endpointForm.dimensions} type="number" size="small"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, dimensions: e.target.value }))}
+                  />
+                  <TextField
+                    label="Base URL" value={endpointForm.base_url} size="small" fullWidth placeholder="https://…/v1"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, base_url: e.target.value }))}
+                  />
+                  <TextField
+                    label="Endpoint path" value={endpointForm.endpoint} size="small" fullWidth placeholder="/embeddings"
+                    onChange={(e) => setEndpointForm((f) => ({ ...f, endpoint: e.target.value }))}
+                  />
+                </Box>
+                <Button
+                  variant="outlined" size="small" startIcon={<AddIcon />} onClick={handleAddEndpoint}
+                  disabled={catalogBusy || !endpointForm.provider.trim() || !endpointForm.model.trim()}
+                  sx={{ justifySelf: "start" }}
+                >
+                  {catalogBusy ? "Adding..." : "Add endpoint"}
+                </Button>
+              </Box>
+            </Box>
+          </Collapse>
         </>
       )}
 
