@@ -19,10 +19,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-from app.core.config import get_settings
-from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
+from app.modules.chat.rag.generation import (
+    create_chat_client,
+    resolve_generation_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,19 +57,15 @@ def build_contextual_headers(
     model: str | None = None,
 ) -> list[str]:
     """One situating sentence per chunk; '' where unavailable (fail-open)."""
-    api_key, _ = get_llm_api_key()
-    if not api_key or not chunks:
+    if not chunks:
         return ["" for _ in chunks]
 
-    selected_model = model or get_llm_chat_model()[0]
+    try:
+        provider, selected_model, _ = resolve_generation_target(model)
+        llm = create_chat_client(provider, selected_model)
+    except ValueError:
+        return ["" for _ in chunks]
     prompt = ChatPromptTemplate.from_messages([("system", CONTEXT_PROMPT)])
-    llm = ChatOpenAI(
-        api_key=api_key,
-        base_url=get_settings().llm_base_url,
-        model=selected_model,
-        temperature=0,
-        extra_body={"thinking": {"type": "disabled"}},
-    )
     chain = prompt | llm | StrOutputParser()
     doc_title = title or "Untitled document"
     doc_summary = summary or "(no summary available)"

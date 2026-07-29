@@ -40,10 +40,10 @@ def _resolved_config(config: EmbeddingConfig) -> EmbeddingConfig:
     if config.provider != "api" or not config.api_provider or config.api_provider == "__manual__":
         return config
     from app.modules.catalog import service as catalog
-    from app.modules.settings.service import get_llm_api_key
+    from app.modules.settings.service import get_provider_api_key
 
     base = catalog.resolve_base_url(config.api_provider, config.api_model, "embedding")
-    key, _ = get_llm_api_key(config.api_provider)
+    key = get_provider_api_key(config.api_provider)
     return config.model_copy(
         update={"api_base_url": base or config.api_base_url, "api_key": key or config.api_key}
     )

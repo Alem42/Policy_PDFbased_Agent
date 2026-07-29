@@ -22,7 +22,7 @@ from app.modules.chat.schemas import (
     ModelOption,
     ProviderModels,
 )
-from app.modules.settings.service import get_llm_api_key, get_provider_models
+from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
@@ -40,17 +40,25 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
     providers = {item["id"]: item for item in catalog.get("providers", [])}
     provider_ids = list(dict.fromkeys(entry["provider"] for entry in catalog["entries"]))
     for provider in provider_ids:
-        models = await asyncio.to_thread(get_provider_models, provider)
+        models = [
+            entry for entry in catalog["entries"] if entry["provider"] == provider
+        ]
         if not models:
             continue
-        api_key, _ = await asyncio.to_thread(get_llm_api_key, provider)
+        api_key = await asyncio.to_thread(get_provider_api_key, provider)
         if not api_key:
             continue
         available.append(
             ProviderModels(
                 provider=provider,
                 provider_label=providers.get(provider, {}).get("label", provider),
-                models=[ModelOption(id=f"{provider}/{m.id}", label=m.label) for m in models],
+                models=[
+                    ModelOption(
+                        id=f"{provider}/{model['model']}",
+                        label=model.get("model_display") or model["model"],
+                    )
+                    for model in models
+                ],
             )
         )
     return available

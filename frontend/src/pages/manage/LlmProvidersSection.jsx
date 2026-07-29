@@ -49,7 +49,7 @@ const EMPTY_ENDPOINT = {
   dimensions: "",
 };
 
-// Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
+// Used only if the provider-registry API is temporarily unavailable.
 const FALLBACK_PROVIDERS = [
   { id: "zhipu", label: "Zhipu" },
   { id: "deepseek", label: "DeepSeek" },
@@ -290,8 +290,8 @@ export default function LlmProvidersSection({
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
             Default provider status:{" "}
             <strong>{settings?.llm_configured ? "Configured" : "Not configured"}</strong>
-            {" "}({settings?.llm_api_key_source || "missing"}), model{" "}
-            <strong>{settings?.llm_chat_model}</strong> ({settings?.llm_chat_model_source})
+            {", model "}
+            <strong>{settings?.llm_chat_model}</strong>
           </Typography>
 
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}

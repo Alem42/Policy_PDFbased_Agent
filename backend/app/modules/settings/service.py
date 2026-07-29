@@ -1,70 +1,40 @@
-from app.core.config import get_settings
-from app.core.llm_providers import DEFAULT_PROVIDER, PROVIDER_CONFIGS
+from app.core.llm_providers import DEFAULT_PROVIDER, get_provider_config
 from app.modules.settings.repository import settings_repository
-from app.modules.settings.schemas import ModelEntry
+
+
+def _catalog() -> dict:
+    from app.modules.catalog.service import get_catalog
+
+    return get_catalog()
 
 
 def _known_provider_ids() -> set[str]:
-    """Providers that may own a centrally stored API key.
-
-    Chat providers come from ``PROVIDER_CONFIGS`` while embedding/reranking-only
-    providers (for example Zhipu) come from the model catalog.  Keeping this
-    union here prevents catalog providers from being silently discarded when
-    the LLM & API keys page saves them.
-    """
-    providers = set(PROVIDER_CONFIGS)
-    try:
-        from app.modules.catalog.service import get_catalog
-
-        catalog = get_catalog()
-        providers.update(provider["id"] for provider in catalog.get("providers", []))
-        # Backward compatibility for databases that have catalog rows created
-        # before the provider registry migration is applied.
-        providers.update(entry["provider"] for entry in catalog["entries"])
-    except Exception:
-        # The catalog already has its own database fallback, but settings must
-        # remain usable even if catalog initialization itself fails.
-        pass
-    return providers
+    return {provider["id"] for provider in _catalog().get("providers", [])}
 
 
-def get_llm_api_key(provider: str | None = None) -> tuple[str | None, str]:
-    """Resolve the API key for `provider` (defaults to the active default provider).
-
-    Resolution order: per-provider runtime key -> legacy single runtime key
-    (only for the default provider) -> per-provider env var -> legacy env var
-    (only for the default provider).
-    """
-    runtime = settings_repository.load()
-    provider = provider or get_llm_provider()
-    default_provider = runtime.llm_provider or DEFAULT_PROVIDER
-
-    runtime_key = runtime.provider_api_keys.get(provider)
-    if not runtime_key and provider == default_provider:
-        runtime_key = runtime.llm_api_key or runtime.deepseek_api_key
-    if runtime_key:
-        return runtime_key, "settings"
-
-    settings = get_settings()
-    environment_key = (
-        getattr(settings, f"{provider}_api_key", None) if provider in PROVIDER_CONFIGS else None
-    )
-    if not environment_key and provider == DEFAULT_PROVIDER:
-        environment_key = settings.llm_api_key or settings.deepseek_api_key
-    return (environment_key, "env") if environment_key else (None, "missing")
+def _chat_model_ids(provider: str) -> list[str]:
+    return [
+        entry["model"]
+        for entry in _catalog()["entries"]
+        if entry["provider"] == provider and entry["capability"] == "chat"
+    ]
 
 
-def get_llm_chat_model() -> tuple[str, str]:
-    runtime = settings_repository.load()
-    runtime_model = runtime.llm_chat_model or runtime.deepseek_chat_model
-    if runtime_model:
-        return runtime_model, "settings"
+def get_llm_provider() -> str:
+    return settings_repository.load().llm_provider or DEFAULT_PROVIDER
 
-    settings = get_settings()
-    environment_model = settings.llm_chat_model or settings.deepseek_chat_model
-    if environment_model:
-        return environment_model, "env"
-    return settings.default_llm_chat_model, "default"
+
+def get_llm_chat_model() -> str:
+    provider = get_llm_provider()
+    configured = settings_repository.load().llm_chat_model
+    if configured and configured in _chat_model_ids(provider):
+        return configured
+    return get_provider_config(provider)["default_model"]
+
+
+def get_provider_api_key(provider: str | None = None) -> str | None:
+    provider_id = provider or get_llm_provider()
+    return settings_repository.load().provider_api_keys.get(provider_id)
 
 
 def mask_api_key(api_key: str | None) -> str | None:
@@ -75,88 +45,67 @@ def mask_api_key(api_key: str | None) -> str | None:
     return f"{api_key[:4]}...{api_key[-4:]}"
 
 
-def get_llm_provider() -> str:
-    runtime = settings_repository.load()
-    return runtime.llm_provider or DEFAULT_PROVIDER
-
-
-def get_provider_models(provider: str) -> list[ModelEntry]:
-    """Effective selectable-model list for `provider`.
-
-    Returns the runtime override if the admin has customized it (even to an
-    empty list), otherwise the hardcoded default from PROVIDER_CONFIGS.
-    """
-    try:
-        from app.modules.catalog.service import get_catalog
-
-        models = [
-            ModelEntry(
-                id=entry["model"],
-                label=entry.get("model_display") or entry["model"],
-            )
-            for entry in get_catalog("chat")["entries"]
-            if entry["provider"] == provider
-        ]
-        if models:
-            return models
-    except Exception:
-        pass
-    return [ModelEntry(**m) for m in PROVIDER_CONFIGS.get(provider, {}).get("models", [])]
-
-
 def get_public_settings() -> dict:
-    api_key, api_key_source = get_llm_api_key()
-    model, model_source = get_llm_chat_model()
-    provider_ids = _known_provider_ids() | set(
-        settings_repository.load().provider_api_keys
-    )
-    masked_provider_keys = {
-        provider: mask_api_key(get_llm_api_key(provider)[0])
-        for provider in sorted(provider_ids)
-    }
+    runtime = settings_repository.load()
+    provider_ids = _known_provider_ids() | set(runtime.provider_api_keys)
+    provider = get_llm_provider()
+    model = get_llm_chat_model()
+    key = get_provider_api_key(provider)
     return {
-        "llm_configured": bool(api_key),
-        "llm_api_key_source": api_key_source,
-        "masked_llm_api_key": mask_api_key(api_key),
+        "llm_configured": bool(key),
+        "llm_provider": provider,
         "llm_chat_model": model,
-        "llm_chat_model_source": model_source,
-        "llm_base_url": get_settings().llm_base_url,
-        "llm_provider": get_llm_provider(),
-        "masked_provider_keys": masked_provider_keys,
+        "masked_provider_keys": {
+            provider_id: mask_api_key(get_provider_api_key(provider_id))
+            for provider_id in sorted(provider_ids)
+        },
     }
 
 
 def update_public_settings(
-    llm_api_key: str | None = None,
     llm_chat_model: str | None = None,
     llm_provider: str | None = None,
     provider_api_keys: dict[str, str] | None = None,
 ) -> dict:
     runtime = settings_repository.load()
-    if llm_api_key is not None:
-        runtime.llm_api_key = llm_api_key.strip() or None
-        runtime.deepseek_api_key = None
-    if llm_chat_model is not None:
-        runtime.llm_chat_model = llm_chat_model.strip() or None
-        runtime.deepseek_chat_model = None
+    provider_ids = _known_provider_ids()
+
     if llm_provider is not None:
-        runtime.llm_provider = llm_provider.strip() or None
+        selected_provider = llm_provider.strip()
+        if selected_provider not in provider_ids:
+            raise ValueError(f"Unknown provider: {selected_provider!r}.")
+        if not _chat_model_ids(selected_provider):
+            raise ValueError(
+                f"Provider '{selected_provider}' has no chat endpoint."
+            )
+        runtime.llm_provider = selected_provider
+
+    effective_provider = runtime.llm_provider or DEFAULT_PROVIDER
+    if llm_chat_model is not None:
+        selected_model = llm_chat_model.strip()
+        if selected_model not in _chat_model_ids(effective_provider):
+            raise ValueError(
+                f"Model '{selected_model}' is not a chat endpoint for "
+                f"provider '{effective_provider}'."
+            )
+        runtime.llm_chat_model = selected_model
+    elif runtime.llm_chat_model not in _chat_model_ids(effective_provider):
+        runtime.llm_chat_model = None
+
     if provider_api_keys is not None:
         updated_keys = dict(runtime.provider_api_keys)
-        allowed_providers = _known_provider_ids() | set(updated_keys)
+        allowed_providers = provider_ids | set(updated_keys)
         for provider, key in provider_api_keys.items():
             if provider not in allowed_providers:
                 continue
-            key = (key or "").strip()
-            if key:
-                updated_keys[provider] = key
+            cleaned = (key or "").strip()
+            if cleaned:
+                updated_keys[provider] = cleaned
             else:
                 updated_keys.pop(provider, None)
         runtime.provider_api_keys = updated_keys
+
     settings_repository.save(runtime)
-    # Embedding providers cache their HTTP client configuration. A central key
-    # change must take effect immediately rather than after a restart or a
-    # separate embedding-settings save.
     try:
         from app.modules.embedding import service as embedding
 

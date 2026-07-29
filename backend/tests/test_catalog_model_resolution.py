@@ -99,8 +99,8 @@ def test_embedding_catalog_pick_resolves_central_key(monkeypatch):
     )
     monkeypatch.setattr(
         settings_service,
-        "get_llm_api_key",
-        lambda provider: ("zhipu-key", "settings"),
+        "get_provider_api_key",
+        lambda provider: "zhipu-key",
     )
     config = EmbeddingConfig(
         provider="api",
@@ -290,9 +290,7 @@ def test_dynamic_chat_provider_config_comes_from_catalog(monkeypatch):
 
     assert config["base_url"] == "https://llm.example/v1"
     assert config["default_model"] == "internal-chat"
-    assert config["models"] == [
-        {"id": "internal-chat", "label": "Internal Chat"}
-    ]
+    assert "models" not in config
 
 
 def test_add_provider_uses_preset_and_invalidates_provider_cache(monkeypatch):

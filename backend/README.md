@@ -112,12 +112,6 @@ options are:
 | `PERSISTENCE_BACKEND` | Crawler repository backend (`database` or in-memory fallback) | `database` |
 | `CRAWLING_ENABLED` | Allows non-dry-run crawls to contact remote sites | `false` |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl fallback credential | empty |
-| `LLM_BASE_URL` | Base URL for the default chat provider | DeepSeek API |
-| `LLM_API_KEY` | Default chat-provider API key | empty |
-| `LLM_CHAT_MODEL` | Default chat model override | `deepseek-v4-flash` |
-| `OPENAI_API_KEY` | OpenAI API key (enables GPT-4o, o3, etc.) | empty |
-| `ANTHROPIC_API_KEY` | Anthropic API key (enables Claude models) | empty |
-| `GEMINI_API_KEY` | Google API key (enables Gemini models) | empty |
 | `EMBEDDING_MODEL_NAME` | Local embedding model for vector search | `BAAI/bge-small-en-v1.5` |
 | `DEFAULT_EMBEDDING_DIMENSIONS` | Output dimensions of the embedding model | `384` |
 | `MODEL_CACHE_DIR` | Path to cache downloaded HuggingFace models | `data/model_cache` |
@@ -125,6 +119,11 @@ options are:
 
 See `app/core/config.py` for the complete list and validation rules. Never commit
 the populated `.env` file.
+
+Provider base URLs and models come from the model catalog. Provider API keys
+and the default chat selection are managed in **Manage > LLM & API keys** and
+stored in the deployment's cached runtime settings file, not environment
+variables.
 
 ## PostgreSQL and pgvector
 
