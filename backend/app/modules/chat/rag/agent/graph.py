@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -65,6 +65,39 @@ def _tools_for(
     ]
 
 
+def _messages_for_current_turn(messages: list) -> list:
+    """Hide prior turns' internal tool traces from the current ReAct loop.
+
+    The checkpoint intentionally keeps the whole conversation, including old
+    ToolMessages. Those observations may say that a per-turn budget was
+    exhausted, which is no longer true after the user asks a new question.
+    Preserve prior conversational Human/AI messages, but expose tool calls
+    and ToolMessages only from the latest user question onward.
+    """
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(messages[index], HumanMessage)
+        ),
+        None,
+    )
+    if latest_human_index is None:
+        return list(messages)
+
+    conversational_history = [
+        message
+        for message in messages[:latest_human_index]
+        if isinstance(message, HumanMessage)
+        or (
+            isinstance(message, AIMessage)
+            and not message.tool_calls
+            and bool(message.content)
+        )
+    ]
+    return [*conversational_history, *messages[latest_human_index:]]
+
+
 async def agent_node(state: AgentState) -> dict:
     """The LLM turn: given the conversation + tool results so far, decide
     which tool action to take next."""
@@ -84,7 +117,10 @@ async def agent_node(state: AgentState) -> dict:
     )
 
     system_prompt = get_agent_system_prompt(response_mode, answer_mode, is_admin=is_admin)
-    messages = [SystemMessage(content=system_prompt), *state["messages"]]
+    messages = [
+        SystemMessage(content=system_prompt),
+        *_messages_for_current_turn(state["messages"]),
+    ]
 
     allowed_tool_names = {tool.name for tool in available_tools}
     for _attempt in range(3):
@@ -167,7 +203,10 @@ async def final_generation_node(state: AgentState) -> dict:
     provider, selected_model, _config = resolve_generation_target(state.get("model"))
     client = create_chat_client(provider, selected_model)
     system_prompt = get_final_answer_system_prompt(response_mode, answer_mode)
-    messages = [SystemMessage(content=system_prompt), *state["messages"]]
+    messages = [
+        SystemMessage(content=system_prompt),
+        *_messages_for_current_turn(state["messages"]),
+    ]
 
     response: AIMessage = await client.ainvoke(messages)
     return {"messages": [response], "resolved_model": f"{provider}/{selected_model}"}

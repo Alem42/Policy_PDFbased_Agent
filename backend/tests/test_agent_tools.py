@@ -10,6 +10,7 @@ from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
     NON_ADMIN_TOOLS,
     TOOL_CALL_LIMITS,
+    _messages_for_current_turn,
     _tools_for,
     agent_node,
     record_tool_call_node,
@@ -157,6 +158,64 @@ def test_record_tool_call_increments_only_selected_action() -> None:
         "search_internal_documents": 1,
         "search_full_corpus": 1,
     }
+
+
+def test_current_turn_messages_hide_prior_tool_budget_observations() -> None:
+    prior_user = HumanMessage(content="Find Russian AI policy")
+    prior_tool_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_web",
+                "args": {"query": "Russia AI policy"},
+                "id": "old-call",
+                "type": "tool_call",
+            }
+        ],
+    )
+    prior_budget_observation = ToolMessage(
+        content='{"error":"budget exhausted"}',
+        tool_call_id="old-call",
+        name="search_web",
+    )
+    prior_answer = AIMessage(content="Here is the Russian policy summary.")
+    current_user = HumanMessage(content="Find UK space policy")
+    current_tool_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_internal_documents",
+                "args": {"query": "UK space policy"},
+                "id": "new-call",
+                "type": "tool_call",
+            }
+        ],
+    )
+    current_observation = ToolMessage(
+        content='{"evidence_sufficient":false}',
+        tool_call_id="new-call",
+        name="search_internal_documents",
+    )
+
+    visible = _messages_for_current_turn(
+        [
+            prior_user,
+            prior_tool_call,
+            prior_budget_observation,
+            prior_answer,
+            current_user,
+            current_tool_call,
+            current_observation,
+        ]
+    )
+
+    assert visible == [
+        prior_user,
+        prior_answer,
+        current_user,
+        current_tool_call,
+        current_observation,
+    ]
 
 
 async def test_agent_retries_when_provider_selects_exhausted_tool(

@@ -375,7 +375,10 @@ async def chat_stream(
         "include_restricted": is_admin,
         "is_admin": is_admin,
         "user_id": user_id,
-        "tool_call_counts": {},
+        # Non-empty reset marker guarantees the persisted LastValue channel is
+        # overwritten for every new user question. Resume requests do not pass
+        # graph_input, so the same question keeps its counts across interrupt().
+        "tool_call_counts": {"__current_turn__": 1},
     }
 
     return StreamingResponse(
