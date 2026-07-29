@@ -830,3 +830,20 @@ ALTER TABLE "public"."chat_messages"
 ALTER TABLE "public"."chat_messages"
   ADD CONSTRAINT "chat_messages_role_check"
   CHECK (role IN ('user', 'assistant'));
+
+-- ----------------------------
+-- Migration 011: web-import tracking + content-hash dedup on documents
+-- ----------------------------
+ALTER TABLE "public"."documents"
+  ADD COLUMN IF NOT EXISTS "source_url" text,
+  ADD COLUMN IF NOT EXISTS "imported_by" uuid REFERENCES "public"."app_users"("id") ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS "imported_via" text,
+  ADD COLUMN IF NOT EXISTS "content_hash" text;
+
+CREATE INDEX IF NOT EXISTS "idx_documents_source_url"
+  ON "public"."documents" ("source_url")
+  WHERE "source_url" IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS "idx_documents_content_hash"
+  ON "public"."documents" ("content_hash")
+  WHERE "content_hash" IS NOT NULL;
