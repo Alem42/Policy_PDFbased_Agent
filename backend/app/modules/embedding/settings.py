@@ -53,7 +53,11 @@ class EmbeddingConfig(BaseModel):
     # Local (fastembed) provider.
     local_model: str = DEFAULT_LOCAL_MODEL
 
-    # API (OpenAI-compatible, e.g. Zhipu) provider.
+    # API provider. `api_provider` is a catalog provider id (e.g. "zhipu"); the
+    # base URL is resolved from the catalog and the key from the central provider
+    # key store (LLM & API keys page) — NOT stored here. api_base_url/api_key
+    # remain only as a manual/legacy fallback when there is no catalog entry.
+    api_provider: str = ""
     api_base_url: str = ""
     api_key: str = ""  # never returned raw to the client — masked in the API layer
     api_model: str = ""

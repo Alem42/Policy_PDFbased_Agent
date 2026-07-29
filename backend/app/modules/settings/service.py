@@ -4,6 +4,26 @@ from app.modules.settings.repository import settings_repository
 from app.modules.settings.schemas import ModelEntry
 
 
+def _known_provider_ids() -> set[str]:
+    """Providers that may own a centrally stored API key.
+
+    Chat providers come from ``PROVIDER_CONFIGS`` while embedding/reranking-only
+    providers (for example Zhipu) come from the model catalog.  Keeping this
+    union here prevents catalog providers from being silently discarded when
+    the LLM & API keys page saves them.
+    """
+    providers = set(PROVIDER_CONFIGS)
+    try:
+        from app.modules.catalog.service import get_catalog
+
+        providers.update(entry["provider"] for entry in get_catalog()["entries"])
+    except Exception:
+        # The catalog already has its own database fallback, but settings must
+        # remain usable even if catalog initialization itself fails.
+        pass
+    return providers
+
+
 def get_llm_api_key(provider: str | None = None) -> tuple[str | None, str]:
     """Resolve the API key for `provider` (defaults to the active default provider).
 
@@ -22,7 +42,9 @@ def get_llm_api_key(provider: str | None = None) -> tuple[str | None, str]:
         return runtime_key, "settings"
 
     settings = get_settings()
-    environment_key = getattr(settings, f"{provider}_api_key", None)
+    environment_key = (
+        getattr(settings, f"{provider}_api_key", None) if provider in PROVIDER_CONFIGS else None
+    )
     if not environment_key and provider == DEFAULT_PROVIDER:
         environment_key = settings.llm_api_key or settings.deepseek_api_key
     return (environment_key, "env") if environment_key else (None, "missing")
@@ -69,8 +91,12 @@ def get_provider_models(provider: str) -> list[ModelEntry]:
 def get_public_settings() -> dict:
     api_key, api_key_source = get_llm_api_key()
     model, model_source = get_llm_chat_model()
+    provider_ids = _known_provider_ids() | set(
+        settings_repository.load().provider_api_keys
+    )
     masked_provider_keys = {
-        provider: mask_api_key(get_llm_api_key(provider)[0]) for provider in PROVIDER_CONFIGS
+        provider: mask_api_key(get_llm_api_key(provider)[0])
+        for provider in sorted(provider_ids)
     }
     return {
         "llm_configured": bool(api_key),
@@ -109,8 +135,9 @@ def update_public_settings(
         runtime.llm_provider = llm_provider.strip() or None
     if provider_api_keys is not None:
         updated_keys = dict(runtime.provider_api_keys)
+        allowed_providers = _known_provider_ids() | set(updated_keys)
         for provider, key in provider_api_keys.items():
-            if provider not in PROVIDER_CONFIGS:
+            if provider not in allowed_providers:
                 continue
             key = (key or "").strip()
             if key:
@@ -130,4 +157,13 @@ def update_public_settings(
                 updated_models[provider] = entries
         runtime.provider_models = updated_models
     settings_repository.save(runtime)
+    # Embedding providers cache their HTTP client configuration. A central key
+    # change must take effect immediately rather than after a restart or a
+    # separate embedding-settings save.
+    try:
+        from app.modules.embedding import service as embedding
+
+        embedding.invalidate_provider_cache()
+    except Exception:
+        pass
     return get_public_settings()

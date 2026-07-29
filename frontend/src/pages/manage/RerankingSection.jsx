@@ -15,7 +15,9 @@ import {
   getRerankingSettings,
   saveRerankingSettings,
   testRerankingConnection,
+  getSettings,
 } from "../../api";
+import CatalogModelPicker from "./CatalogModelPicker";
 
 const ACCENT = "#214f42";
 
@@ -23,6 +25,7 @@ const DEFAULTS = {
   enabled: true,
   provider: "local", // "local" | "api"
   local_model: "BAAI/bge-reranker-base",
+  api_provider: "", // catalog provider id
   api_base_url: "",
   api_key: "",
   api_model: "rerank",
@@ -58,10 +61,11 @@ function SubCard({ title, children }) {
 }
 
 // Reranker (cross-encoder) configuration (renders inside the Manage content card).
-export default function RerankingSection() {
+export default function RerankingSection({ onNavigate }) {
   const [form, setForm] = useState(DEFAULTS);
   const [status, setStatus] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [providersWithKey, setProvidersWithKey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -75,6 +79,17 @@ export default function RerankingSection() {
   async function load() {
     setLoading(true);
     setError("");
+    getSettings()
+      .then((s) =>
+        setProvidersWithKey(
+          new Set(
+            Object.entries(s.masked_provider_keys || {})
+              .filter(([, masked]) => Boolean(masked))
+              .map(([provider]) => provider),
+          ),
+        ),
+      )
+      .catch(() => setProvidersWithKey(null));
     try {
       const result = await getRerankingSettings();
       const s = result.settings || result;
@@ -227,37 +242,24 @@ export default function RerankingSection() {
           )}
 
           {isApi && (
-            <>
-              <Field label="Model name" hint="Zhipu: rerank. Cohere: rerank-multilingual-v3.0, etc.">
-                <TextField
-                  value={form.api_model}
-                  onChange={(e) => set("api_model", e.target.value)}
-                  placeholder="rerank"
-                  size="small"
-                  sx={{ maxWidth: 320 }}
-                />
-              </Field>
-              <Field label="Base URL" hint="Blank = reuse the embedding API base URL (same provider, e.g. Zhipu).">
-                <TextField
-                  value={form.api_base_url}
-                  onChange={(e) => set("api_base_url", e.target.value)}
-                  placeholder="(reuse embedding base URL)"
-                  size="small"
-                  fullWidth
-                />
-              </Field>
-              <Field label="API key" hint="Blank = reuse the embedding API key. Stored on the backend, never shown.">
-                <TextField
-                  value={form.api_key}
-                  onChange={(e) => set("api_key", e.target.value)}
-                  placeholder={status?.reuses_embedding_key ? "(reusing embedding key)" : "Paste API key"}
-                  type="password"
-                  autoComplete="off"
-                  size="small"
-                  fullWidth
-                />
-              </Field>
-            </>
+            <CatalogModelPicker
+              capability="rerank"
+              provider={form.api_provider}
+              model={form.api_model}
+              providersWithKey={providersWithKey}
+              onNavigate={onNavigate}
+              onPick={({ provider, model, base_url, api_key }) =>
+                setForm((prev) => ({
+                  ...prev,
+                  api_provider: provider,
+                  api_model: model,
+                  ...(base_url !== undefined ? { api_base_url: base_url } : {}),
+                  ...(api_key !== undefined ? { api_key } : {}),
+                }))
+              }
+              manualBaseUrl={form.api_base_url}
+              manualApiKey={form.api_key}
+            />
           )}
         </SubCard>
 

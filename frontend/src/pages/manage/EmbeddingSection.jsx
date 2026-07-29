@@ -24,7 +24,9 @@ import {
   testEmbeddingConnection,
   reembedLibrary,
   rescanDocuments,
+  getSettings,
 } from "../../api";
+import CatalogModelPicker from "./CatalogModelPicker";
 
 const ACCENT = "#214f42";
 
@@ -33,9 +35,10 @@ const ACCENT = "#214f42";
 const DEFAULTS = {
   provider: "local", // "local" | "api"
   local_model: "BAAI/bge-small-en-v1.5",
-  api_base_url: "https://open.bigmodel.cn/api/paas/v4/",
+  api_provider: "", // catalog provider id (e.g. "zhipu")
+  api_base_url: "",
   api_key: "",
-  api_model: "embedding-3",
+  api_model: "",
   dimensions: 1024,
   auto_detect_dimensions: true,
   symmetric: true,
@@ -96,11 +99,12 @@ function SubCard({ title, children }) {
 }
 
 // Embedding model configuration (renders inside the Manage content card).
-export default function EmbeddingSection() {
+export default function EmbeddingSection({ onNavigate }) {
   const [form, setForm] = useState(DEFAULTS);
   const [status, setStatus] = useState(null); // backend-reported active state, if any
   const [connected, setConnected] = useState(false); // whether the backend endpoint exists yet
   const [customLocal, setCustomLocal] = useState(false);
+  const [providersWithKey, setProvidersWithKey] = useState(null); // Set of provider ids with a key
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -113,9 +117,32 @@ export default function EmbeddingSection() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // Apply a catalog provider+model pick (keys stay on the LLM & API keys page).
+  function handlePick({ provider, model, base_url, dimensions }) {
+    setForm((prev) => ({
+      ...prev,
+      api_provider: provider,
+      api_model: model,
+      api_base_url: base_url !== undefined ? base_url : prev.api_base_url,
+      dimensions: dimensions ?? prev.dimensions,
+    }));
+  }
+
   async function load() {
     setLoading(true);
     setError("");
+    // Which providers already have a key (from the central LLM & API keys store).
+    getSettings()
+      .then((s) =>
+        setProvidersWithKey(
+          new Set(
+            Object.entries(s.masked_provider_keys || {})
+              .filter(([, masked]) => Boolean(masked))
+              .map(([provider]) => provider),
+          ),
+        ),
+      )
+      .catch(() => setProvidersWithKey(null));
     try {
       const result = await getEmbeddingSettings();
       const loaded = { ...DEFAULTS, ...(result.settings || result) };
@@ -149,7 +176,7 @@ export default function EmbeddingSection() {
       form.provider !== initial.provider ||
       (form.provider === "local"
         ? form.local_model !== initial.local_model
-        : form.api_model !== initial.api_model);
+        : form.api_provider !== initial.api_provider || form.api_model !== initial.api_model);
 
     if (modelChanged) {
       c.push({
@@ -167,14 +194,6 @@ export default function EmbeddingSection() {
         severity: "warning",
         label: "Vector dimension",
         message: "A different dimension uses a different vector table — run Re-embed library.",
-      });
-    }
-    if (form.provider === "api" && (form.api_base_url !== initial.api_base_url || (form.api_key || "").trim())) {
-      c.push({
-        key: "api",
-        severity: "info",
-        label: "API connection",
-        message: "Updates the endpoint/key. Saving probes the model once to confirm connectivity and dimension.",
       });
     }
     if (form.chunk_token_budget !== initial.chunk_token_budget) {
@@ -425,38 +444,22 @@ export default function EmbeddingSection() {
           </SubCard>
         )}
 
-        {/* API configuration */}
+        {/* API model — pick a catalogued provider + model. Keys live on the LLM & API keys page. */}
         {isApi && (
-          <SubCard title="API provider">
-            <Field label="Base URL" hint="OpenAI-compatible embeddings endpoint. Zhipu: https://open.bigmodel.cn/api/paas/v4/">
-              <TextField
-                value={form.api_base_url}
-                onChange={(e) => set("api_base_url", e.target.value)}
-                placeholder="https://…"
-                size="small"
-                fullWidth
-              />
-            </Field>
-            <Field label="API key" hint="Stored on the backend; leave blank to keep the existing key.">
-              <TextField
-                value={form.api_key}
-                onChange={(e) => set("api_key", e.target.value)}
-                placeholder={status?.api_key_masked || "Paste API key"}
-                type="password"
-                autoComplete="off"
-                size="small"
-                fullWidth
-              />
-            </Field>
-            <Field label="Model name" hint="e.g. embedding-3 (Zhipu), text-embedding-3-small (OpenAI)">
-              <TextField
-                value={form.api_model}
-                onChange={(e) => set("api_model", e.target.value)}
-                placeholder="embedding-3"
-                size="small"
-                sx={{ maxWidth: 320 }}
-              />
-            </Field>
+          <SubCard title="API model">
+            <CatalogModelPicker
+              capability="embedding"
+              provider={form.api_provider}
+              model={form.api_model}
+              providersWithKey={providersWithKey}
+              onNavigate={onNavigate}
+              onPick={({ api_key, ...pick }) => {
+                handlePick(pick);
+                if (api_key !== undefined) set("api_key", api_key);
+              }}
+              manualBaseUrl={form.api_base_url}
+              manualApiKey={form.api_key}
+            />
             <FormControlLabel
               control={
                 <Switch
@@ -464,9 +467,9 @@ export default function EmbeddingSection() {
                   onChange={(e) => set("auto_detect_dimensions", e.target.checked)}
                 />
               }
-              label="Auto-detect dimension (probe once, read vector length)"
+              label="Auto-detect dimension on save (probe once, read vector length)"
             />
-            <Field label="Dimensions" hint="Vector length. Must match the stored column; a change requires a re-embed + migration.">
+            <Field label="Dimensions" hint="From the catalog; auto-detected on save unless you override. A change requires a re-embed.">
               <TextField
                 value={form.dimensions}
                 onChange={(e) => set("dimensions", Number(e.target.value))}
@@ -476,12 +479,6 @@ export default function EmbeddingSection() {
                 sx={{ maxWidth: 200 }}
               />
             </Field>
-            <FormControlLabel
-              control={
-                <Switch checked={form.symmetric} onChange={(e) => set("symmetric", e.target.checked)} />
-              }
-              label="Symmetric model (query and passage use the same encoding)"
-            />
           </SubCard>
         )}
 

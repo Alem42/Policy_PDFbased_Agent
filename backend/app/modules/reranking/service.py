@@ -43,14 +43,28 @@ def min_reranker_score() -> float:
 
 
 def _resolve_creds(config: RerankingConfig) -> tuple[str, str, str]:
-    """Reranker API base/key/model — reuse the embedding API creds when blank."""
-    base, key = config.api_base_url, config.api_key
+    """Reranker API base/key/model.
+
+    base URL from the catalog (by api_provider), key from the central provider-key
+    store. Falls back to the config's own creds, then to the embedding provider's
+    resolved creds (so "same provider as embedding" needs no extra typing).
+    """
+    from app.modules.catalog import service as catalog
+    from app.modules.settings.service import get_llm_api_key
+
+    base = ""
+    key = ""
+    if config.api_provider and config.api_provider != "__manual__":
+        base = catalog.resolve_base_url(config.api_provider, config.api_model, "rerank") or ""
+        key, _ = get_llm_api_key(config.api_provider)
+    base = base or config.api_base_url
+    key = key or config.api_key
     if not base or not key:
         from app.modules.embedding import service as embedding
 
-        emb = embedding.active_config()
-        base = base or emb.api_base_url
-        key = key or emb.api_key
+        emb_base, emb_key = embedding.api_credentials()
+        base = base or emb_base
+        key = key or emb_key
     return base, key, config.api_model
 
 
@@ -90,7 +104,11 @@ def rerank(question: str, chunks: list[dict], *, limit: int) -> list[dict]:
 def _merge(partial: dict) -> RerankingConfig:
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
-    if not (partial.get("api_key") or "").strip():
+    provider_changed = (
+        "api_provider" in partial
+        and partial.get("api_provider") != current.get("api_provider")
+    )
+    if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")
     return RerankingConfig(**merged)
 

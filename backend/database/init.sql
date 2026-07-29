@@ -330,6 +330,27 @@ CREATE TABLE IF NOT EXISTS "public"."embedding_settings" (
 ;
 
 -- ----------------------------
+-- Table structure for model_catalog (known provider/model/endpoint reference, no keys)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."model_catalog" (
+  "id" uuid NOT NULL,
+  "provider" text COLLATE "pg_catalog"."default" NOT NULL,
+  "provider_label" text COLLATE "pg_catalog"."default" NOT NULL,
+  "capability" text COLLATE "pg_catalog"."default" NOT NULL,
+  "model" text COLLATE "pg_catalog"."default" NOT NULL,
+  "base_url" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT '',
+  "endpoint" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT '',
+  "dimensions" int4,
+  "openai_compatible" bool NOT NULL DEFAULT true,
+  "notes" text COLLATE "pg_catalog"."default",
+  "sort_order" int4 NOT NULL DEFAULT 0,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "model_catalog_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "model_catalog_provider_capability_model_key" UNIQUE ("provider", "capability", "model")
+)
+;
+
+-- ----------------------------
 -- Table structure for reranking_settings (admin-tunable reranker config, one JSON row)
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS "public"."reranking_settings" (

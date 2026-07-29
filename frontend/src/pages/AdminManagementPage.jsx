@@ -74,6 +74,14 @@ export default function AdminManagementPage({ user, onNavigate }) {
   const active = SECTIONS.find((s) => s.id === activeId) || ordered[0];
   const ActiveComponent = active.Component;
 
+  function handleChildNavigate(target, options) {
+    if (SECTIONS.some((section) => section.id === target)) {
+      setActiveId(target);
+      return;
+    }
+    onNavigate(target, options);
+  }
+
   function persist(next) {
     try {
       localStorage.setItem(ORDER_KEY, JSON.stringify(next));
@@ -207,7 +215,7 @@ export default function AdminManagementPage({ user, onNavigate }) {
 
       {/* Main content: active section */}
       <Card sx={{ flex: 1, p: 3 }}>
-        <ActiveComponent user={user} onNavigate={onNavigate} />
+        <ActiveComponent user={user} onNavigate={handleChildNavigate} />
       </Card>
     </Box>
   );

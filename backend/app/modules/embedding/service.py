@@ -23,15 +23,35 @@ from app.modules.embedding.providers import (
     OpenAICompatibleProvider,
 )
 from app.modules.embedding.repository import embedding_settings_repository
-from app.modules.embedding.settings import EmbeddingConfig, mask_key, vector_table_name
+from app.modules.embedding.settings import EmbeddingConfig, vector_table_name
 
 # Lazy singleton cache of the active config + provider.
 _cache: dict = {"config": None, "provider": None}
 
 
+def _resolved_config(config: EmbeddingConfig) -> EmbeddingConfig:
+    """Fill api_base_url + api_key from the catalog + central provider-key store.
+
+    api_provider (a catalog provider id like "zhipu") -> base URL from the model
+    catalog and the key from the central store (entered on the LLM & API keys
+    page). Falls back to the config's own api_base_url/api_key when there is no
+    catalog/central entry (manual/legacy).
+    """
+    if config.provider != "api" or not config.api_provider or config.api_provider == "__manual__":
+        return config
+    from app.modules.catalog import service as catalog
+    from app.modules.settings.service import get_llm_api_key
+
+    base = catalog.resolve_base_url(config.api_provider, config.api_model, "embedding")
+    key, _ = get_llm_api_key(config.api_provider)
+    return config.model_copy(
+        update={"api_base_url": base or config.api_base_url, "api_key": key or config.api_key}
+    )
+
+
 def _build_provider(config: EmbeddingConfig) -> EmbeddingProvider:
     if config.provider == "api":
-        return OpenAICompatibleProvider(config)
+        return OpenAICompatibleProvider(_resolved_config(config))
     return LocalFastembedProvider(config)
 
 
@@ -39,6 +59,11 @@ def _reload() -> None:
     config = embedding_settings_repository.load()
     _cache["config"] = config
     _cache["provider"] = _build_provider(config)
+
+
+def invalidate_provider_cache() -> None:
+    """Rebuild the provider on next use (notably after a central key change)."""
+    _cache["provider"] = None
 
 
 def active_config() -> EmbeddingConfig:
@@ -95,6 +120,12 @@ def active_vector_table() -> str:
     return vector_table_name(cfg.active_model_id(), cfg.active_dimension())
 
 
+def api_credentials() -> tuple[str, str]:
+    """Resolved (base_url, api_key) for the active embedding config in API mode."""
+    resolved = _resolved_config(active_config())
+    return resolved.api_base_url, resolved.api_key
+
+
 # ── Admin config management ──────────────────────────────────────────────────
 
 
@@ -110,9 +141,9 @@ def _resolve_dimension(config: EmbeddingConfig) -> int:
     if config.provider == "local":
         if config.local_model in KNOWN_LOCAL_DIMENSIONS:
             return KNOWN_LOCAL_DIMENSIONS[config.local_model]
-        return providers.probe(config)["dimension"]
+        return providers.probe(_resolved_config(config))["dimension"]
     if config.auto_detect_dimensions:
-        return providers.probe(config)["dimension"]
+        return providers.probe(_resolved_config(config))["dimension"]
     return config.dimensions
 
 
@@ -126,7 +157,11 @@ def update_config(partial: dict) -> EmbeddingConfig:
     """
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
-    if not (partial.get("api_key") or "").strip():
+    provider_changed = (
+        "api_provider" in partial
+        and partial.get("api_provider") != current.get("api_provider")
+    )
+    if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")
     config = EmbeddingConfig(**merged)
     resolved = _resolve_dimension(config)
@@ -141,9 +176,13 @@ def test_connection(partial: dict) -> dict:
     """Probe connectivity for a candidate config (merged over the stored one)."""
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
-    if not (partial.get("api_key") or "").strip():
+    provider_changed = (
+        "api_provider" in partial
+        and partial.get("api_provider") != current.get("api_provider")
+    )
+    if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")
-    return providers.probe(EmbeddingConfig(**merged))
+    return providers.probe(_resolved_config(EmbeddingConfig(**merged)))
 
 
 def status() -> dict:
@@ -151,13 +190,17 @@ def status() -> dict:
     config = active_config()
     data = config.model_dump()
     data.pop("api_key", None)
+    if config.api_provider != "__manual__":
+        data.pop("api_base_url", None)  # resolved from the catalog
+    resolved = _resolved_config(config)
     return {
         "settings": data,
         "status": {
             "provider": config.provider,
+            "api_provider": config.api_provider,
             "model": config.active_model_id(),
             "dimension": config.active_dimension(),
             "vector_table": active_vector_table(),
-            "api_key_masked": mask_key(config.api_key),
+            "api_key_configured": bool(resolved.api_key),
         },
     }
