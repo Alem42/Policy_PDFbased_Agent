@@ -163,6 +163,35 @@ When adding a new column or table:
 2. Write a new `NNN_description.sql` in `database/migrations/` (for existing installs)
 3. Run the migration against the live database before deploying code that depends on it
 
+### Moving model providers and endpoints to production
+
+The built-in provider and endpoint presets live in code and are idempotently
+upserted when the catalog is first read. Endpoints added in **Manage > LLM &
+API keys**, however, are written directly to the local `model_providers` and
+`model_catalog` tables.
+
+Do not export the whole database or hand-write INSERT statements. Export only
+the non-secret catalog:
+
+```powershell
+docker compose exec backend python scripts/model_catalog_transfer.py export --output /app/data/model-catalog.json
+```
+
+The bind mount makes that file available at
+`backend/data/model-catalog.json`. Copy it to the production checkout, apply
+the new idempotent provider migration to an existing database, and import:
+
+```powershell
+Get-Content backend/database/migrations/009_add_model_providers.sql -Raw |
+  docker compose exec -T db psql -U appuser -d testdb
+docker compose exec backend python scripts/model_catalog_transfer.py import --input /app/data/model-catalog.json
+```
+
+The import performs upserts and does not delete online-only rows. The JSON
+contains provider metadata and endpoint facts only; API keys remain in each
+deployment's runtime settings and must be entered separately in the production
+admin UI.
+
 With `DATABASE_ENABLED=false`, the application can still start and expose its
 health endpoint, and crawler source/job APIs use their in-memory fallback. Routes
 whose repositories connect directly to PostgreSQL still require a working
