@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,6 +46,13 @@ def process_document(document_id: str) -> None:
         )
         document_content_repository.replace_pages(document_id, pages)
         document_repository.set_status(document_id, "parsed")
+        # L2 dedup support: hash of the normalised extracted text, distinct from
+        # the L1 sha256 (exact bytes) — catches re-saved/reformatted copies.
+        extracted_text = "\n".join(page.get("text") or "" for page in pages)
+        if extracted_text.strip():
+            document_repository.set_content_hash(
+                document_id, document_file_store.normalized_content_hash(extracted_text)
+            )
 
         try:
             metadata, model_name = generate_document_metadata(
@@ -106,7 +116,13 @@ def process_document(document_id: str) -> None:
         raise
 
 
-async def save_upload(upload: UploadFile) -> dict:
+async def save_upload(
+    upload: UploadFile,
+    *,
+    source_url: str | None = None,
+    imported_by: str | None = None,
+    imported_via: str | None = None,
+) -> dict:
     filename = document_file_store.safe_filename(upload.filename or "")
     content = await upload.read()
     if not document_file_store.is_valid_content(filename, content):
@@ -115,11 +131,10 @@ async def save_upload(upload: UploadFile) -> dict:
     checksum = document_file_store.checksum(content)
     # L1 exact-duplicate guard: identical bytes -> identical SHA-256. Check before
     # writing to disk so a duplicate never touches the filesystem or the DB.
-    # TODO(L2): also compare a normalised extracted-text hash to catch re-saved /
-    #   re-compressed / reformatted copies (byte-different but content-same);
-    #   compute it after extraction and store it in a second column.
-    # TODO(L3): near-duplicate detection via document-embedding cosine similarity
-    #   (>~0.95) to catch lightly-edited versions; reuse the chunk embeddings.
+    # L2 (normalised-text hash) and L3 (embedding similarity) dedup run in
+    # save_web_import(), after extraction/embedding produce something to
+    # compare — see process_document()'s content_hash step and
+    # _find_near_duplicate() below.
     existing = document_repository.find_by_checksum(checksum)
     if existing:
         raise DuplicateDocumentError(str(existing["id"]), existing["original_filename"])
@@ -135,12 +150,95 @@ async def save_upload(upload: UploadFile) -> dict:
             content=content,
             checksum=checksum,
             mime_type=document_file_store.mime_type_for(filename),
+            source_url=source_url,
+            imported_by=imported_by,
+            imported_via=imported_via,
         )
     except Exception:
         document_file_store.delete(path)
         raise
     logger.info("Upload saved: document_id=%s filename=%s", document_id, filename)
     return row_to_metadata(document_repository.get_record(document_id))
+
+
+# Cosine-distance cutoff for L3 near-duplicate detection. pgvector's `<=>`
+# operator returns cosine DISTANCE (0 = identical); >0.95 cosine SIMILARITY
+# corresponds to <=0.05 distance.
+L3_NEAR_DUPLICATE_DISTANCE = 0.05
+
+
+def _slugify_filename(title: str, url: str) -> str:
+    base = re.sub(r"[^\w\- ]+", "", title or "").strip().replace(" ", "_")[:80]
+    if not base:
+        base = document_file_store.checksum(url.encode("utf-8"))[:16]
+    return f"{base}.md"
+
+
+def _find_near_duplicate(document_id: str, sample_text: str) -> dict | None:
+    """L3 dedup: is this document's content an embedding near-duplicate of an
+    already-indexed document? Returns the existing document record if so."""
+    if not sample_text.strip():
+        return None
+    query_vector = vector_literal(embed_query(sample_text[:4000]))
+    candidates = embedding_repository.retrieve_all(query_vector, limit=5, include_restricted=True)
+    for candidate in candidates:
+        if candidate["document_id"] == document_id:
+            continue
+        if candidate["distance"] <= L3_NEAR_DUPLICATE_DISTANCE:
+            return document_repository.get_record(candidate["document_id"], include_restricted=True)
+    return None
+
+
+async def save_web_import(
+    *,
+    url: str,
+    title: str,
+    markdown: str,
+    imported_by: str,
+    imported_via: str = "web_search",
+) -> tuple[dict, bool]:
+    """Import a fetched web page as a citable document.
+
+    Reuses save_upload()/process_document() unchanged: the page content is
+    wrapped as a synthetic .md UploadFile so it goes through the exact same
+    extraction/chunk/embed pipeline as a real upload.
+
+    Returns (document_metadata, was_duplicate). Two dedup layers run before a
+    new document is kept:
+      (a) exact source_url match -> reuse the existing document immediately.
+      (b) after processing: normalised-content-hash (L2), then embedding
+          cosine-similarity >0.95 (L3) against the rest of the corpus ->
+          reuse the existing document, discard the new one.
+    """
+    existing_by_url = document_repository.find_by_source_url(url)
+    if existing_by_url:
+        record = document_repository.get_record(existing_by_url["id"], include_restricted=True)
+        return row_to_metadata(record), True
+
+    filename = _slugify_filename(title, url)
+    upload = UploadFile(filename=filename, file=io.BytesIO(markdown.encode("utf-8")))
+    saved = await save_upload(
+        upload,
+        source_url=url,
+        imported_by=imported_by,
+        imported_via=imported_via,
+    )
+    document_id = saved["id"]
+
+    await asyncio.to_thread(process_document, document_id)
+
+    content_hash = document_file_store.normalized_content_hash(markdown)
+    duplicate = document_repository.find_by_content_hash(content_hash, exclude_id=document_id)
+    if duplicate is None:
+        duplicate = _find_near_duplicate(document_id, markdown)
+
+    if duplicate is not None:
+        delete_document(document_id)
+        record = document_repository.get_record(duplicate["id"], include_restricted=True)
+        return row_to_metadata(record), True
+
+    record = document_repository.get_record(document_id, include_restricted=True)
+    return row_to_metadata(record), False
 
 
 def sync_existing_documents() -> None:
