@@ -163,10 +163,11 @@ async def search_full_corpus(
     """Search the ENTIRE document library, not just documents selected for
     this conversation.
 
-    Only call this after search_internal_documents reports
-    evidence_sufficient=false — e.g. another user may have already imported
-    relevant material into the shared library. Each result has a `number`:
-    cite it with exactly that [N], never a guessed or recomputed one.
+    Call this after selected-document evidence is insufficient, or when a
+    previous result was topically similar but failed a critical constraint
+    in the user's question. Each result has a `number`: cite it with exactly
+    that [N], never a guessed or recomputed one. The ReAct loop enforces a
+    small per-turn call budget, so materially reformulate any second query.
     """
 
     def _run() -> tuple[bool, str | None, list[dict]]:
@@ -201,15 +202,48 @@ async def search_full_corpus(
 def ask_user(question: str, options: list[str] | None = None) -> str:
     """Pause and ask the user to confirm whether to search the public web.
 
-    Use this when internal documents don't have enough evidence and the
-    user's message did not already make clear they want a web search — do
-    NOT use it if the user already said things like "search the web" /
-    "look it up online" (go straight to search_web instead).
+    Use this when retrieved documents don't actually support the user's
+    question, including when a similarity heuristic says they are relevant
+    but the excerpts miss a critical subject, country, organisation, or time
+    period. Do NOT use it if the user already explicitly requested web search
+    (go straight to search_web instead).
     """
     answer = interrupt(
         {"type": "confirm_websearch", "question": question, "options": options or ["Yes", "No"]}
     )
     return str(answer)
+
+
+@tool
+def prepare_final_answer(
+    answer_plan: str,
+    citation_numbers: list[int] | None,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Finish the ReAct research loop and hand off to the streaming answer writer.
+
+    Call this only when no more tools or user input are needed. The answer
+    plan should briefly state what the final answer must say. Citation
+    numbers must be exact source numbers already returned by search tools.
+    Do not put the final prose answer in this tool call: a separate
+    generation node writes and streams it to the user.
+    """
+    payload = {
+        "ready": True,
+        "answer_plan": answer_plan,
+        "citation_numbers": citation_numbers or [],
+    }
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(payload, default=str),
+                    tool_call_id=tool_call_id,
+                    name="prepare_final_answer",
+                )
+            ]
+        }
+    )
 
 
 def _cosine_distance(a: list[float], b: list[float]) -> float:
@@ -385,6 +419,7 @@ ALL_TOOLS = [
     search_internal_documents,
     search_full_corpus,
     ask_user,
+    prepare_final_answer,
     search_web,
     import_web_page,
 ]

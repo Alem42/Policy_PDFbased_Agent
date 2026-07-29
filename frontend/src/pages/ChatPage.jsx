@@ -728,6 +728,7 @@ export default function ChatPage({
     search_full_corpus: "Searching the full document library…",
     search_web: "Searching the web…",
     import_web_page: "Importing the page…",
+    prepare_final_answer: "Preparing the final answer…",
   };
 
   function ensureStreamingPlaceholder(current) {

@@ -29,18 +29,22 @@ placed right after the sentence that uses that source, before punctuation.
 Do not invent a source number that wasn't actually given to you by a tool.
 """
 
-# Document Analysis mode: only search_internal_documents is bound (see
-# graph.py::_tools_for) -- no full-corpus/web escalation tools exist in this
-# mode, so the strategy is just "search once, answer or refuse."
+# Document Analysis mode only has the selected-document search and the final
+# answer hand-off (see graph.py::_tools_for). No full-corpus/web escalation
+# tools exist in this mode.
 ANALYSIS_STRATEGY_PROMPT = (
     """Tools and strategy (Document Analysis mode):
-You have exactly one tool: search_internal_documents. Call it once for the
-user's question.
-- If evidence_sufficient=true, answer using only the returned sources.
-- If evidence_sufficient=false, say plainly that the selected documents
-  don't contain enough information to answer this — do not guess, do not
-  offer to search the web or the wider library (not available in this
-  mode), and do not fall back on general knowledge.
+You must act through tools; never write the user-facing answer directly.
+1. Call search_internal_documents once for the user's question.
+2. Then call prepare_final_answer:
+   - If evidence_sufficient=true, give it a concise plan for an answer using
+     only the returned sources and their exact citation numbers.
+   - If evidence_sufficient=false, give it a plan to explain plainly that the
+     selected documents do not contain enough information. Do not guess,
+     offer web/full-library search (not available in this mode), or fall back
+     on general knowledge.
+prepare_final_answer is only a hand-off. Do not put the answer itself in its
+arguments; the final writer will generate and stream it.
 
 """
     + CITATION_NUMBERING_RULE
@@ -56,18 +60,28 @@ user's question.
 # is something only Open Discussion's knowledge boundary already permits.
 AGENT_STRATEGY_PROMPT = (
     """Tools and strategy (Open Discussion mode):
-You answer by calling tools in a loop, then writing a final answer. Follow
-this order and stop as soon as you have enough evidence — don't call tools
-you don't need:
+You must act through tools on every turn; never write a user-facing answer
+or question directly. Call tools in a loop, following this order, and stop
+as soon as you have enough evidence:
+
+The evidence_sufficient field is a retrieval heuristic, not an instruction
+you must obey blindly. Inspect the returned titles and excerpts against the
+user's actual question. If a critical requested subject, country,
+organisation, or time period is missing, treat the evidence as insufficient
+even when evidence_sufficient=true.
 
 1. search_internal_documents — ALWAYS call this first.
-   - If evidence_sufficient=true, you very likely have what you need: write
-     the answer now, citing the returned sources. Do not search further just
-     because more sources might exist.
+   - If evidence_sufficient=true, you very likely have what you need: call
+     prepare_final_answer with a concise writing plan and the exact citation
+     numbers. Do not search further just because more sources might exist.
 2. If evidence_sufficient=false: call search_full_corpus (the rest of the
    shared library, not just this conversation's selected documents).
-   - If that returns evidence_sufficient=true, answer from it, citing its
-     sources.
+   - If that returns evidence_sufficient=true, call prepare_final_answer with
+     a plan grounded in those sources and their exact citation numbers, but
+     only if the excerpts really cover the user's critical constraints.
+   - You may use search_full_corpus at most twice to materially reformulate
+     the query. If it is no longer offered, choose ask_user, search_web when
+     already authorised, or prepare_final_answer; never try to call it again.
 3. If still insufficient, decide whether the user's own message already
    asked you to search the web (phrases like "search the web", "look it up
    online", "check online"). If they did, skip straight to search_web.
@@ -75,8 +89,8 @@ you don't need:
    do not search the web on your own initiative without either the user's
    explicit request or their confirmation via that tool.
 4. If confirmed (or already requested): call search_web.
-   - If evidence_sufficient=true, you may answer using those results,
-     citing them as web sources.
+   - If evidence_sufficient=true, call prepare_final_answer with a plan that
+     uses those results as web sources.
 5. import_web_page (admin users only, when the tool is available to you):
    only call this if the user explicitly asks to save/import a specific web
    page into the knowledge base. It is a separate, permanent action from
@@ -84,8 +98,9 @@ you don't need:
    it just because you already ran search_web.
 6. If none of the above produced sufficient evidence, you may still answer
    from your own general knowledge per the Open Discussion boundary below,
-   clearly labelled as such — but if you haven't already asked (via
-   ask_user) whether to search the web, offer that too.
+   clearly labelled as such, by calling prepare_final_answer with that plan.
+   But if you haven't already asked whether to search the web, call ask_user
+   first rather than putting an offer in the final answer.
 
 CRITICAL: any time you want to ask the user whether to search the web — for
 insufficient evidence, or as a follow-up offer after already answering from
@@ -95,9 +110,33 @@ actual ask_user tool call into an actionable prompt the user can respond to;
 a question written as prose is not clickable and just stalls the
 conversation.
 
+If retrieved results are topically similar but fail a critical constraint
+from the user's question, ask_user is valid even if a retrieval tool reported
+evidence_sufficient=true.
+
+When the research loop is complete, your final action MUST be
+prepare_final_answer. It is a hand-off to a separate streaming writer, so
+give it only a concise answer plan and exact citation numbers — never the
+full prose answer.
+
 """
     + CITATION_NUMBERING_RULE
 )
+
+FINAL_ANSWER_WRITER_PROMPT = """Final answer phase:
+The ReAct research loop is complete. The conversation contains the search
+tool results and ends with a prepare_final_answer tool result containing the
+approved answer plan and citation numbers.
+
+Write the final user-facing answer now. Follow the requested persona, style,
+knowledge boundary, and the approved plan. Use only exact citation `number`
+values present in tool results; never renumber or invent citations.
+
+Return only the answer body. Do not call or describe tools, expose the
+research trace, ask whether to search the web, or offer an action that would
+require another user confirmation. Those decisions belong to the completed
+ReAct phase.
+"""
 
 
 def get_agent_system_prompt(
@@ -139,4 +178,32 @@ def get_agent_system_prompt(
             "import pages into the knowledge base. Do not claim you imported "
             "anything."
         )
+    return "\n".join(part.strip() for part in parts if part.strip())
+
+
+def get_final_answer_system_prompt(
+    response_mode: ResponseMode = "researcher",
+    answer_mode: AnswerMode = "analysis",
+) -> str:
+    """Prompt for the tool-free writer that runs after prepare_final_answer."""
+    if response_mode == "policymaker":
+        parts = [
+            POLICYMAKER_BASE_SYSTEM_PROMPT,
+            POLICYMAKER_STYLE_PROMPT,
+            POLICYMAKER_BOUNDARY_PROMPT,
+            FINAL_ANSWER_WRITER_PROMPT,
+            CITATION_NUMBERING_RULE,
+        ]
+        return "\n".join(part.strip() for part in parts if part.strip())
+
+    style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
+    is_chat_mode = answer_mode == "chat"
+    boundary = CHAT_BOUNDARY_PROMPT if is_chat_mode else ANALYSIS_BOUNDARY_PROMPT
+    parts = [BASE_SYSTEM_PROMPT, style]
+    if not is_chat_mode:
+        structure = (
+            STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
+        )
+        parts.append(structure)
+    parts.extend([boundary, FINAL_ANSWER_WRITER_PROMPT, CITATION_NUMBERING_RULE])
     return "\n".join(part.strip() for part in parts if part.strip())

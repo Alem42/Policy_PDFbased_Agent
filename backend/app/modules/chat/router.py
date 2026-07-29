@@ -220,7 +220,10 @@ async def _stream_agent_events(
             async for mode, chunk in stream:
                 if mode == "messages":
                     message, meta = chunk
-                    if meta.get("langgraph_node") == "agent" and getattr(message, "content", None):
+                    if (
+                        meta.get("langgraph_node") == "final_generation"
+                        and getattr(message, "content", None)
+                    ):
                         full_tokens.append(message.content)
                         yield _sse({"type": "token", "value": message.content})
                     continue
@@ -372,6 +375,7 @@ async def chat_stream(
         "include_restricted": is_admin,
         "is_admin": is_admin,
         "user_id": user_id,
+        "tool_call_counts": {},
     }
 
     return StreamingResponse(

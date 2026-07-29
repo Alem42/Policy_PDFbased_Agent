@@ -4,8 +4,17 @@ dedup, and admin-only tool filtering. These don't hit the database."""
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.modules.chat.rag.agent.graph import ALL_TOOLS, NON_ADMIN_TOOLS, _tools_for
+from app.modules.chat.rag.agent.graph import (
+    ALL_TOOLS,
+    NON_ADMIN_TOOLS,
+    TOOL_CALL_LIMITS,
+    _tools_for,
+    agent_node,
+    record_tool_call_node,
+    route_after_tools,
+)
 from app.modules.chat.rag.agent.state import add_citations
 from app.modules.chat.rag.agent.tools import _cosine_distance, _number_citations, _score_web_results
 from app.modules.chat.rag.web_search.contracts import WebSearchResult
@@ -93,12 +102,11 @@ def test_import_web_page_hidden_from_non_admin_tool_binding() -> None:
 
 
 def test_document_analysis_mode_only_offers_internal_search() -> None:
-    # Document Analysis mode has no full-corpus/web escalation tools at all —
-    # that belongs to Open Discussion mode, which already permits going
-    # beyond the selected documents.
+    # Document Analysis mode has no full-corpus/web escalation tools; it can
+    # only search the selected documents and hand off to the final writer.
     for is_admin in (True, False):
         names = {t.name for t in _tools_for(is_admin, "analysis")}
-        assert names == {"search_internal_documents"}
+        assert names == {"search_internal_documents", "prepare_final_answer"}
 
 
 def test_open_discussion_mode_offers_full_tool_set() -> None:
@@ -108,11 +116,140 @@ def test_open_discussion_mode_offers_full_tool_set() -> None:
         "search_internal_documents",
         "search_full_corpus",
         "ask_user",
+        "prepare_final_answer",
         "search_web",
         "import_web_page",
     }
     assert "import_web_page" not in non_admin_names
     assert admin_names - non_admin_names == {"import_web_page"}
+
+
+def test_exhausted_tool_is_removed_from_next_agent_turn() -> None:
+    names = {
+        tool.name
+        for tool in _tools_for(
+            False,
+            "chat",
+            {"search_full_corpus": TOOL_CALL_LIMITS["search_full_corpus"]},
+        )
+    }
+    assert "search_full_corpus" not in names
+    assert "ask_user" in names
+    assert "prepare_final_answer" in names
+
+
+def test_record_tool_call_increments_only_selected_action() -> None:
+    message = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_full_corpus",
+                "args": {"query": "Russia policy"},
+                "id": "call-1",
+                "type": "tool_call",
+            }
+        ],
+    )
+    update = record_tool_call_node(
+        {"messages": [message], "tool_call_counts": {"search_internal_documents": 1}}
+    )
+    assert update["tool_call_counts"] == {
+        "search_internal_documents": 1,
+        "search_full_corpus": 1,
+    }
+
+
+async def test_agent_retries_when_provider_selects_exhausted_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.modules.chat.rag.agent.graph as graph_module
+
+    responses = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_full_corpus",
+                    "args": {"query": "Russia policy"},
+                    "id": "call-exhausted",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "ask_user",
+                    "args": {"question": "Search the web?", "options": ["Yes", "No"]},
+                    "id": "call-ask",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+    ]
+    invocations: list[list] = []
+
+    class FakeClient:
+        def bind_tools(self, tools, **kwargs):
+            assert "search_full_corpus" not in {tool.name for tool in tools}
+            assert kwargs["tool_choice"] == "required"
+            return self
+
+        async def ainvoke(self, messages):
+            invocations.append(messages)
+            return responses.pop(0)
+
+    monkeypatch.setattr(
+        graph_module,
+        "resolve_generation_target",
+        lambda model: ("fake", "model", {}),
+    )
+    monkeypatch.setattr(graph_module, "create_chat_client", lambda provider, model: FakeClient())
+    monkeypatch.setattr(graph_module, "get_agent_system_prompt", lambda *args, **kwargs: "prompt")
+
+    result = await agent_node(
+        {
+            "messages": [HumanMessage(content="Tell me about Russian policy")],
+            "answer_mode": "chat",
+            "is_admin": False,
+            "tool_call_counts": {
+                "search_internal_documents": 1,
+                "search_full_corpus": TOOL_CALL_LIMITS["search_full_corpus"],
+            },
+        }
+    )
+
+    assert result["messages"][0].tool_calls[0]["name"] == "ask_user"
+    assert len(invocations) == 2
+    assert isinstance(invocations[1][-1], ToolMessage)
+    assert "no longer available" in invocations[1][-1].content
+
+
+def test_prepare_final_answer_routes_to_streaming_generation() -> None:
+    state = {
+        "messages": [
+            ToolMessage(
+                content='{"ready": true}',
+                tool_call_id="call-1",
+                name="prepare_final_answer",
+            )
+        ]
+    }
+    assert route_after_tools(state) == "final_generation"
+
+
+def test_other_tool_results_return_to_agent_loop() -> None:
+    state = {
+        "messages": [
+            ToolMessage(
+                content='{"evidence_sufficient": false}',
+                tool_call_id="call-1",
+                name="search_full_corpus",
+            )
+        ]
+    }
+    assert route_after_tools(state) == "agent"
 
 
 def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:
