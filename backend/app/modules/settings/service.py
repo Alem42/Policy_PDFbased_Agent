@@ -1,5 +1,15 @@
+from app.core.config import get_settings
 from app.core.llm_providers import DEFAULT_PROVIDER, get_provider_config
 from app.modules.settings.repository import settings_repository
+
+# Known web-search provider ids. Unlike chat-model providers these aren't backed
+# by a DB-driven catalog (there's no per-provider model list to manage) — a
+# small static registry is enough to validate settings updates.
+DEFAULT_WEB_SEARCH_PROVIDER = "firecrawl"
+KNOWN_WEB_SEARCH_PROVIDERS: dict[str, str] = {
+    "firecrawl": "Firecrawl",
+    "tavily": "Tavily",
+}
 
 
 def _catalog() -> dict:
@@ -37,6 +47,23 @@ def get_provider_api_key(provider: str | None = None) -> str | None:
     return settings_repository.load().provider_api_keys.get(provider_id)
 
 
+def get_web_search_provider() -> str:
+    return settings_repository.load().web_search_provider or DEFAULT_WEB_SEARCH_PROVIDER
+
+
+def get_web_search_provider_api_key(provider: str | None = None) -> str | None:
+    provider_id = provider or get_web_search_provider()
+    key = settings_repository.load().web_search_provider_api_keys.get(provider_id)
+    if key:
+        return key
+    # Fall back to the env var the crawling module already reads, so an
+    # operator who configured FIRECRAWL_API_KEY for crawling doesn't have to
+    # duplicate it in the runtime settings store.
+    if provider_id == "firecrawl":
+        return get_settings().firecrawl_api_key
+    return None
+
+
 def mask_api_key(api_key: str | None) -> str | None:
     if not api_key:
         return None
@@ -51,6 +78,9 @@ def get_public_settings() -> dict:
     provider = get_llm_provider()
     model = get_llm_chat_model()
     key = get_provider_api_key(provider)
+    web_search_provider_ids = set(KNOWN_WEB_SEARCH_PROVIDERS) | set(
+        runtime.web_search_provider_api_keys
+    )
     return {
         "llm_configured": bool(key),
         "llm_provider": provider,
@@ -59,6 +89,11 @@ def get_public_settings() -> dict:
             provider_id: mask_api_key(get_provider_api_key(provider_id))
             for provider_id in sorted(provider_ids)
         },
+        "web_search_provider": get_web_search_provider(),
+        "masked_web_search_provider_keys": {
+            provider_id: mask_api_key(get_web_search_provider_api_key(provider_id))
+            for provider_id in sorted(web_search_provider_ids)
+        },
     }
 
 
@@ -66,6 +101,8 @@ def update_public_settings(
     llm_chat_model: str | None = None,
     llm_provider: str | None = None,
     provider_api_keys: dict[str, str] | None = None,
+    web_search_provider: str | None = None,
+    web_search_provider_api_keys: dict[str, str] | None = None,
 ) -> dict:
     runtime = settings_repository.load()
     provider_ids = _known_provider_ids()
@@ -104,6 +141,25 @@ def update_public_settings(
             else:
                 updated_keys.pop(provider, None)
         runtime.provider_api_keys = updated_keys
+
+    if web_search_provider is not None:
+        selected = web_search_provider.strip()
+        if selected not in KNOWN_WEB_SEARCH_PROVIDERS:
+            raise ValueError(f"Unknown web search provider: {selected!r}.")
+        runtime.web_search_provider = selected
+
+    if web_search_provider_api_keys is not None:
+        updated_web_search_keys = dict(runtime.web_search_provider_api_keys)
+        allowed = set(KNOWN_WEB_SEARCH_PROVIDERS) | set(updated_web_search_keys)
+        for provider, key in web_search_provider_api_keys.items():
+            if provider not in allowed:
+                continue
+            cleaned = (key or "").strip()
+            if cleaned:
+                updated_web_search_keys[provider] = cleaned
+            else:
+                updated_web_search_keys.pop(provider, None)
+        runtime.web_search_provider_api_keys = updated_web_search_keys
 
     settings_repository.save(runtime)
     try:
