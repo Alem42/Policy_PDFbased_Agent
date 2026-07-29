@@ -51,6 +51,20 @@ class Citation(BaseModel):
     source_url: str | None = None
     page: int | None = None
     quote: str | None = None
+    # "document" (selected/library/imported document chunk) or "web" (a live
+    # web search result that was never imported). Defaults to "document" for
+    # the classic RAG path, which never had live web results.
+    source_type: Literal["document", "web"] = "document"
+
+
+class ResumeChatRequest(BaseModel):
+    """Resumes a chat turn that was paused by interrupt() — e.g. the user's
+    answer to a confirm_websearch or confirm_import prompt."""
+
+    session_id: UUID
+    # Whatever the interrupted tool's `interrupt()` call expects back: a
+    # yes/no string for ask_user, a bool for import_web_page's confirmation.
+    answer: str | bool
 
 
 class ChatResponse(BaseModel):

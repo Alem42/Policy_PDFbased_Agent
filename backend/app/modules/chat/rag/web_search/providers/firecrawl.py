@@ -34,7 +34,9 @@ class FirecrawlSearchProvider:
     name = "firecrawl"
 
     def __init__(self, api_key: str | None = None) -> None:
-        self._api_key = api_key if api_key is not None else get_web_search_provider_api_key("firecrawl")
+        self._api_key = (
+            api_key if api_key is not None else get_web_search_provider_api_key("firecrawl")
+        )
 
     def _client(self):
         if not self._api_key:

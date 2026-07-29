@@ -10,7 +10,11 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from app.modules.chat.rag.evidence import assess_evidence_sufficiency, max_vector_distance, min_reranker_score
+from app.modules.chat.rag.evidence import (
+    assess_evidence_sufficiency,
+    max_vector_distance,
+    min_reranker_score,
+)
 from app.modules.chat.rag.graph.nodes import (
     check_evidence_node,
     load_documents_node,
@@ -20,11 +24,8 @@ from app.modules.chat.rag.graph.state import PDFQAState
 from app.modules.chat.rag.web_search.contracts import WebSearchProviderError, WebSearchResult
 from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
 from app.modules.documents.embeddings import embed_documents, embed_query
-from app.modules.documents.service import (
-    read_documents,
-    save_web_import,
-    search_full_corpus as search_full_corpus_service,
-)
+from app.modules.documents.service import save_web_import
+from app.modules.documents.service import search_full_corpus as search_full_corpus_service
 from app.modules.reranking.service import enabled as reranker_enabled
 from app.modules.reranking.service import rerank as rerank_chunks
 
@@ -276,7 +277,10 @@ async def import_web_page(
     a single question.
     """
     if not is_admin:
-        payload = {"imported": False, "error": "Only admins can import pages into the knowledge base."}
+        payload = {
+            "imported": False,
+            "error": "Only admins can import pages into the knowledge base.",
+        }
         return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
 
     confirmed = interrupt(

@@ -16,7 +16,9 @@ class TavilySearchProvider:
     name = "tavily"
 
     def __init__(self, api_key: str | None = None) -> None:
-        self._api_key = api_key if api_key is not None else get_web_search_provider_api_key("tavily")
+        self._api_key = (
+            api_key if api_key is not None else get_web_search_provider_api_key("tavily")
+        )
 
     async def search(self, query: str, *, limit: int = 5) -> list[WebSearchResult]:
         raise WebSearchProviderError("The Tavily web search provider is not implemented yet.")

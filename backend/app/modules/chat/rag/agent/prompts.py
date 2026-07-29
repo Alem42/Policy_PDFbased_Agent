@@ -77,7 +77,11 @@ def get_agent_system_prompt(
         boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
         parts = [BASE_SYSTEM_PROMPT, style]
         if answer_mode == "analysis":
-            structure = STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
+            structure = (
+                STUDENT_STRUCTURE_PROMPT
+                if response_mode == "student"
+                else RESEARCHER_STRUCTURE_PROMPT
+            )
             parts.append(structure)
         parts.extend([boundary, AGENT_STRATEGY_PROMPT])
 

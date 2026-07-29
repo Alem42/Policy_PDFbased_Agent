@@ -17,7 +17,9 @@ class DocumentRepository:
             ).fetchone()
         return dict(row) if row else None
 
-    def find_by_content_hash(self, content_hash: str, *, exclude_id: str | None = None) -> dict | None:
+    def find_by_content_hash(
+        self, content_hash: str, *, exclude_id: str | None = None
+    ) -> dict | None:
         """Return an existing document with this normalised-text hash (L2 dedup)."""
         exclude_sql = "AND id != %s" if exclude_id else ""
         values = (content_hash, exclude_id) if exclude_id else (content_hash,)
