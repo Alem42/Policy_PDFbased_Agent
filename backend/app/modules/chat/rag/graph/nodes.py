@@ -3,7 +3,7 @@ from app.modules.chat.rag.evidence import (
     max_vector_distance,
 )
 from app.modules.chat.rag.generation import (
-    check_evidence_sufficiency_llm,
+    # check_evidence_sufficiency_llm,  # LLM semantic judge disabled (see check_evidence_node)
     format_context,
     generate_answer,
 )
@@ -116,19 +116,17 @@ def check_evidence_node(state: PDFQAState) -> dict:
         context=state.get("context", ""),
         has_embeddings=state.get("used_vector_retrieval", False),
     )
-    if sufficient:
-        # Second, semantic gate: the cheap vector/reranker check above only
-        # measures embedding closeness, which can be deceptively high for
-        # topically unrelated policy-language text. Ask the LLM itself to
-        # confirm the excerpts can actually answer the question before
-        # committing to a full (and more expensive) generation call.
-        llm_sufficient, llm_reason = check_evidence_sufficiency_llm(
-            question=state["question"],
-            citations=state.get("citations", []),
-            model=state.get("model"),
-        )
-        if not llm_sufficient:
-            return {"evidence_sufficient": False, "evidence_reason": llm_reason}
+    # LLM semantic judge (second gate) DISABLED. Evidence now relies only on the
+    # cheap vector-distance + reranker gate above. It was over-rejecting on-topic
+    # broad questions. To re-enable, restore the import and the block below.
+    # if sufficient:
+    #     llm_sufficient, llm_reason = check_evidence_sufficiency_llm(
+    #         question=state["question"],
+    #         citations=state.get("citations", []),
+    #         model=state.get("model"),
+    #     )
+    #     if not llm_sufficient:
+    #         return {"evidence_sufficient": False, "evidence_reason": llm_reason}
     return {
         "evidence_sufficient": sufficient,
         "evidence_reason": reason,
