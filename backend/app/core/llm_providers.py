@@ -1,98 +1,51 @@
 from __future__ import annotations
 
-# Supported LLM provider identifiers (used in settings and frontend selector).
-# Each entry maps a provider key to its default base URL, default model, any
-# provider-specific extra_body fields required by that API, and the curated
-# list of models selectable per-message from the chat UI.
-#
-# To add a new provider:
-#   1. Add an entry here with its base_url, default_model, extra_body, and models.
-#   2. Add the key to the frontend provider selector in SettingsPage.
-#   3. If the provider needs a custom base URL (e.g. self-hosted), set
-#      base_url to None and let the user configure llm_base_url in settings.
-#   4. Add a `<provider>_api_key` field to Settings (config.py) and
-#      RuntimeSettings (settings/schemas.py) so a key can be configured for it.
-
-PROVIDER_CONFIGS: dict[str, dict] = {
-    "deepseek": {
-        "label": "DeepSeek",
-        "base_url": "https://api.deepseek.com",
-        "default_model": "deepseek-chat",
-        # DeepSeek-specific: disable chain-of-thought "thinking" tokens so the
-        # response returns the final answer only, without internal reasoning text.
-        "extra_body": {"thinking": {"type": "disabled"}},
-        "models": [
-            {"id": "deepseek-chat", "label": "DeepSeek Chat"},
-            {"id": "deepseek-reasoner", "label": "DeepSeek Reasoner"},
-        ],
-    },
-    "openai": {
-        "label": "OpenAI",
-        "base_url": "https://api.openai.com/v1",
-        "default_model": "gpt-4o",
-        "extra_body": {},
-        "models": [
-            {"id": "gpt-4o", "label": "GPT-4o"},
-            {"id": "gpt-4o-mini", "label": "GPT-4o mini"},
-            {"id": "gpt-4.1", "label": "GPT-4.1"},
-        ],
-    },
-    "anthropic": {
-        "label": "Anthropic",
-        # Anthropic is accessed through its OpenAI-compatible endpoint.
-        "base_url": "https://api.anthropic.com/v1",
-        "default_model": "claude-sonnet-5",
-        "extra_body": {},
-        "models": [
-            {"id": "claude-opus-4-8", "label": "Claude Opus 4.8"},
-            {"id": "claude-sonnet-5", "label": "Claude Sonnet 5"},
-            {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5"},
-        ],
-    },
-    "gemini": {
-        "label": "Gemini",
-        # Gemini is accessed through its OpenAI-compatible endpoint.
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "default_model": "gemini-2.5-flash",
-        "extra_body": {},
-        "models": [
-            {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
-            {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
-        ],
-    },
-    "custom": {
-        "label": "Custom / self-hosted",
-        # For self-hosted or OpenAI-compatible APIs (e.g. Ollama, vLLM).
-        # base_url comes from the llm_base_url setting configured by the user.
-        "base_url": None,
-        "default_model": None,
-        "extra_body": {},
-        # No curated model list — the user types the model name directly.
-        "models": [],
-    },
-}
-
 DEFAULT_PROVIDER = "deepseek"
 
 
 def get_provider_config(provider: str | None) -> dict:
-    """Return the config dict for the given provider key.
+    """Build one chat-provider config exclusively from the endpoint catalog."""
+    from app.modules.catalog.service import get_catalog
 
-    Falls back to DEFAULT_PROVIDER if the key is unknown or None.
-    """
-    return PROVIDER_CONFIGS.get(provider or DEFAULT_PROVIDER, PROVIDER_CONFIGS[DEFAULT_PROVIDER])
+    provider_id = provider or DEFAULT_PROVIDER
+    catalog = get_catalog("chat")
+    entries = [
+        entry for entry in catalog["entries"] if entry["provider"] == provider_id
+    ]
+    if not entries:
+        raise ValueError(
+            f"Provider '{provider_id}' has no chat endpoint in the model catalog."
+        )
+
+    provider_row = next(
+        (item for item in catalog.get("providers", []) if item["id"] == provider_id),
+        None,
+    )
+    base_url = (provider_row or {}).get("base_url") or entries[0]["base_url"]
+    if not base_url:
+        raise ValueError(f"Provider '{provider_id}' has no chat base URL.")
+
+    return {
+        "label": (provider_row or {}).get("label", entries[0]["provider_label"]),
+        "base_url": base_url,
+        "default_model": entries[0]["model"],
+        # The application consumes final answer text only. DeepSeek V4 supports
+        # thinking and non-thinking modes, so disable thinking for this RAG path.
+        "extra_body": (
+            {"thinking": {"type": "disabled"}}
+            if provider_id == "deepseek"
+            else {}
+        ),
+    }
 
 
-def resolve_provider_and_model(model: str | None, default_provider: str) -> tuple[str, str | None]:
-    """Split a `provider/model` identifier sent by the frontend.
-
-    Per-message model selection encodes both provider and model id as
-    "<provider>/<model-id>" (e.g. "openai/gpt-4o"). If `model` doesn't carry a
-    known provider prefix, it's treated as a bare model name for the given
-    default_provider (backward-compatible with older clients / global settings).
-    """
+def resolve_provider_and_model(
+    model: str | None,
+    default_provider: str,
+) -> tuple[str, str | None]:
+    """Resolve an optional ``provider/model`` chat selection."""
     if model and "/" in model:
         provider, _, model_id = model.partition("/")
-        if provider in PROVIDER_CONFIGS:
-            return provider, model_id or None
+        get_provider_config(provider)  # validates that the provider supports chat
+        return provider, model_id or None
     return default_provider, model

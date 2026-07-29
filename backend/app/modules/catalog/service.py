@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import re
 
-from app.modules.catalog.data import CAPABILITIES
+from app.modules.catalog.data import CAPABILITIES, PROVIDER_PRESETS
 from app.modules.catalog.repository import (
     catalog_entries,
     invalidate_catalog_cache,
+    invalidate_provider_cache,
     model_catalog_repository,
+    model_provider_repository,
+    provider_entries,
 )
 
 _ASCII_WORD = re.compile(r"[A-Za-z]")
@@ -78,8 +81,39 @@ def _present_entry(entry: dict) -> dict:
 def get_catalog(capability: str | None = None) -> dict:
     return {
         "capabilities": CAPABILITIES,
+        "providers": provider_entries(),
+        "provider_presets": PROVIDER_PRESETS,
         "entries": [_present_entry(entry) for entry in catalog_entries(capability)],
     }
+
+
+def add_provider(payload: dict) -> dict:
+    preset_id = str(payload.get("preset_id") or "").strip()
+    preset = next((item for item in PROVIDER_PRESETS if item["id"] == preset_id), None)
+    name = str(payload.get("name") or (preset or {}).get("label") or "").strip()
+    if not name:
+        raise ValueError("Provider name is required.")
+
+    provider_id = str((preset or {}).get("id") or payload.get("id") or "").strip().lower()
+    if not provider_id:
+        provider_id = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    if not provider_id:
+        raise ValueError("Provider name must contain at least one letter or number.")
+
+    provider = {
+        "id": provider_id,
+        "label": name,
+        "base_url": str(
+            payload.get("base_url")
+            if payload.get("base_url") is not None
+            else (preset or {}).get("base_url", "")
+        ).strip(),
+        "is_custom": bool((preset or {}).get("is_custom", payload.get("is_custom", False))),
+        "sort_order": int(payload.get("sort_order", 1000)),
+    }
+    model_provider_repository.add(provider)
+    invalidate_provider_cache()
+    return provider
 
 
 def find_entry(provider: str, model: str, capability: str | None = None) -> dict | None:
@@ -98,14 +132,22 @@ def add_entry(payload: dict) -> dict:
     required = ("provider", "capability", "model")
     if any(not str(payload.get(field, "")).strip() for field in required):
         raise ValueError("provider, capability and model are required.")
+    provider_id = payload["provider"].strip()
+    provider = next((item for item in provider_entries() if item["id"] == provider_id), None)
+    if provider is None:
+        raise ValueError("Select a registered provider before adding an endpoint.")
+    capability = payload["capability"].strip()
+    dimensions = payload.get("dimensions") if capability == "embedding" else None
+    if dimensions is not None and int(dimensions) <= 0:
+        raise ValueError("Embedding dimensions must be a positive integer.")
     entry = {
-        "provider": payload["provider"].strip(),
-        "provider_label": (payload.get("provider_label") or payload["provider"]).strip(),
-        "capability": payload["capability"].strip(),
+        "provider": provider_id,
+        "provider_label": provider["label"],
+        "capability": capability,
         "model": payload["model"].strip(),
         "base_url": (payload.get("base_url") or "").strip(),
         "endpoint": (payload.get("endpoint") or "").strip(),
-        "dimensions": payload.get("dimensions"),
+        "dimensions": dimensions,
         "openai_compatible": bool(payload.get("openai_compatible", True)),
         "notes": payload.get("notes"),
     }

@@ -11,14 +11,19 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton,
   Collapse,
   Divider,
   Chip,
+  Tooltip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/Delete";
-import { getSettings, saveSettings, getModelCatalog, addCatalogEntry } from "../../api";
+import {
+  getSettings,
+  saveSettings,
+  getModelCatalog,
+  addCatalogEntry,
+  addCatalogProvider,
+} from "../../api";
 
 const CAPABILITIES = [
   "chat",
@@ -44,13 +49,13 @@ const EMPTY_ENDPOINT = {
   dimensions: "",
 };
 
-// Must mirror the provider ids in backend/app/core/llm_providers.py PROVIDER_CONFIGS.
-const PROVIDERS = [
+// Used only if the provider-registry API is temporarily unavailable.
+const FALLBACK_PROVIDERS = [
+  { id: "zhipu", label: "Zhipu" },
   { id: "deepseek", label: "DeepSeek" },
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic" },
   { id: "gemini", label: "Gemini" },
-  { id: "custom", label: "Custom / self-hosted" },
 ];
 
 // LLM provider + API key configuration (renders inside the Manage content card).
@@ -67,12 +72,15 @@ export default function LlmProvidersSection({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  // "Manage models" dialog — edits the curated model list for one provider at a time.
-  const [modelDialogOpen, setModelDialogOpen] = useState(false);
-  const [modelDialogProvider, setModelDialogProvider] = useState("deepseek");
-  const [modelDialogRows, setModelDialogRows] = useState([]);
-  const [modelDialogBusy, setModelDialogBusy] = useState(false);
-  const [modelDialogError, setModelDialogError] = useState("");
+  // Provider registration dialog. Model endpoints are managed separately below.
+  const [providers, setProviders] = useState(FALLBACK_PROVIDERS);
+  const [providerPresets, setProviderPresets] = useState([]);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [providerPresetId, setProviderPresetId] = useState("");
+  const [providerName, setProviderName] = useState("");
+  const [providerBaseUrl, setProviderBaseUrl] = useState("");
+  const [providerDialogBusy, setProviderDialogBusy] = useState(false);
+  const [providerDialogError, setProviderDialogError] = useState("");
 
   // Model catalog (known provider/model endpoints, no keys).
   const [catalog, setCatalog] = useState([]);
@@ -87,7 +95,11 @@ export default function LlmProvidersSection({
     setLoading(true);
     setError("");
     getModelCatalog()
-      .then((r) => setCatalog(r.entries || []))
+      .then((r) => {
+        setCatalog(r.entries || []);
+        setProviders(r.providers?.length ? r.providers : FALLBACK_PROVIDERS);
+        setProviderPresets(r.provider_presets || []);
+      })
       .catch(() => setCatalog([]));
     try {
       const result = await getSettings();
@@ -107,17 +119,27 @@ export default function LlmProvidersSection({
   }, [configurationVersion]);
 
   // Key list = chat providers + any distinct catalog providers (one key per company).
-  const keyProviders = [...PROVIDERS];
-  const known = new Set(PROVIDERS.map((p) => p.id));
+  const keyProviders = providers.map((provider) => ({
+    id: provider.id,
+    label: provider.label,
+    is_custom: Boolean(provider.is_custom),
+  }));
+  const known = new Set(keyProviders.map((p) => p.id));
   for (const entry of catalog) {
     if (!known.has(entry.provider)) {
       known.add(entry.provider);
       keyProviders.push({
         id: entry.provider,
         label: entry.provider_label_display || entry.provider_label,
+        is_custom: false,
       });
     }
   }
+  keyProviders.sort(
+    (a, b) =>
+      Number(a.is_custom) - Number(b.is_custom) ||
+      a.label.localeCompare(b.label),
+  );
   const catalogProviders = Array.from(
     new Map(
       catalog.map((entry) => [
@@ -136,6 +158,10 @@ export default function LlmProvidersSection({
       (catalogCapabilityFilter === "all" ||
         entry.capability === catalogCapabilityFilter),
   );
+  const chatEntries = catalog.filter((entry) => entry.capability === "chat");
+  const chatProviderIds = new Set(chatEntries.map((entry) => entry.provider));
+  const chatProviders = keyProviders.filter((provider) => chatProviderIds.has(provider.id));
+  const chatModels = chatEntries.filter((entry) => entry.provider === llmProvider);
 
   async function handleAddEndpoint() {
     setCatalogBusy(true);
@@ -205,53 +231,41 @@ export default function LlmProvidersSection({
     }
   }
 
-  function openModelDialog(providerId) {
-    const initialProvider = providerId || llmProvider;
-    setModelDialogProvider(initialProvider);
-    setModelDialogRows((settings?.provider_models?.[initialProvider] || []).map((m) => ({ ...m })));
-    setModelDialogError("");
-    setModelDialogOpen(true);
+  function openProviderDialog() {
+    setProviderPresetId("");
+    setProviderName("");
+    setProviderBaseUrl("");
+    setProviderDialogError("");
+    setProviderDialogOpen(true);
   }
 
-  function switchModelDialogProvider(providerId) {
-    setModelDialogProvider(providerId);
-    setModelDialogRows((settings?.provider_models?.[providerId] || []).map((m) => ({ ...m })));
+  function selectProviderPreset(presetId) {
+    const preset = providerPresets.find((item) => item.id === presetId);
+    setProviderPresetId(presetId);
+    setProviderName(preset?.label || "");
+    setProviderBaseUrl(preset?.base_url || "");
   }
 
-  function updateModelRow(index, field, value) {
-    setModelDialogRows((rows) => rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
-  }
-
-  function addModelRow() {
-    setModelDialogRows((rows) => [...rows, { id: "", label: "" }]);
-  }
-
-  function removeModelRow(index) {
-    setModelDialogRows((rows) => rows.filter((_, i) => i !== index));
-  }
-
-  function resetModelDialogToDefault() {
-    setModelDialogRows(
-      (settings?.default_provider_models?.[modelDialogProvider] || []).map((m) => ({ ...m })),
-    );
-  }
-
-  async function handleSaveModelDialog() {
-    setModelDialogBusy(true);
-    setModelDialogError("");
+  async function handleAddProvider() {
+    setProviderDialogBusy(true);
+    setProviderDialogError("");
     try {
-      const cleanRows = modelDialogRows
-        .map((r) => ({ id: r.id.trim(), label: r.label.trim() || r.id.trim() }))
-        .filter((r) => r.id);
-      const result = await saveSettings({ provider_models: { [modelDialogProvider]: cleanRows } });
-      setSettings(result);
-      setModelDialogOpen(false);
-      setNotice(`Updated the model list for ${modelDialogProvider}.`);
+      await addCatalogProvider({
+        preset_id: providerPresetId || undefined,
+        name: providerName.trim(),
+        base_url: providerBaseUrl.trim(),
+      });
+      const result = await getModelCatalog();
+      setCatalog(result.entries || []);
+      setProviders(result.providers || []);
+      setProviderPresets(result.provider_presets || []);
+      setProviderDialogOpen(false);
+      setNotice(`Added ${providerName.trim()} to Provider API keys.`);
       onConfigurationChanged?.();
-    } catch (saveError) {
-      setModelDialogError(saveError.message);
+    } catch (addError) {
+      setProviderDialogError(addError.message);
     } finally {
-      setModelDialogBusy(false);
+      setProviderDialogBusy(false);
     }
   }
 
@@ -276,8 +290,8 @@ export default function LlmProvidersSection({
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
             Default provider status:{" "}
             <strong>{settings?.llm_configured ? "Configured" : "Not configured"}</strong>
-            {" "}({settings?.llm_api_key_source || "missing"}), model{" "}
-            <strong>{settings?.llm_chat_model}</strong> ({settings?.llm_chat_model_source})
+            {", model "}
+            <strong>{settings?.llm_chat_model}</strong>
           </Typography>
 
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
@@ -294,62 +308,53 @@ export default function LlmProvidersSection({
                 onChange={(event) => {
                   const nextProvider = event.target.value;
                   setLlmProvider(nextProvider);
-                  // Drop a model choice that doesn't exist for the newly selected provider.
-                  const validIds = (settings?.provider_models?.[nextProvider] || []).map((m) => m.id);
-                  if (nextProvider !== "custom" && !validIds.includes(model)) {
-                    setModel("");
-                  }
+                  const firstModel = chatEntries.find(
+                    (entry) => entry.provider === nextProvider,
+                  );
+                  setModel(firstModel?.model || "");
                 }}
                 size="small"
                 sx={{ maxWidth: 320 }}
               >
-                {PROVIDERS.map((provider) => (
+                {chatProviders.map((provider) => (
                   <MenuItem key={provider.id} value={provider.id}>
                     {provider.label}
                   </MenuItem>
                 ))}
               </TextField>
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                Used for chat messages that don't explicitly pick a model.
+                Only providers with a chat endpoint appear here. Other registered
+                providers can still store API keys below.
               </Typography>
             </Box>
 
             <Box sx={{ display: "grid", gap: 0.5 }}>
               <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                Default chat model override
+                Default chat model
               </Typography>
-              {llmProvider === "custom" ? (
-                <TextField
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="Enter the self-hosted model name"
-                  size="small"
-                  sx={{ maxWidth: 320 }}
-                />
-              ) : (
-                <TextField
-                  select
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  size="small"
-                  sx={{ maxWidth: 320 }}
-                >
-                  <MenuItem value="">
-                    <em>Use provider's built-in default</em>
+              <TextField
+                select
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                size="small"
+                sx={{ maxWidth: 320 }}
+                disabled={!llmProvider}
+              >
+                <MenuItem value="">
+                  <em>Select a catalog model</em>
+                </MenuItem>
+                {model && !chatModels.some((entry) => entry.model === model) && (
+                  <MenuItem value={model}>{model} (saved legacy value)</MenuItem>
+                )}
+                {chatModels.map((entry) => (
+                  <MenuItem key={entry.model} value={entry.model}>
+                    {entry.model_display || entry.model}
                   </MenuItem>
-                  {/* Keep a saved value visible even if it predates this curated list. */}
-                  {model && !(settings?.provider_models?.[llmProvider] || []).some((m) => m.id === model) && (
-                    <MenuItem value={model}>{model}</MenuItem>
-                  )}
-                  {(settings?.provider_models?.[llmProvider] || []).map((option) => (
-                    <MenuItem key={option.id} value={option.id}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
+                ))}
+              </TextField>
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                Only applies to the default provider above.
+                This exact model id is sent to the provider API. Models come from
+                this provider's chat endpoints below.
               </Typography>
             </Box>
 
@@ -357,8 +362,13 @@ export default function LlmProvidersSection({
               <Typography variant="body2" sx={{ fontWeight: 800 }}>
                 Provider API keys
               </Typography>
-              <Button size="small" variant="outlined" onClick={() => openModelDialog()}>
-                Manage models
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={openProviderDialog}
+              >
+                Add provider
               </Button>
             </Box>
             {keyProviders.map((provider) => (
@@ -523,36 +533,107 @@ export default function LlmProvidersSection({
                 <Typography variant="body2" sx={{ fontWeight: 800 }}>Add an endpoint</Typography>
                 {catalogError && <Alert severity="error">{catalogError}</Alert>}
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
-                  <TextField
-                    label="Provider id" value={endpointForm.provider} size="small" placeholder="zhipu"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, provider: e.target.value, provider_label: f.provider_label || e.target.value }))}
-                  />
+                  <Tooltip title="Choose the company first. Its internal provider id is filled automatically.">
+                    <TextField
+                      select
+                      label="Provider"
+                      value={endpointForm.provider}
+                      size="small"
+                      onChange={(e) => {
+                        const selected = providers.find(
+                          (provider) => provider.id === e.target.value,
+                        );
+                        setEndpointForm((form) => ({
+                          ...form,
+                          provider: e.target.value,
+                          provider_label: selected?.label || "",
+                          base_url: selected?.base_url || form.base_url,
+                        }));
+                      }}
+                    >
+                      <MenuItem value=""><em>Select a provider</em></MenuItem>
+                      {keyProviders.map((provider) => (
+                        <MenuItem key={provider.id} value={provider.id}>
+                          {provider.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Tooltip>
                   <TextField
                     select label="Capability" value={endpointForm.capability} size="small"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, capability: e.target.value }))}
+                    onChange={(e) =>
+                      setEndpointForm((form) => ({
+                        ...form,
+                        capability: e.target.value,
+                        dimensions:
+                          e.target.value === "embedding" ? form.dimensions : "",
+                      }))
+                    }
                   >
                     {CAPABILITIES.map((cap) => (<MenuItem key={cap} value={cap}>{cap}</MenuItem>))}
                   </TextField>
-                  <TextField
-                    label="Model" value={endpointForm.model} size="small" placeholder="embedding-3"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, model: e.target.value }))}
-                  />
-                  <TextField
-                    label="Dimensions (optional)" value={endpointForm.dimensions} type="number" size="small"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, dimensions: e.target.value }))}
-                  />
-                  <TextField
-                    label="Base URL" value={endpointForm.base_url} size="small" fullWidth placeholder="https://…/v1"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, base_url: e.target.value }))}
-                  />
-                  <TextField
-                    label="Endpoint path" value={endpointForm.endpoint} size="small" fullWidth placeholder="/embeddings"
-                    onChange={(e) => setEndpointForm((f) => ({ ...f, endpoint: e.target.value }))}
-                  />
+                  <Tooltip title="The exact model identifier sent in the API request body.">
+                    <TextField
+                      label="Model"
+                      value={endpointForm.model}
+                      size="small"
+                      placeholder="e.g. embedding-3 or gpt-5.6-sol"
+                      onChange={(e) =>
+                        setEndpointForm((form) => ({ ...form, model: e.target.value }))
+                      }
+                    />
+                  </Tooltip>
+                  {endpointForm.capability === "embedding" && (
+                    <Tooltip title="The vector length returned by this embedding model. Leave blank when the provider chooses its default.">
+                      <TextField
+                        label="Dimensions (optional)"
+                        value={endpointForm.dimensions}
+                        type="number"
+                        size="small"
+                        placeholder="e.g. 1024"
+                        onChange={(e) =>
+                          setEndpointForm((form) => ({
+                            ...form,
+                            dimensions: e.target.value,
+                          }))
+                        }
+                      />
+                    </Tooltip>
+                  )}
+                  <Tooltip title="The shared API root, including its version prefix but excluding the operation path.">
+                    <TextField
+                      label="Base URL"
+                      value={endpointForm.base_url}
+                      size="small"
+                      fullWidth
+                      placeholder="e.g. https://api.openai.com/v1"
+                      onChange={(e) =>
+                        setEndpointForm((form) => ({ ...form, base_url: e.target.value }))
+                      }
+                    />
+                  </Tooltip>
+                  <Tooltip title="The operation path appended to the base URL. It should normally start with a slash.">
+                    <TextField
+                      label="Endpoint path"
+                      value={endpointForm.endpoint}
+                      size="small"
+                      fullWidth
+                      placeholder="e.g. /embeddings or /chat/completions"
+                      onChange={(e) =>
+                        setEndpointForm((form) => ({ ...form, endpoint: e.target.value }))
+                      }
+                    />
+                  </Tooltip>
                 </Box>
                 <Button
                   variant="outlined" size="small" startIcon={<AddIcon />} onClick={handleAddEndpoint}
-                  disabled={catalogBusy || !endpointForm.provider.trim() || !endpointForm.model.trim()}
+                  disabled={
+                    catalogBusy ||
+                    !endpointForm.provider.trim() ||
+                    !endpointForm.model.trim() ||
+                    !endpointForm.base_url.trim() ||
+                    !endpointForm.endpoint.trim()
+                  }
                   sx={{ justifySelf: "start" }}
                 >
                   {catalogBusy ? "Adding..." : "Add endpoint"}
@@ -563,69 +644,75 @@ export default function LlmProvidersSection({
         </>
       )}
 
-      {/* Manage models dialog */}
-      <Dialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage models</DialogTitle>
+      <Dialog
+        open={providerDialogOpen}
+        onClose={() => setProviderDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add a model provider</DialogTitle>
         <DialogContent sx={{ display: "grid", gap: 2 }}>
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
+            Choose a preset or enter an unlisted provider. This creates one shared API-key
+            slot; models and endpoint paths are added separately below.
+          </Typography>
           <TextField
             select
-            label="Provider"
-            value={modelDialogProvider}
-            onChange={(event) => switchModelDialogProvider(event.target.value)}
+            label="Provider preset"
+            value={providerPresetId}
+            onChange={(event) => selectProviderPreset(event.target.value)}
             size="small"
-            sx={{ maxWidth: 280, mt: 1 }}
+            fullWidth
           >
-            {PROVIDERS.map((provider) => (
-              <MenuItem key={provider.id} value={provider.id}>
-                {provider.label}
+            <MenuItem value="">
+              <em>Unlisted provider</em>
+            </MenuItem>
+            {providerPresets
+              .filter((preset) => !providers.some((provider) => provider.id === preset.id))
+              .sort(
+                (a, b) =>
+                  Number(Boolean(a.is_custom)) - Number(Boolean(b.is_custom)) ||
+                  a.label.localeCompare(b.label),
+              )
+              .map((preset) => (
+              <MenuItem key={preset.id} value={preset.id}>
+                {preset.label}
               </MenuItem>
             ))}
           </TextField>
-
-          {modelDialogError && <Alert severity="error">{modelDialogError}</Alert>}
-
-          <Box sx={{ display: "grid", gap: 1 }}>
-            {modelDialogRows.length === 0 && (
-              <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                No models configured for this provider yet.
-              </Typography>
-            )}
-            {modelDialogRows.map((row, index) => (
-              <Box key={index} sx={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 1 }}>
-                <TextField
-                  value={row.id}
-                  onChange={(event) => updateModelRow(index, "id", event.target.value)}
-                  placeholder="Model id (e.g. gpt-4o)"
-                  size="small"
-                />
-                <TextField
-                  value={row.label}
-                  onChange={(event) => updateModelRow(index, "label", event.target.value)}
-                  placeholder="Display label (e.g. GPT-4o)"
-                  size="small"
-                />
-                <IconButton size="small" onClick={() => removeModelRow(index)} sx={{ color: "#888" }}>
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            ))}
-            <Button size="small" variant="text" startIcon={<AddIcon />} onClick={addModelRow} sx={{ justifySelf: "start" }}>
-              Add model
-            </Button>
-          </Box>
+          <TextField
+            label="Provider name"
+            value={providerName}
+            onChange={(event) => setProviderName(event.target.value)}
+            placeholder="e.g. DeepSeek or My internal gateway"
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Default base URL"
+            value={providerBaseUrl}
+            onChange={(event) => setProviderBaseUrl(event.target.value)}
+            placeholder="e.g. https://api.example.com/v1"
+            helperText="Used as a suggestion when adding this provider's endpoints."
+            size="small"
+            fullWidth
+          />
+          {/* TODO(provider-discovery): accept a company name, search its official
+              API documentation, then propose provider metadata and endpoints
+              for explicit admin review before saving. */}
+          {providerDialogError && <Alert severity="error">{providerDialogError}</Alert>}
         </DialogContent>
-        <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
-          <Button size="small" onClick={resetModelDialogToDefault} disabled={modelDialogBusy}>
-            Reset to default
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setProviderDialogOpen(false)} disabled={providerDialogBusy}>
+            Cancel
           </Button>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button onClick={() => setModelDialogOpen(false)} disabled={modelDialogBusy}>
-              Cancel
-            </Button>
-            <Button variant="contained" onClick={handleSaveModelDialog} disabled={modelDialogBusy}>
-              {modelDialogBusy ? "Saving..." : "Save"}
-            </Button>
-          </Box>
+          <Button
+            variant="contained"
+            onClick={handleAddProvider}
+            disabled={providerDialogBusy || !providerName.trim()}
+          >
+            {providerDialogBusy ? "Adding..." : "Add provider"}
+          </Button>
         </DialogActions>
       </Dialog>
     </>

@@ -450,6 +450,14 @@ export function addCatalogEntry(payload) {
   });
 }
 
+export function addCatalogProvider(payload) {
+  return request("/admin/catalog/providers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }

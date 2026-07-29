@@ -68,11 +68,12 @@ routes still require a working `DATABASE_URL` and initialized schema.
 
 | Method | Path | Access | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/settings` | Admin | Return masked LLM configuration and its active sources. |
-| `PUT` | `/api/v1/settings` | Admin | Update the API key and/or chat model. |
+| `GET` | `/api/v1/settings` | Admin | Return the default chat selection and masked provider keys. |
+| `PUT` | `/api/v1/settings` | Admin | Update the default provider/model and provider API keys. |
 
-The update body accepts `llm_api_key` and `llm_chat_model`. The legacy aliases
-`deepseek_api_key` and `deepseek_chat_model` are also accepted.
+The update body accepts `llm_provider`, `llm_chat_model`, and
+`provider_api_keys`. Provider ids and chat models must already exist in the
+provider/endpoint catalog.
 
 ## Documents
 

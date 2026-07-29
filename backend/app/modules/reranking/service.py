@@ -50,13 +50,13 @@ def _resolve_creds(config: RerankingConfig) -> tuple[str, str, str]:
     resolved creds (so "same provider as embedding" needs no extra typing).
     """
     from app.modules.catalog import service as catalog
-    from app.modules.settings.service import get_llm_api_key
+    from app.modules.settings.service import get_provider_api_key
 
     base = ""
     key = ""
     if config.api_provider and config.api_provider != "__manual__":
         base = catalog.resolve_base_url(config.api_provider, config.api_model, "rerank") or ""
-        key, _ = get_llm_api_key(config.api_provider)
+        key = get_provider_api_key(config.api_provider)
     base = base or config.api_base_url
     key = key or config.api_key
     if not base or not key:

@@ -112,12 +112,6 @@ options are:
 | `PERSISTENCE_BACKEND` | Crawler repository backend (`database` or in-memory fallback) | `database` |
 | `CRAWLING_ENABLED` | Allows non-dry-run crawls to contact remote sites | `false` |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl fallback credential | empty |
-| `LLM_BASE_URL` | Base URL for the default chat provider | DeepSeek API |
-| `LLM_API_KEY` | Default chat-provider API key | empty |
-| `LLM_CHAT_MODEL` | Default chat model override | `deepseek-v4-flash` |
-| `OPENAI_API_KEY` | OpenAI API key (enables GPT-4o, o3, etc.) | empty |
-| `ANTHROPIC_API_KEY` | Anthropic API key (enables Claude models) | empty |
-| `GEMINI_API_KEY` | Google API key (enables Gemini models) | empty |
 | `EMBEDDING_MODEL_NAME` | Local embedding model for vector search | `BAAI/bge-small-en-v1.5` |
 | `DEFAULT_EMBEDDING_DIMENSIONS` | Output dimensions of the embedding model | `384` |
 | `MODEL_CACHE_DIR` | Path to cache downloaded HuggingFace models | `data/model_cache` |
@@ -125,6 +119,11 @@ options are:
 
 See `app/core/config.py` for the complete list and validation rules. Never commit
 the populated `.env` file.
+
+Provider base URLs and models come from the model catalog. Provider API keys
+and the default chat selection are managed in **Manage > LLM & API keys** and
+stored in the deployment's cached runtime settings file, not environment
+variables.
 
 ## PostgreSQL and pgvector
 
@@ -162,6 +161,35 @@ When adding a new column or table:
 1. Add it to `init.sql` (keeps fresh installs in sync)
 2. Write a new `NNN_description.sql` in `database/migrations/` (for existing installs)
 3. Run the migration against the live database before deploying code that depends on it
+
+### Moving model providers and endpoints to production
+
+The built-in provider and endpoint presets live in code and are idempotently
+upserted when the catalog is first read. Endpoints added in **Manage > LLM &
+API keys**, however, are written directly to the local `model_providers` and
+`model_catalog` tables.
+
+Do not export the whole database or hand-write INSERT statements. Export only
+the non-secret catalog:
+
+```powershell
+docker compose exec backend python scripts/model_catalog_transfer.py export --output /app/data/model-catalog.json
+```
+
+The bind mount makes that file available at
+`backend/data/model-catalog.json`. Copy it to the production checkout, apply
+the new idempotent provider migration to an existing database, and import:
+
+```powershell
+Get-Content backend/database/migrations/009_add_model_providers.sql -Raw |
+  docker compose exec -T db psql -U appuser -d testdb
+docker compose exec backend python scripts/model_catalog_transfer.py import --input /app/data/model-catalog.json
+```
+
+The import performs upserts and does not delete online-only rows. The JSON
+contains provider metadata and endpoint facts only; API keys remain in each
+deployment's runtime settings and must be entered separately in the production
+admin UI.
 
 With `DATABASE_ENABLED=false`, the application can still start and expose its
 health endpoint, and crawler source/job APIs use their in-memory fallback. Routes

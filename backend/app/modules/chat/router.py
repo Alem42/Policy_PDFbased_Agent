@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.core.llm_providers import PROVIDER_CONFIGS
 from app.modules.auth.dependencies import get_current_user
+from app.modules.catalog.service import get_catalog
 from app.modules.chat.history_repository import chat_history_repository
 from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
 from app.modules.chat.rag.graph.state import normalize_answer_mode
@@ -22,7 +22,7 @@ from app.modules.chat.schemas import (
     ModelOption,
     ProviderModels,
 )
-from app.modules.settings.service import get_llm_api_key, get_provider_models
+from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
@@ -36,18 +36,29 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
     never offers a model that would fail at request time.
     """
     available: list[ProviderModels] = []
-    for provider, config in PROVIDER_CONFIGS.items():
-        models = await asyncio.to_thread(get_provider_models, provider)
+    catalog = await asyncio.to_thread(get_catalog, "chat")
+    providers = {item["id"]: item for item in catalog.get("providers", [])}
+    provider_ids = list(dict.fromkeys(entry["provider"] for entry in catalog["entries"]))
+    for provider in provider_ids:
+        models = [
+            entry for entry in catalog["entries"] if entry["provider"] == provider
+        ]
         if not models:
             continue
-        api_key, _ = await asyncio.to_thread(get_llm_api_key, provider)
+        api_key = await asyncio.to_thread(get_provider_api_key, provider)
         if not api_key:
             continue
         available.append(
             ProviderModels(
                 provider=provider,
-                provider_label=config["label"],
-                models=[ModelOption(id=f"{provider}/{m.id}", label=m.label) for m in models],
+                provider_label=providers.get(provider, {}).get("label", provider),
+                models=[
+                    ModelOption(
+                        id=f"{provider}/{model['model']}",
+                        label=model.get("model_display") or model["model"],
+                    )
+                    for model in models
+                ],
             )
         )
     return available

@@ -50,6 +50,38 @@ def test_runtime_settings_invalidation_reloads_the_file(tmp_path, monkeypatch):
     assert repository.load().provider_api_keys["zhipu"] == "reloaded-key"
 
 
+def test_legacy_runtime_fields_are_removed_on_save(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "llm_api_key": "legacy-key",
+                "deepseek_chat_model": "deepseek-chat",
+                "provider_models": {"deepseek": [{"id": "old", "label": "Old"}]},
+                "llm_provider": "deepseek",
+                "provider_api_keys": {"deepseek": "current-key"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_repository_module, "SETTINGS_PATH", settings_path)
+    repository = SettingsRepository()
+
+    loaded = repository.load()
+    assert loaded.model_dump() == {
+        "llm_provider": "deepseek",
+        "llm_chat_model": None,
+        "provider_api_keys": {"deepseek": "current-key"},
+    }
+
+    repository.save(loaded)
+
+    assert json.loads(settings_path.read_text(encoding="utf-8")) == {
+        "llm_provider": "deepseek",
+        "provider_api_keys": {"deepseek": "current-key"},
+    }
+
+
 def test_single_row_settings_read_database_once_and_update_cache(monkeypatch):
     class Result:
         def __init__(self, row):

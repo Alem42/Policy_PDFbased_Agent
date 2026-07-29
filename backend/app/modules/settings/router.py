@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.auth.dependencies import require_admin
 from app.modules.settings.schemas import SettingsResponse, SettingsUpdate
@@ -20,14 +20,11 @@ async def update_settings(
     payload: SettingsUpdate,
     _: AdminUser,
 ) -> dict:
-    return update_public_settings(
-        llm_api_key=payload.llm_api_key
-        if payload.llm_api_key is not None
-        else payload.deepseek_api_key,
-        llm_chat_model=payload.llm_chat_model
-        if payload.llm_chat_model is not None
-        else payload.deepseek_chat_model,
-        llm_provider=payload.llm_provider,
-        provider_api_keys=payload.provider_api_keys,
-        provider_models=payload.provider_models,
-    )
+    try:
+        return update_public_settings(
+            llm_chat_model=payload.llm_chat_model,
+            llm_provider=payload.llm_provider,
+            provider_api_keys=payload.provider_api_keys,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

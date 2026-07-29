@@ -6,13 +6,14 @@ from datetime import date
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-from app.core.config import get_settings
+from app.modules.chat.rag.generation import (
+    create_chat_client,
+    resolve_generation_target,
+)
 from app.modules.documents.ingestion.language_detect import detect_language
 from app.modules.documents.ingestion.policy_matcher import match_policy_areas
 from app.modules.documents.taxonomy_service import get_leaf_labels, get_taxonomy_tree
-from app.modules.settings.service import get_llm_api_key, get_llm_chat_model
 
 # Excerpt budget split across the document. Head is weighted heaviest because
 # policy docs front-load the important metadata (title, country, main themes);
@@ -177,25 +178,19 @@ def generate_document_metadata(
     if not excerpt:
         return normalise_metadata({}, filename, leaf_labels), None
 
-    api_key, _ = get_llm_api_key()
-    if not api_key:
+    try:
+        provider, selected_model, _ = resolve_generation_target(model)
+        llm = create_chat_client(provider, selected_model)
+    except ValueError:
         metadata = normalise_metadata({}, filename, leaf_labels)
         metadata["language"] = _resolve_language(None, excerpt)
         return metadata, None
 
-    selected_model = model or get_llm_chat_model()[0]
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", METADATA_PROMPT),
             ("human", "Extract metadata for {filename}."),
         ]
-    )
-    llm = ChatOpenAI(
-        api_key=api_key,
-        base_url=get_settings().llm_base_url,
-        model=selected_model,
-        temperature=0,
-        extra_body={"thinking": {"type": "disabled"}},
     )
     chain = prompt | llm | StrOutputParser()
     response = chain.invoke(

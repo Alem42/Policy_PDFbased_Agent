@@ -53,17 +53,6 @@ class Settings(BaseSettings):
     # PATH (Linux/Docker) or common Windows install locations.
     ocr_tesseract_cmd: str | None = None
 
-    llm_base_url: str = "https://api.deepseek.com"
-    default_llm_chat_model: str = "deepseek-v4-flash"
-    llm_api_key: str | None = None
-    deepseek_api_key: str | None = None
-    llm_chat_model: str | None = None
-    deepseek_chat_model: str | None = None
-    # Per-provider API keys, so multiple providers can be usable at once
-    # (e.g. one message answered by OpenAI, the next by Anthropic).
-    openai_api_key: str | None = None
-    anthropic_api_key: str | None = None
-    gemini_api_key: str | None = None
     app_secret: str = "development-only-change-me"
 
     firecrawl_api_key: str | None = None

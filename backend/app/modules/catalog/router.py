@@ -33,3 +33,11 @@ async def add_catalog_entry(payload: dict, _: AdminUser) -> dict:
         return await asyncio.to_thread(catalog.add_entry, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/providers")
+async def add_catalog_provider(payload: dict, _: AdminUser) -> dict:
+    try:
+        return await asyncio.to_thread(catalog.add_provider, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
