@@ -265,39 +265,9 @@ export function askQuestion(
   });
 }
 
-/**
- * Streaming version of askQuestion.
- * Returns an async generator that yields SSE event objects:
- *   {type:"retrieving"} | {type:"thinking"} | {type:"token",value:str}
- *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
- *   | {type:"done"} | {type:"error",message:str}
- */
-export async function* askQuestionStream(
-  question,
-  documentIds,
-  responseMode = "researcher",
-  answerMode = "analysis",
-  history = [],
-  sessionId = null,
-  model = null,
-) {
+async function postForSSE(path, body) {
   const token = localStorage.getItem("authToken");
-  const body = {
-    question,
-    document_ids: documentIds,
-    response_mode: responseMode,
-    answer_mode: answerMode,
-    session_id: sessionId,
-  };
-  if (model) body.model = model;
-  if (!sessionId) {
-    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-  }
-
-  const response = await fetch(apiPath("/chat/stream"), {
+  const response = await fetch(apiPath(path), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -314,7 +284,10 @@ export async function* askQuestionStream(
     } catch { /* keep HTTP fallback */ }
     throw new Error(message);
   }
+  return response;
+}
 
+async function* readSSEFrames(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -339,6 +312,56 @@ export async function* askQuestionStream(
       } catch { /* skip malformed frames */ }
     }
   }
+}
+
+/**
+ * Streaming version of askQuestion, driven by the web-search agent.
+ * Returns an async generator that yields SSE event objects:
+ *   {type:"tool_call",tool:str} | {type:"tool_result",tool:str,evidence_sufficient}
+ *   | {type:"token",value:str}
+ *   | {type:"confirm_websearch",session_id,question,options:[str]}
+ *   | {type:"confirm_import",session_id,url,title,question}
+ *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
+ *   | {type:"done"} | {type:"error",message:str}
+ * A confirm_* event ends the stream — call resumeChatStream() with the
+ * user's answer to continue it.
+ */
+export async function* askQuestionStream(
+  question,
+  documentIds,
+  responseMode = "researcher",
+  answerMode = "analysis",
+  history = [],
+  sessionId = null,
+  model = null,
+) {
+  const body = {
+    question,
+    document_ids: documentIds,
+    response_mode: responseMode,
+    answer_mode: answerMode,
+    session_id: sessionId,
+  };
+  if (model) body.model = model;
+  if (!sessionId) {
+    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
+  const response = await postForSSE("/chat/stream", body);
+  yield* readSSEFrames(response);
+}
+
+/**
+ * Resumes a chat turn paused by a confirm_websearch/confirm_import event.
+ * `answer` is whatever that interrupt expects back: a string (one of the
+ * event's `options`) for confirm_websearch, a boolean for confirm_import.
+ * Yields the same SSE event shapes as askQuestionStream().
+ */
+export async function* resumeChatStream(sessionId, answer) {
+  const response = await postForSSE("/chat/resume", { session_id: sessionId, answer });
+  yield* readSSEFrames(response);
 }
 
 // Models selectable per-message, grouped by provider. Only providers with a

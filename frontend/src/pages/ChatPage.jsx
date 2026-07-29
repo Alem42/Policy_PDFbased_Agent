@@ -43,6 +43,7 @@ import {
   getDocumentDetail,
   openDocumentFile,
   renameChatSession,
+  resumeChatStream,
 } from "../api";
 import CitationList from "../components/CitationList";
 import DocumentDrawer from "../components/DocumentDrawer";
@@ -190,6 +191,11 @@ export default function ChatPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState(resumeSessionId);
+  // Set when the agent pauses on ask_user (confirm_websearch) or
+  // import_web_page (confirm_import) — {type, session_id, question, options}
+  // or {type, session_id, url, title, question}. Cleared once the user answers.
+  const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // History state
   const [historySessions, setHistorySessions] = useState([]);
@@ -527,6 +533,78 @@ export default function ChatPage({
     setOpenChunkId(null);
   }
 
+  // Status text shown in the streaming placeholder while a tool runs, keyed
+  // by tool name -- purely cosmetic, doesn't affect the answer.
+  const TOOL_STATUS_LABEL = {
+    search_internal_documents: "Searching the selected documents…",
+    search_full_corpus: "Searching the full document library…",
+    search_web: "Searching the web…",
+    import_web_page: "Importing the page…",
+  };
+
+  function ensureStreamingPlaceholder(current) {
+    const last = current[current.length - 1];
+    if (last?.role === "assistant" && last.streaming) return [...current];
+    return [...current, { role: "assistant", content: "", streaming: true, responseMode, answerMode }];
+  }
+
+  // Shared by handleSubmit (new turn) and handleConfirmResponse (resumed
+  // turn) -- both drive the same agent SSE event shapes onto the same
+  // streaming assistant message. Returns true if the stream paused on a
+  // confirm_* interrupt event, false if it ran to completion ("done").
+  async function consumeAgentStream(streamGenerator) {
+    for await (const evt of streamGenerator) {
+      if (evt.type === "tool_call") {
+        setMessages((current) => {
+          const next = ensureStreamingPlaceholder(current);
+          const last = next[next.length - 1];
+          next[next.length - 1] = { ...last, toolStatus: TOOL_STATUS_LABEL[evt.tool] || "Working…" };
+          return next;
+        });
+      } else if (evt.type === "token") {
+        setMessages((current) => {
+          const next = ensureStreamingPlaceholder(current);
+          const last = next[next.length - 1];
+          next[next.length - 1] = { ...last, content: last.content + evt.value, toolStatus: null };
+          return next;
+        });
+      } else if (evt.type === "confirm_websearch" || evt.type === "confirm_import") {
+        setPendingConfirm(evt);
+        return true;
+      } else if (evt.type === "citations") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          next[next.length - 1] = {
+            ...last,
+            citations: Array.isArray(evt.data) ? evt.data : [],
+            evidenceSufficient: evt.evidence_sufficient,
+            evidenceReason: evt.evidence_reason || null,
+            responseMode: evt.response_mode || responseMode,
+            answerMode: evt.answer_mode || answerMode,
+            model: evt.model || null,
+          };
+          return next;
+        });
+        if (evt.session_id && !sessionId) {
+          setSessionId(String(evt.session_id));
+          loadSessions();
+        }
+      } else if (evt.type === "error") {
+        throw new Error(evt.message);
+      } else if (evt.type === "done") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (!last?.streaming) return current;
+          next[next.length - 1] = { ...last, streaming: false, toolStatus: null };
+          return next;
+        });
+      }
+    }
+    return false;
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const cleanQuestion = question.trim();
@@ -537,78 +615,49 @@ export default function ChatPage({
     setBusy(true);
     setError("");
 
-    let assistantAdded = false;
-
+    let paused = false;
     try {
-      for await (const evt of askQuestionStream(
-        cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
-      )) {
-        if (evt.type === "thinking") {
-          assistantAdded = true;
-          setMessages((current) => [
-            ...current,
-            { role: "assistant", content: "", streaming: true, responseMode, answerMode },
-          ]);
-        } else if (evt.type === "token") {
-          assistantAdded = true;
-          setMessages((current) => {
-            const last = current[current.length - 1];
-            // Normal generation path already added a streaming placeholder on
-            // "thinking" -- append to it. The insufficient-evidence refusal
-            // path skips "thinking" and sends its message as token events
-            // directly, so this first token needs to create the placeholder.
-            if (last?.role === "assistant" && last.streaming) {
-              const next = [...current];
-              next[next.length - 1] = { ...last, content: last.content + evt.value };
-              return next;
-            }
-            return [
-              ...current,
-              { role: "assistant", content: evt.value, streaming: true, responseMode, answerMode },
-            ];
-          });
-        } else if (evt.type === "citations") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            next[next.length - 1] = {
-              ...last,
-              citations: Array.isArray(evt.data) ? evt.data : [],
-              evidenceSufficient: evt.evidence_sufficient,
-              evidenceReason: evt.evidence_reason || null,
-              responseMode: evt.response_mode || responseMode,
-              answerMode: evt.answer_mode || answerMode,
-              model: evt.model || null,
-            };
-            return next;
-          });
-          if (evt.session_id && !sessionId) {
-            setSessionId(String(evt.session_id));
-            loadSessions();
-          }
-        } else if (evt.type === "error") {
-          throw new Error(evt.message);
-        } else if (evt.type === "done") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            if (!last?.streaming) return current;
-            next[next.length - 1] = { ...last, streaming: false };
-            return next;
-          });
-        }
-      }
+      paused = await consumeAgentStream(
+        askQuestionStream(
+          cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
+        ),
+      );
     } catch (chatError) {
       setError(chatError.message);
-      if (assistantAdded) {
-        setMessages((current) => current.filter((m) => !m.streaming));
-      }
+      setMessages((current) => current.filter((m) => !m.streaming));
     } finally {
       setBusy(false);
-      // Clear streaming flag if the connection closed before a "done" event arrived
+      // Clear streaming flag if the connection closed before a "done" event
+      // arrived and we're not waiting on a confirm_* dialog.
       setMessages((current) => {
         const last = current[current.length - 1];
-        if (!last?.streaming) return current;
+        if (!last?.streaming || paused) return current;
+        const next = [...current];
+        next[next.length - 1] = { ...last, streaming: false };
+        return next;
+      });
+    }
+  }
+
+  async function handleConfirmResponse(answer) {
+    if (!pendingConfirm) return;
+    const { session_id: confirmSessionId } = pendingConfirm;
+    setPendingConfirm(null);
+    setConfirmBusy(true);
+    setBusy(true);
+
+    let paused = false;
+    try {
+      paused = await consumeAgentStream(resumeChatStream(confirmSessionId, answer));
+    } catch (chatError) {
+      setError(chatError.message);
+      setMessages((current) => current.filter((m) => !m.streaming));
+    } finally {
+      setConfirmBusy(false);
+      setBusy(false);
+      setMessages((current) => {
+        const last = current[current.length - 1];
+        if (!last?.streaming || paused) return current;
         const next = [...current];
         next[next.length - 1] = { ...last, streaming: false };
         return next;
@@ -997,6 +1046,14 @@ export default function ChatPage({
                         "& a": { color: "#214f42" },
                       }}
                     >
+                      {message.toolStatus && !message.content && (
+                        <Typography
+                          variant="caption"
+                          sx={{ display: "block", color: "#63706a", fontStyle: "italic", mb: 0.5 }}
+                        >
+                          {message.toolStatus}
+                        </Typography>
+                      )}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={makeMarkdownComponents(
@@ -1487,6 +1544,26 @@ export default function ChatPage({
                       </Button>
                     </Box>
                   )}
+                  {!c.document_id && c.source_url && (
+                    <Box sx={{ px: 2, pb: 1.5 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => window.open(c.source_url, "_blank", "noopener,noreferrer")}
+                        sx={{
+                          fontSize: 11,
+                          textTransform: "none",
+                          borderColor: isLow ? "#ffab91" : "#c8d9d4",
+                          color: accentColor,
+                          py: 0.4,
+                          px: 1.25,
+                          "&:hover": { borderColor: accentColor, bgcolor: accentLight },
+                        }}
+                      >
+                        Open web page
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               );
             })
@@ -1557,6 +1634,66 @@ export default function ChatPage({
         <DialogActions>
           <Button onClick={() => setDeleteDialog({ open: false, sessionId: null })}>Cancel</Button>
           <Button variant="contained" color="error" onClick={handleDeleteSession}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Web search confirmation -- one-off, only affects this answer */}
+      <Dialog
+        open={pendingConfirm?.type === "confirm_websearch"}
+        onClose={() => handleConfirmResponse("No")}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Search the web?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {pendingConfirm?.question || "The selected documents don't have enough information. Search the web for this answer?"}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          {(pendingConfirm?.options || ["Yes", "No"]).map((option) => (
+            <Button
+              key={option}
+              variant={option === "No" ? "text" : "contained"}
+              disabled={confirmBusy}
+              onClick={() => handleConfirmResponse(option)}
+            >
+              {option}
+            </Button>
+          ))}
+        </DialogActions>
+      </Dialog>
+
+      {/* Knowledge-base import confirmation -- permanent, admin-only action,
+          deliberately styled and worded differently from the web-search
+          confirmation above so the two are never mistaken for each other. */}
+      <Dialog
+        open={pendingConfirm?.type === "confirm_import"}
+        onClose={() => handleConfirmResponse(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: "warning.dark" }}>Import into the knowledge base?</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            This permanently adds the page to the shared knowledge base — every user will be able to
+            find it, not just this conversation.
+          </Alert>
+          <Typography variant="subtitle2">{pendingConfirm?.title}</Typography>
+          <Typography variant="body2" sx={{ color: "#63706a", wordBreak: "break-all" }}>
+            {pendingConfirm?.url}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={confirmBusy} onClick={() => handleConfirmResponse(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={confirmBusy}
+            onClick={() => handleConfirmResponse(true)}
+          >
+            Import
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

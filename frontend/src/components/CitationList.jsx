@@ -9,12 +9,13 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import LanguageIcon from "@mui/icons-material/Language";
 
 export default function CitationList({ citations = [], onOpenSource, lowEvidence = false }) {
   const [expanded, setExpanded] = useState(false);
 
   const available = citations.filter(
-    (c) => c && (c.document_id || c.title || c.quote || c.page != null),
+    (c) => c && (c.document_id || c.source_url || c.title || c.quote || c.page != null),
   );
   if (available.length === 0) return null;
 
@@ -111,18 +112,23 @@ function CitationCard({ citation, index, onOpenSource, lowEvidence = false }) {
           }}
         />
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontWeight: 600,
-              fontSize: 13,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {title}
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            {citation.source_type === "web" && (
+              <LanguageIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} titleAccess="Web source" />
+            )}
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                fontSize: 13,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {title}
+            </Typography>
+          </Box>
           {citation.page != null && (
             <Typography variant="caption" sx={{ color: "text.secondary", fontSize: 11 }}>
               Page {citation.page}
@@ -136,6 +142,20 @@ function CitationCard({ citation, index, onOpenSource, lowEvidence = false }) {
               variant="text"
               startIcon={<OpenInNewIcon sx={{ fontSize: "12px !important" }} />}
               onClick={(e) => { e.stopPropagation(); onOpenSource(citation); }}
+              sx={{ fontSize: "0.7em", color: accentColor, textTransform: "none", py: 0, px: 0.75, minWidth: 0 }}
+            >
+              Open
+            </Button>
+          )}
+          {!citation.document_id && citation.source_url && (
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<OpenInNewIcon sx={{ fontSize: "12px !important" }} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(citation.source_url, "_blank", "noopener,noreferrer");
+              }}
               sx={{ fontSize: "0.7em", color: accentColor, textTransform: "none", py: 0, px: 0.75, minWidth: 0 }}
             >
               Open
