@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.core.llm_providers import PROVIDER_CONFIGS
 from app.modules.auth.dependencies import get_current_user
+from app.modules.catalog.service import get_catalog
 from app.modules.chat.history_repository import chat_history_repository
 from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
 from app.modules.chat.rag.graph.state import normalize_answer_mode
@@ -36,7 +36,10 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
     never offers a model that would fail at request time.
     """
     available: list[ProviderModels] = []
-    for provider, config in PROVIDER_CONFIGS.items():
+    catalog = await asyncio.to_thread(get_catalog, "chat")
+    providers = {item["id"]: item for item in catalog.get("providers", [])}
+    provider_ids = list(dict.fromkeys(entry["provider"] for entry in catalog["entries"]))
+    for provider in provider_ids:
         models = await asyncio.to_thread(get_provider_models, provider)
         if not models:
             continue
@@ -46,7 +49,7 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
         available.append(
             ProviderModels(
                 provider=provider,
-                provider_label=config["label"],
+                provider_label=providers.get(provider, {}).get("label", provider),
                 models=[ModelOption(id=f"{provider}/{m.id}", label=m.label) for m in models],
             )
         )

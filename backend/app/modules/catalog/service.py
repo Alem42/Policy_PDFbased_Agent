@@ -132,14 +132,22 @@ def add_entry(payload: dict) -> dict:
     required = ("provider", "capability", "model")
     if any(not str(payload.get(field, "")).strip() for field in required):
         raise ValueError("provider, capability and model are required.")
+    provider_id = payload["provider"].strip()
+    provider = next((item for item in provider_entries() if item["id"] == provider_id), None)
+    if provider is None:
+        raise ValueError("Select a registered provider before adding an endpoint.")
+    capability = payload["capability"].strip()
+    dimensions = payload.get("dimensions") if capability == "embedding" else None
+    if dimensions is not None and int(dimensions) <= 0:
+        raise ValueError("Embedding dimensions must be a positive integer.")
     entry = {
-        "provider": payload["provider"].strip(),
-        "provider_label": (payload.get("provider_label") or payload["provider"]).strip(),
-        "capability": payload["capability"].strip(),
+        "provider": provider_id,
+        "provider_label": provider["label"],
+        "capability": capability,
         "model": payload["model"].strip(),
         "base_url": (payload.get("base_url") or "").strip(),
         "endpoint": (payload.get("endpoint") or "").strip(),
-        "dimensions": payload.get("dimensions"),
+        "dimensions": dimensions,
         "openai_compatible": bool(payload.get("openai_compatible", True)),
         "notes": payload.get("notes"),
     }

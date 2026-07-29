@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     ocr_tesseract_cmd: str | None = None
 
     llm_base_url: str = "https://api.deepseek.com"
-    default_llm_chat_model: str = "deepseek-v4-flash"
+    default_llm_chat_model: str = "deepseek-chat"
     llm_api_key: str | None = None
     deepseek_api_key: str | None = None
     llm_chat_model: str | None = None

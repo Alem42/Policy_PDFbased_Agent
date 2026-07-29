@@ -198,3 +198,82 @@ DEFAULT_CATALOG: list[dict] = [
     _e("async_result", "查询异步结果", "/async-result/{id}"),
     _e("video", "视频生成（异步）", "/videos/generations"),
 ]
+
+
+def _compatible_entry(
+    provider: str,
+    provider_label: str,
+    capability: str,
+    model: str,
+    base_url: str,
+    endpoint: str,
+    dimensions: int | None = None,
+    *,
+    notes: str | None = None,
+) -> dict:
+    return {
+        "provider": provider,
+        "provider_label": provider_label,
+        "capability": capability,
+        "model": model,
+        "base_url": base_url,
+        "endpoint": endpoint,
+        "dimensions": dimensions,
+        "openai_compatible": True,
+        "notes": notes,
+    }
+
+
+# Small, verified presets for the providers used by the default chat settings.
+# The catalog remains admin-extensible; these rows only make a fresh install
+# internally consistent before an admin adds more models.
+DEFAULT_CATALOG.extend(
+    [
+        _compatible_entry(
+            "deepseek",
+            "DeepSeek",
+            "chat",
+            model,
+            "https://api.deepseek.com",
+            "/chat/completions",
+        )
+        for model in ("deepseek-chat", "deepseek-reasoner")
+    ]
+)
+DEFAULT_CATALOG.extend(
+    [
+        _compatible_entry(
+            "openai",
+            "OpenAI",
+            "chat",
+            model,
+            "https://api.openai.com/v1",
+            "/chat/completions",
+        )
+        for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
+    ]
+)
+DEFAULT_CATALOG.extend(
+    [
+        _compatible_entry(
+            "openai",
+            "OpenAI",
+            "embedding",
+            "text-embedding-3-large",
+            "https://api.openai.com/v1",
+            "/embeddings",
+            3072,
+            notes="The dimensions parameter can shorten the default vector size.",
+        ),
+        _compatible_entry(
+            "openai",
+            "OpenAI",
+            "embedding",
+            "text-embedding-3-small",
+            "https://api.openai.com/v1",
+            "/embeddings",
+            1536,
+            notes="The dimensions parameter can shorten the default vector size.",
+        ),
+    ]
+)

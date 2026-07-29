@@ -80,7 +80,34 @@ def get_provider_config(provider: str | None) -> dict:
 
     Falls back to DEFAULT_PROVIDER if the key is unknown or None.
     """
-    return PROVIDER_CONFIGS.get(provider or DEFAULT_PROVIDER, PROVIDER_CONFIGS[DEFAULT_PROVIDER])
+    provider = provider or DEFAULT_PROVIDER
+    try:
+        from app.modules.catalog.service import get_catalog
+
+        catalog = get_catalog("chat")
+        entries = [entry for entry in catalog["entries"] if entry["provider"] == provider]
+        if entries:
+            provider_row = next(
+                (item for item in catalog.get("providers", []) if item["id"] == provider),
+                None,
+            )
+            built_in = PROVIDER_CONFIGS.get(provider, {})
+            return {
+                "label": (provider_row or {}).get("label", entries[0]["provider_label"]),
+                "base_url": (provider_row or {}).get("base_url") or entries[0]["base_url"],
+                "default_model": entries[0]["model"],
+                "extra_body": built_in.get("extra_body", {}),
+                "models": [
+                    {
+                        "id": entry["model"],
+                        "label": entry.get("model_display") or entry["model"],
+                    }
+                    for entry in entries
+                ],
+            }
+    except Exception:
+        pass
+    return PROVIDER_CONFIGS.get(provider, PROVIDER_CONFIGS[DEFAULT_PROVIDER])
 
 
 def resolve_provider_and_model(model: str | None, default_provider: str) -> tuple[str, str | None]:
@@ -93,6 +120,12 @@ def resolve_provider_and_model(model: str | None, default_provider: str) -> tupl
     """
     if model and "/" in model:
         provider, _, model_id = model.partition("/")
-        if provider in PROVIDER_CONFIGS:
+        try:
+            from app.modules.catalog.service import get_catalog
+
+            known_providers = {item["id"] for item in get_catalog().get("providers", [])}
+        except Exception:
+            known_providers = set(PROVIDER_CONFIGS)
+        if provider in known_providers:
             return provider, model_id or None
     return default_provider, model

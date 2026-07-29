@@ -86,9 +86,21 @@ def get_provider_models(provider: str) -> list[ModelEntry]:
     Returns the runtime override if the admin has customized it (even to an
     empty list), otherwise the hardcoded default from PROVIDER_CONFIGS.
     """
-    runtime = settings_repository.load()
-    if provider in runtime.provider_models:
-        return runtime.provider_models[provider]
+    try:
+        from app.modules.catalog.service import get_catalog
+
+        models = [
+            ModelEntry(
+                id=entry["model"],
+                label=entry.get("model_display") or entry["model"],
+            )
+            for entry in get_catalog("chat")["entries"]
+            if entry["provider"] == provider
+        ]
+        if models:
+            return models
+    except Exception:
+        pass
     return [ModelEntry(**m) for m in PROVIDER_CONFIGS.get(provider, {}).get("models", [])]
 
 
@@ -112,7 +124,7 @@ def get_public_settings() -> dict:
         "llm_provider": get_llm_provider(),
         "masked_provider_keys": masked_provider_keys,
         "provider_models": {
-            provider: get_provider_models(provider) for provider in PROVIDER_CONFIGS
+            provider: get_provider_models(provider) for provider in provider_ids
         },
         "default_provider_models": {
             provider: [ModelEntry(**m) for m in config["models"]]
