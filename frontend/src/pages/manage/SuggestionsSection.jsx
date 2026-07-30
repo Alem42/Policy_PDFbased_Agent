@@ -17,7 +17,7 @@ const ACCENT = "#214f42";
 const DEFAULTS = {
   enabled: true,
   max_suggestions: 3,
-  candidate_pool: 6,
+  candidate_pool: 5,
   validation_distance: "", // "" -> null -> reuse the evidence gate's distance cutoff
   use_reranker_validation: true,
   validation_top_k: 5,
@@ -234,7 +234,10 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
         </SubCard>
 
         <SubCard title="Generation">
-          <Field label="Creativity (temperature)" hint="0 = focused/deterministic, higher = more varied wording (0–1.5).">
+          <Field
+            label="Creativity (temperature)"
+            hint="Controls how varied the proposed follow-up questions are, not how much evidence supports them. 0–0.2 is focused and repeatable; 0.3–0.5 explores more wording and topic angles; higher values are more experimental and may create more candidates that the evidence checks reject. Recommended: 0.3."
+          >
             <TextField
               value={form.temperature}
               onChange={(e) => set("temperature", e.target.value)}

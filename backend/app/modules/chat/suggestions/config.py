@@ -17,7 +17,7 @@ class SuggestionConfig(BaseModel):
     max_suggestions: int = Field(default=3, ge=1, le=8)
     # How many candidates the LLM proposes; validation drops the off-document ones,
     # so this is > max_suggestions to leave headroom ("质量" via selection pressure).
-    candidate_pool: int = Field(default=6, ge=1, le=16)
+    candidate_pool: int = Field(default=5, ge=1, le=16)
     # Stricter-than-answering distance cutoff for suggestions. None -> reuse the
     # evidence gate's live max_vector_distance(). Set below the gate for higher quality.
     validation_distance: float | None = Field(default=None, ge=0.0, le=2.0)
