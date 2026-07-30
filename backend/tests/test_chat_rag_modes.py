@@ -80,9 +80,14 @@ def test_assess_evidence_rejects_low_similarity_chunks() -> None:
 
 
 def test_assess_evidence_rejects_low_reranker_score() -> None:
+    # The reranker floor is admin-tunable / provider-aware, so score just below the
+    # LIVE floor rather than assuming the old -7.0 constant.
+    from app.modules.chat.rag.evidence import min_reranker_score
+
+    below_floor = min_reranker_score() - 1.0
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        raw_chunks=[{"distance": 0.2, "reranker_score": -8.0, "text": "housing reform details"}],
+        raw_chunks=[{"distance": 0.2, "reranker_score": below_floor, "text": "housing reform details"}],
         pages=[],
         context="x" * 300,
         has_embeddings=True,
