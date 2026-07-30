@@ -60,6 +60,8 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             response_mode=m.get("response_mode"),
             answer_mode=m.get("answer_mode"),
             model=m.get("model"),
+            steps=_parse_steps(m.get("reasoning_steps")),
+            status=m.get("status") or "complete",
             created_at=m["created_at"],
         )
         for m in msgs
@@ -111,5 +113,15 @@ def _parse_citations(raw) -> list[Citation]:
     try:
         data = raw if isinstance(raw, list) else json.loads(raw)
         return [Citation(**c) for c in data]
+    except Exception:
+        return []
+
+
+def _parse_steps(raw) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        data = raw if isinstance(raw, list) else json.loads(raw)
+        return data if isinstance(data, list) else []
     except Exception:
         return []

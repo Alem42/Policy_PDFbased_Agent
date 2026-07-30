@@ -69,6 +69,70 @@ class ChatHistoryRepository:
             conn.commit()
         return str(row["id"])
 
+    def create_pending_message(self, session_id: str, role: str = "assistant") -> str:
+        """Insert a placeholder row the moment an assistant turn starts.
+
+        Its reasoning_steps/content are filled in afterwards via
+        update_reasoning_steps (once per tool call) and finalize_message
+        (once the answer is done) — so a turn interrupted or crashed
+        mid-stream still leaves a readable partial trace in history instead
+        of nothing at all.
+        """
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO chat_messages (id, session_id, role, content, status)
+                VALUES (%s, %s, %s, '', 'streaming')
+                RETURNING id
+                """,
+                (str(uuid4()), session_id, role),
+            ).fetchone()
+            conn.commit()
+        return str(row["id"])
+
+    def update_reasoning_steps(self, message_id: str, steps: list[dict]) -> None:
+        """Overwrite a pending message's trace — called once per tool call."""
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE chat_messages SET reasoning_steps = %s::jsonb WHERE id = %s",
+                (json.dumps(steps), message_id),
+            )
+            conn.commit()
+
+    def finalize_message(
+        self,
+        message_id: str,
+        content: str,
+        citations: list[dict] | None = None,
+        evidence_sufficient: bool | None = None,
+        response_mode: str | None = None,
+        answer_mode: str | None = None,
+        model: str | None = None,
+        status: str = "complete",
+    ) -> None:
+        """Fill in a pending message's final answer, closing out the turn
+        started by create_pending_message."""
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE chat_messages
+                SET content = %s, citations_json = %s::jsonb, evidence_sufficient = %s,
+                    response_mode = %s, answer_mode = %s, model = %s, status = %s
+                WHERE id = %s
+                """,
+                (
+                    content,
+                    json.dumps(citations or []),
+                    evidence_sufficient,
+                    response_mode,
+                    answer_mode,
+                    model,
+                    status,
+                    message_id,
+                ),
+            )
+            conn.commit()
+
     def touch_session(self, session_id: str) -> None:
         with get_connection() as conn:
             conn.execute(
@@ -152,7 +216,8 @@ class ChatHistoryRepository:
             msgs = conn.execute(
                 """
                 SELECT id, session_id, role, content, citations_json,
-                       evidence_sufficient, response_mode, answer_mode, model, created_at
+                       evidence_sufficient, response_mode, answer_mode, model,
+                       reasoning_steps, status, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC
@@ -160,6 +225,20 @@ class ChatHistoryRepository:
                 (session_id,),
             ).fetchall()
         return dict(session), [dict(m) for m in msgs]
+
+    def get_message_steps(self, message_id: str) -> list[dict]:
+        """Current reasoning_steps for a (possibly still-streaming) message —
+        the seed a resumed turn appends onto after an ask_user/confirm_import
+        interrupt, so earlier steps aren't lost."""
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT reasoning_steps FROM chat_messages WHERE id = %s",
+                (message_id,),
+            ).fetchone()
+        if not row or not row["reasoning_steps"]:
+            return []
+        steps = row["reasoning_steps"]
+        return steps if isinstance(steps, list) else json.loads(steps)
 
     def get_history_for_llm(
         self, session_id: str, max_turns: int = MAX_HISTORY_TURNS

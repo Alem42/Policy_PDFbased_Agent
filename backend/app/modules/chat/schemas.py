@@ -104,6 +104,12 @@ class SessionMessage(BaseModel):
     response_mode: ResponseMode | None = None
     answer_mode: AnswerMode | None = None
     model: str | None = None
+    # The tool-call trace recorded while this message was generated (empty
+    # for user messages and for turns that predate this field).
+    steps: list[dict] = Field(default_factory=list)
+    # 'streaming' if the turn never finished (crashed / interrupted and never
+    # resumed), 'error' if it failed, 'complete' otherwise.
+    status: str = "complete"
     created_at: datetime
 
 

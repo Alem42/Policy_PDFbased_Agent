@@ -729,6 +729,12 @@ export default function ChatPage({
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
         model: m.model,
+        // Historical trace steps carry the same shape consumeAgentStream
+        // builds live, minus `label` (recomputed here since it's derived
+        // purely from the tool name).
+        steps: Array.isArray(m.steps)
+          ? m.steps.map((s) => ({ ...s, label: TOOL_STATUS_LABEL[s.tool] || s.tool }))
+          : [],
       })),
     );
     setSessionId(String(detail.id));

@@ -59,3 +59,8 @@ class AgentState(TypedDict):
     last_tool_call: NotRequired[dict]
     citations: Annotated[list[dict], add_citations]
     resolved_model: NotRequired[str | None]
+    # The chat_messages row created up front for this turn (see
+    # history_repository.create_pending_message) — carried in state so a
+    # resumed turn (after an ask_user/confirm_import interrupt) keeps
+    # updating the same row instead of starting a new one.
+    assistant_message_id: NotRequired[str | None]

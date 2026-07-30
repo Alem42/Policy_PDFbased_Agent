@@ -213,6 +213,36 @@ def _tool_result_event(message: Any) -> dict:
     }
 
 
+def _step_from_tool_call(call: dict) -> dict:
+    """Persisted-trace shape for a tool_call event — mirrors the step object
+    ChatPage.jsx's consumeAgentStream builds client-side, minus `label`
+    (recomputed on load from the tool name, same as the live view)."""
+    return {
+        "tool": call.get("tool"),
+        "status": "running",
+        "query": call.get("query"),
+        "decisionReason": call.get("decision_reason"),
+        "question": call.get("question"),
+        "url": call.get("url"),
+        "title": call.get("title"),
+    }
+
+
+def _apply_tool_result(steps: list[dict], result_event: dict) -> None:
+    """Mutate the last matching "running" step in place to "done", mirroring
+    the tool_result merge ChatPage.jsx does on its in-memory steps array."""
+    for step in reversed(steps):
+        if step.get("tool") == result_event.get("tool") and step.get("status") == "running":
+            step["status"] = "done"
+            step["evidenceSufficient"] = result_event.get("evidence_sufficient")
+            step["evidenceReason"] = result_event.get("evidence_reason")
+            step["resultCount"] = result_event.get("result_count")
+            step["sourceTitles"] = result_event.get("source_titles") or []
+            step["answerPlan"] = result_event.get("answer_plan")
+            step["citationNumbers"] = result_event.get("citation_numbers") or []
+            break
+
+
 async def _stream_agent_events(
     graph_input: dict | Command,
     *,
@@ -220,9 +250,16 @@ async def _stream_agent_events(
     session_id: str,
     response_mode: str,
     answer_mode: str,
+    assistant_message_id: str,
 ) -> AsyncGenerator[str, None]:
     """Drive the agent graph (chat/rag/agent/graph.py) and translate its
     stream into the SSE event types the frontend understands.
+
+    The assistant's chat_messages row (assistant_message_id) was already
+    created by the caller before this generator starts — its reasoning_steps
+    are updated once per tool call (not only once at the end), so a turn
+    that's interrupted or crashes mid-stream still leaves a readable partial
+    trace in history instead of losing it entirely.
 
     Event types:
       {"type": "tool_call", "tool": "..."}          — the agent is calling a tool
@@ -239,6 +276,12 @@ async def _stream_agent_events(
     """
     graph = get_agent_graph()
     full_tokens: list[str] = []
+    # Seeded from the DB rather than starting empty: a resumed turn (after an
+    # ask_user/confirm_import interrupt) is a fresh call to this generator,
+    # so the steps recorded before the interrupt only live in the row.
+    steps: list[dict] = await asyncio.to_thread(
+        chat_history_repository.get_message_steps, assistant_message_id
+    )
 
     interrupted = False
     try:
@@ -274,11 +317,24 @@ async def _stream_agent_events(
                 if "record_tool_call" in chunk:
                     call = chunk["record_tool_call"].get("last_tool_call")
                     if call:
+                        steps.append(_step_from_tool_call(call))
+                        await asyncio.to_thread(
+                            chat_history_repository.update_reasoning_steps,
+                            assistant_message_id,
+                            steps,
+                        )
                         yield _sse({"type": "tool_call", **call})
 
                 if "tools" in chunk:
                     for message in chunk["tools"].get("messages", []):
-                        yield _sse(_tool_result_event(message))
+                        result_event = _tool_result_event(message)
+                        _apply_tool_result(steps, result_event)
+                        await asyncio.to_thread(
+                            chat_history_repository.update_reasoning_steps,
+                            assistant_message_id,
+                            steps,
+                        )
+                        yield _sse(result_event)
 
         if interrupted:
             return
@@ -294,9 +350,8 @@ async def _stream_agent_events(
         )
 
         await asyncio.to_thread(
-            chat_history_repository.add_message,
-            session_id,
-            "assistant",
+            chat_history_repository.finalize_message,
+            assistant_message_id,
             answer,
             citations,
             bool(citations),
@@ -321,10 +376,28 @@ async def _stream_agent_events(
         yield _sse({"type": "done"})
 
     except TimeoutError:
+        await asyncio.to_thread(
+            chat_history_repository.finalize_message,
+            assistant_message_id,
+            "".join(full_tokens),
+            status="error",
+        )
         yield _sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
+        await asyncio.to_thread(
+            chat_history_repository.finalize_message,
+            assistant_message_id,
+            "".join(full_tokens),
+            status="error",
+        )
         yield _sse({"type": "error", "message": str(exc)})
     except Exception as exc:
+        await asyncio.to_thread(
+            chat_history_repository.finalize_message,
+            assistant_message_id,
+            "".join(full_tokens),
+            status="error",
+        )
         yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
 
 
@@ -364,6 +437,12 @@ async def chat_stream(
     await asyncio.to_thread(
         chat_history_repository.add_message, session_id, "user", payload.question
     )
+    # Created up front (not after the answer is ready) so tool-call trace
+    # steps can be written to this row as they happen — see
+    # _stream_agent_events and history_repository.create_pending_message.
+    assistant_message_id = await asyncio.to_thread(
+        chat_history_repository.create_pending_message, session_id
+    )
 
     config = {"configurable": {"thread_id": session_id}}
     graph = get_agent_graph()
@@ -402,6 +481,7 @@ async def chat_stream(
         # overwritten for every new user question. Resume requests do not pass
         # graph_input, so the same question keeps its counts across interrupt().
         "tool_call_counts": {"__current_turn__": 1},
+        "assistant_message_id": assistant_message_id,
     }
 
     return StreamingResponse(
@@ -411,6 +491,7 @@ async def chat_stream(
             session_id=session_id,
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
+            assistant_message_id=assistant_message_id,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -442,6 +523,7 @@ async def chat_resume(
 
     response_mode = state.values.get("response_mode", "researcher")
     answer_mode = state.values.get("answer_mode", "analysis")
+    assistant_message_id = state.values.get("assistant_message_id")
 
     return StreamingResponse(
         _stream_agent_events(
@@ -450,6 +532,7 @@ async def chat_resume(
             session_id=session_id,
             response_mode=response_mode,
             answer_mode=answer_mode,
+            assistant_message_id=assistant_message_id,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

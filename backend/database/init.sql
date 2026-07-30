@@ -815,6 +815,8 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "response_mode"       text        COLLATE "pg_catalog"."default",
   "answer_mode"         text        COLLATE "pg_catalog"."default" DEFAULT 'analysis',
   "model"               text        COLLATE "pg_catalog"."default",
+  "reasoning_steps"     jsonb       NOT NULL DEFAULT '[]',
+  "status"              text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'complete',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 
@@ -847,3 +849,10 @@ CREATE INDEX IF NOT EXISTS "idx_documents_source_url"
 CREATE INDEX IF NOT EXISTS "idx_documents_content_hash"
   ON "public"."documents" ("content_hash")
   WHERE "content_hash" IS NOT NULL;
+
+-- ----------------------------
+-- Migration 012: persist the agent's reasoning trace as part of each message
+-- ----------------------------
+ALTER TABLE public.chat_messages
+    ADD COLUMN IF NOT EXISTS reasoning_steps jsonb NOT NULL DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'complete';
