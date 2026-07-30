@@ -817,7 +817,7 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "model"               text        COLLATE "pg_catalog"."default",
   "reasoning_steps"     jsonb       NOT NULL DEFAULT '[]',
   "status"              text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'complete',
-  "agent_mode"          text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'react',
+  "agent_mode"          text        COLLATE "pg_catalog"."default" DEFAULT 'react',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 
@@ -860,6 +860,8 @@ ALTER TABLE public.chat_messages
 
 -- ----------------------------
 -- Migration 013: per-turn ReAct vs direct agent mode
+-- (nullable — see migration 014: agent_mode is assistant-only, like
+-- response_mode/answer_mode/model, and is null on role='user' rows)
 -- ----------------------------
 ALTER TABLE public.chat_messages
-    ADD COLUMN IF NOT EXISTS agent_mode text NOT NULL DEFAULT 'react';
+    ADD COLUMN IF NOT EXISTS agent_mode text DEFAULT 'react';
