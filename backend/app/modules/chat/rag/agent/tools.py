@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
@@ -204,16 +204,40 @@ async def search_full_corpus(
 def ask_user(
     question: str,
     decision_reason: str,
+    mode: Literal["confirm", "choice", "freeform"] = "confirm",
     options: list[str] | None = None,
 ) -> str:
-    """Pause the run and ask the user a yes/no question, resuming with their
-    answer once given.
+    """Pause the run and ask the user a question, resuming with their answer
+    once given.
 
-    `options` defaults to ["Yes", "No"] if omitted. Briefly state why
-    confirmation is needed in `decision_reason`.
+    Three modes:
+    - "confirm": a yes/no gate. `options` defaults to ["Yes", "No"].
+    - "choice": 2+ concrete options you found plausible (e.g. candidate
+      documents, countries, or time periods) for the user to disambiguate.
+      Requires at least 2 `options`.
+    - "freeform": an open clarifying question with no fixed options;
+      `options` is ignored.
+
+    The UI always lets the user type their own answer instead of picking a
+    listed option, so the returned string is not guaranteed to equal any
+    option you offered — read it for intent, not exact match. Briefly state
+    why confirmation is needed in `decision_reason`.
     """
+    if mode == "choice" and len(options or []) < 2:
+        return json.dumps(
+            {
+                "error": "mode='choice' requires at least 2 options.",
+                "hint": "Pass 2+ options, or use mode='freeform' for an open question.",
+            }
+        )
+    if mode == "confirm":
+        effective_options = options or ["Yes", "No"]
+    elif mode == "choice":
+        effective_options = options
+    else:
+        effective_options = None
     answer = interrupt(
-        {"type": "confirm_websearch", "question": question, "options": options or ["Yes", "No"]}
+        {"type": "ask_user", "mode": mode, "question": question, "options": effective_options}
     )
     return str(answer)
 
