@@ -320,12 +320,12 @@ async function* readSSEFrames(response) {
  * Returns an async generator that yields SSE event objects:
  *   {type:"tool_call",tool:str} | {type:"tool_result",tool:str,evidence_sufficient}
  *   | {type:"token",value:str}
- *   | {type:"confirm_websearch",session_id,question,options:[str]}
+ *   | {type:"ask_user",session_id,mode:"confirm"|"choice"|"freeform",question,options:[str]|null}
  *   | {type:"confirm_import",session_id,url,title,question}
  *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
  *   | {type:"done"} | {type:"error",message:str}
- * A confirm_* event ends the stream — call resumeChatStream() with the
- * user's answer to continue it.
+ * An ask_user/confirm_import event ends the stream — call resumeChatStream()
+ * with the user's answer to continue it.
  */
 export async function* askQuestionStream(
   question,
@@ -356,10 +356,10 @@ export async function* askQuestionStream(
 }
 
 /**
- * Resumes a chat turn paused by a confirm_websearch/confirm_import event.
+ * Resumes a chat turn paused by an ask_user/confirm_import event.
  * `answer` is whatever that interrupt expects back: a string (one of the
- * event's `options`) for confirm_websearch, a boolean for confirm_import.
- * Yields the same SSE event shapes as askQuestionStream().
+ * event's `options`, or any free-typed text) for ask_user, a boolean for
+ * confirm_import. Yields the same SSE event shapes as askQuestionStream().
  */
 export async function* resumeChatStream(sessionId, answer, signal = null) {
   const response = await postForSSE("/chat/resume", { session_id: sessionId, answer }, signal);
