@@ -67,6 +67,29 @@ def add_evidence_sources(
     return merged
 
 
+def merge_turn_citation_keys(
+    existing: list[list] | None, new_citations: list[dict] | None
+) -> list[list]:
+    """Extend the running set of citation identities already claimed by some
+    tier THIS turn (see AgentState.turn_citation_keys for why this exists).
+
+    Stored as lists rather than tuples because the checkpointer round-trips
+    state through JSON — a tuple written this turn comes back as a list on
+    the next tool call, so callers must re-`tuple()` before comparing against
+    a freshly computed citation_key(). Same plain-LastValue-helper shape as
+    add_evidence_sources, for the same per-turn-reset reason.
+    """
+    existing = existing or []
+    merged = [list(key) for key in existing]
+    seen = {tuple(key) for key in existing}
+    for citation in new_citations or []:
+        key = citation_key(citation)
+        if key not in seen:
+            seen.add(key)
+            merged.append(list(key))
+    return merged
+
+
 class AgentState(TypedDict):
     """State for the web-search tool-calling agent loop.
 
@@ -92,11 +115,24 @@ class AgentState(TypedDict):
     citations: Annotated[list[dict], add_citations]
     # Plain LastValue list (see add_evidence_sources for why this is not a
     # reducer channel), merged into by a search tool only when it returns
-    # evidence_sufficient=True — every tier that actually contributed
+    # evidence_sufficient=True AND at least one of its citations is not
+    # already claimed by turn_citation_keys — i.e. some OTHER tier hasn't
+    # already surfaced the exact same chunk/URL earlier this same turn. A
+    # full_corpus/web call that just re-finds a chunk an earlier tier already
+    # cited THIS turn contributed nothing new, so it shouldn't count as a
+    # distinct source — but a citation that's merely a repeat from a PRIOR
+    # turn's conversation still counts, since it's genuinely being used to
+    # answer the current question. Every tier that actually contributed
     # evidence this turn, not just the last one, so a deliberate multi-tier
     # comparison answer (see AGENT_STRATEGY_PROMPT) isn't misreported as
-    # single-source. Empty if nothing this turn was ever sufficient.
+    # single-source. Empty if nothing this turn contributed.
     evidence_sources: NotRequired[list[EvidenceSource]]
+    # Citation identities (citation_key() tuples, JSON-round-tripped as
+    # lists — see merge_turn_citation_keys) already claimed by some tier THIS
+    # turn. Reset to [] per new question exactly like evidence_sources (see
+    # router.py's graph_input) so cross-turn reuse of the same chunk is never
+    # penalized, only same-turn cross-tier duplication.
+    turn_citation_keys: NotRequired[list[list]]
     # Overwritten by every search tool call (success or failure) with that
     # call's `reason` — used to explain an insufficient-evidence refusal even
     # though no citations were ever recorded for it.

@@ -10,7 +10,12 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from app.modules.chat.rag.agent.state import EvidenceSource, add_evidence_sources, citation_key
+from app.modules.chat.rag.agent.state import (
+    EvidenceSource,
+    add_evidence_sources,
+    citation_key,
+    merge_turn_citation_keys,
+)
 from app.modules.chat.rag.evidence import (
     assess_evidence_sufficiency,
     max_vector_distance,
@@ -83,6 +88,17 @@ def _number_citations(
     return numbered_results, new_citations
 
 
+def _claims_new_ground(turn_citation_keys: list[list] | None, raw_citations: list[dict]) -> bool:
+    """True if at least one of this call's citations is not already claimed
+    by an earlier tier THIS turn (see AgentState.turn_citation_keys) — i.e.
+    this tier is telling us something no other tier already established this
+    turn, as opposed to just re-finding the same chunk/URL a different tier
+    already searched up.
+    """
+    claimed = {tuple(key) for key in (turn_citation_keys or [])}
+    return any(citation_key(c) not in claimed for c in raw_citations)
+
+
 def _run_retrieval_pipeline(
     question: str,
     identifiers: list[str],
@@ -121,6 +137,7 @@ async def search_internal_documents(
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
+    turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
 ) -> Command:
     """Search only the documents selected for this conversation.
 
@@ -153,8 +170,15 @@ async def search_internal_documents(
         "citations": new_citations,
         "last_evidence_reason": result.get("evidence_reason"),
     }
-    if sufficient:
+    # Only credit this tier if it actually surfaced evidence no other tier
+    # already claimed THIS turn — a full_corpus/web call that just re-finds a
+    # chunk already cited via an earlier tier this turn contributed nothing
+    # new, so it shouldn't light up that tier's "From the ..." badge. Reusing
+    # a chunk cited in a PRIOR turn still counts (turn_citation_keys resets
+    # every new question) since it's genuinely evidence for this answer.
+    if sufficient and _claims_new_ground(turn_citation_keys, raw_citations):
         update["evidence_sources"] = add_evidence_sources(evidence_sources, ["internal"])
+        update["turn_citation_keys"] = merge_turn_citation_keys(turn_citation_keys, raw_citations)
     return Command(update=update)
 
 
@@ -167,6 +191,7 @@ async def search_full_corpus(
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
+    turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
 ) -> Command:
     """Search the ENTIRE document library, not just documents selected for
     this conversation.
@@ -202,8 +227,11 @@ async def search_full_corpus(
         "citations": new_citations,
         "last_evidence_reason": reason,
     }
-    if sufficient:
+    # See search_internal_documents above: only credit this tier when it
+    # contributed a citation no other tier already claimed this turn.
+    if sufficient and _claims_new_ground(turn_citation_keys, raw_citations):
         update["evidence_sources"] = add_evidence_sources(evidence_sources, ["full_corpus"])
+        update["turn_citation_keys"] = merge_turn_citation_keys(turn_citation_keys, raw_citations)
     return Command(update=update)
 
 
@@ -341,6 +369,7 @@ async def search_web(
     tool_call_id: Annotated[str, InjectedToolCallId],
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
+    turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
 ) -> Command:
     """Search the public web. Results are checked against the same
     relevance gate as document evidence (cosine distance + reranker score)
@@ -380,8 +409,11 @@ async def search_web(
         "citations": new_citations,
         "last_evidence_reason": reason,
     }
-    if sufficient:
+    # See search_internal_documents above: only credit this tier when it
+    # contributed a citation no other tier already claimed this turn.
+    if sufficient and _claims_new_ground(turn_citation_keys, raw_citations):
         update["evidence_sources"] = add_evidence_sources(evidence_sources, ["web"])
+        update["turn_citation_keys"] = merge_turn_citation_keys(turn_citation_keys, raw_citations)
     return Command(update=update)
 
 

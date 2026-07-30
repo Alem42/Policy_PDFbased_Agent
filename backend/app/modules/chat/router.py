@@ -325,6 +325,14 @@ async def _stream_agent_events(
                 if "record_tool_call" in chunk:
                     call = chunk["record_tool_call"].get("last_tool_call")
                     if call:
+                        # Belongs to the step already in `steps` (the last
+                        # completed tool call), not the new one about to be
+                        # appended — attach it there before pushing the new
+                        # step, so persisted history and this SSE event both
+                        # carry it as a revision of the earlier step.
+                        reflection = call.get("reflection_on_previous_result")
+                        if reflection and steps:
+                            steps[-1]["reflection"] = reflection
                         steps.append(_step_from_tool_call(call))
                         await asyncio.to_thread(
                             chat_history_repository.update_reasoning_steps,
@@ -660,6 +668,9 @@ async def chat_stream(
         # evidence_sufficient=true for an answer that was actually a refusal.
         "evidence_sources": [],
         "last_evidence_reason": None,
+        # Same reset reasoning as evidence_sources above — see
+        # agent/state.py::AgentState.turn_citation_keys.
+        "turn_citation_keys": [],
         "assistant_message_id": assistant_message_id,
     }
 
