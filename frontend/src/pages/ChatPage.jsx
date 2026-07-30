@@ -285,23 +285,53 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
 
 // Claude-Code-style inline permission prompt: a bordered card with a
 // numbered, keyboard-selectable list of options, rendered directly in the
-// chat flow instead of a modal dialog. confirm_websearch is a light,
-// one-off question; confirm_import is visually flagged as a permanent,
-// shared-library-changing action so the two are never mistaken for each
-// other.
+// chat flow instead of a modal dialog. ask_user covers three modes
+// ("confirm" a yes/no gate, "choice" 2+ model-suggested candidates,
+// "freeform" an open question with no options); confirm_import is a
+// separate, visually flagged permanent/shared-library-changing action.
+// Every mode except "freeform" also offers an "Other" row so the user isn't
+// stuck picking from options they don't actually want.
 function ConfirmPrompt({ confirm, busy, onAnswer }) {
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherText, setOtherText] = useState("");
+
+  // Reset the "Other" input whenever a new prompt comes in (new confirm
+  // object reference each time, since it's rebuilt from a fresh SSE event).
+  useEffect(() => {
+    setOtherOpen(false);
+    setOtherText("");
+  }, [confirm]);
+
   if (!confirm) return null;
   const isImport = confirm.type === "confirm_import";
+  const mode = isImport ? "confirm" : confirm.mode || "confirm";
+  const isFreeform = mode === "freeform";
   const options = isImport
     ? [
         { value: true, label: "Yes, import this page into the knowledge base" },
         { value: false, label: "No, just answer without importing" },
       ]
-    : (confirm.options || ["Yes", "No"]).map((option) => ({ value: option, label: option }));
+    : (confirm.options || (mode === "confirm" ? ["Yes", "No"] : [])).map((option) => ({
+        value: option,
+        label: option,
+      }));
   const accent = isImport ? "#b45309" : "#214f42";
   const accentBg = isImport ? "#fff8f0" : "#fafaf8";
   const accentBorder = isImport ? "#fcd9a8" : "#d9d8d0";
   const accentHoverBg = isImport ? "#ffedd5" : "#eef2ec";
+  const header = isImport
+    ? "⚠ Import into the knowledge base?"
+    : mode === "choice"
+      ? "Choose an option"
+      : mode === "freeform"
+        ? "A question for you"
+        : "Search the web?";
+
+  function submitOther() {
+    const text = otherText.trim();
+    if (!text || busy) return;
+    onAnswer(text);
+  }
 
   return (
     <Box
@@ -315,7 +345,7 @@ function ConfirmPrompt({ confirm, busy, onAnswer }) {
       }}
     >
       <Typography variant="body2" sx={{ fontWeight: 800, color: isImport ? accent : "inherit" }}>
-        {isImport ? "⚠ Import into the knowledge base?" : "Search the web?"}
+        {header}
       </Typography>
       {isImport && (
         <Box sx={{ mt: 0.5, mb: 1 }}>
@@ -331,49 +361,119 @@ function ConfirmPrompt({ confirm, busy, onAnswer }) {
             ? "This permanently adds the page to the shared knowledge base — every user will be able to find it."
             : "The selected documents don't have enough information. Search the web for this answer?")}
       </Typography>
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-        {options.map((option, i) => (
-          <Box
-            key={String(option.value)}
-            onClick={() => !busy && onAnswer(option.value)}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1.25,
-              px: 1.25,
-              py: 0.85,
-              borderRadius: 1.5,
-              cursor: busy ? "default" : "pointer",
-              border: "1px solid transparent",
-              opacity: busy ? 0.6 : 1,
-              "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+
+      {isFreeform ? (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <TextField
+            size="small"
+            fullWidth
+            autoFocus
+            placeholder="Type your answer..."
+            value={otherText}
+            onChange={(event) => setOtherText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitOther();
+              }
             }}
-          >
-            <Box
-              sx={{
-                width: 20,
-                height: 20,
-                borderRadius: "5px",
-                border: "1.5px solid",
-                borderColor: accent,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 800,
-                color: accent,
-                flexShrink: 0,
-              }}
-            >
-              {i + 1}
-            </Box>
-            <Typography variant="body2">{option.label}</Typography>
+            disabled={busy}
+          />
+          <Button variant="contained" disabled={busy || !otherText.trim()} onClick={submitOther}>
+            Send
+          </Button>
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+            {options.map((option, i) => (
+              <Box
+                key={String(option.value)}
+                onClick={() => !busy && onAnswer(option.value)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.25,
+                  px: 1.25,
+                  py: 0.85,
+                  borderRadius: 1.5,
+                  cursor: busy ? "default" : "pointer",
+                  border: "1px solid transparent",
+                  opacity: busy ? 0.6 : 1,
+                  "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "5px",
+                    border: "1.5px solid",
+                    borderColor: accent,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: accent,
+                    flexShrink: 0,
+                  }}
+                >
+                  {i + 1}
+                </Box>
+                <Typography variant="body2">{option.label}</Typography>
+              </Box>
+            ))}
+            {otherOpen ? (
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center", px: 1.25, py: 0.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  placeholder="Type your own answer..."
+                  value={otherText}
+                  onChange={(event) => setOtherText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      submitOther();
+                    }
+                  }}
+                  disabled={busy}
+                />
+                <Button size="small" variant="contained" disabled={busy || !otherText.trim()} onClick={submitOther}>
+                  Send
+                </Button>
+              </Box>
+            ) : (
+              <Box
+                onClick={() => !busy && setOtherOpen(true)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.25,
+                  px: 1.25,
+                  py: 0.85,
+                  borderRadius: 1.5,
+                  cursor: busy ? "default" : "pointer",
+                  border: "1px dashed",
+                  borderColor: "#c7cbc2",
+                  opacity: busy ? 0.6 : 1,
+                  "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+                }}
+              >
+                <EditOutlinedIcon sx={{ fontSize: 16, color: "#98a29c", flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ color: "#6a7772" }}>
+                  Other — type your own answer
+                </Typography>
+              </Box>
+            )}
           </Box>
-        ))}
-      </Box>
-      <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#98a29c" }}>
-        Press a number key to choose.
-      </Typography>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#98a29c" }}>
+            Press a number key to choose.
+          </Typography>
+        </>
+      )}
     </Box>
   );
 }
@@ -417,9 +517,9 @@ export default function ChatPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState(resumeSessionId);
-  // Set when the agent pauses on ask_user (confirm_websearch) or
-  // import_web_page (confirm_import) — {type, session_id, question, options}
-  // or {type, session_id, url, title, question}. Cleared once the user answers.
+  // Set when the agent pauses on ask_user or import_web_page (confirm_import)
+  // — {type, session_id, mode, question, options} or
+  // {type, session_id, url, title, question}. Cleared once the user answers.
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
@@ -560,18 +660,26 @@ export default function ChatPage({
     });
   }, [citationDrawer.open, citationDrawer.focusIndex]);
 
-  // Claude-Code-style quick select: press a number key to pick that option
-  // of the pending confirm_websearch/confirm_import prompt; Escape declines.
+  // Claude-Code-style quick select: press a number key to pick that option of
+  // the pending ask_user/confirm_import prompt. Escape only declines in
+  // "confirm" mode (a clear yes/no gate) -- "choice"/"freeform" have no
+  // universal "No" to fall back to. Ignored while typing in the prompt's own
+  // text input (freeform question or the "Other" answer box).
   useEffect(() => {
     if (!pendingConfirm || confirmBusy) return undefined;
     const isImport = pendingConfirm.type === "confirm_import";
+    const mode = isImport ? "confirm" : pendingConfirm.mode || "confirm";
     const options = isImport
       ? [true, false]
-      : pendingConfirm.options || ["Yes", "No"];
+      : mode === "confirm"
+        ? pendingConfirm.options || ["Yes", "No"]
+        : pendingConfirm.options || [];
 
     function onKeyDown(event) {
+      const tag = event.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (event.key === "Escape") {
-        handleConfirmResponse(isImport ? false : "No");
+        if (mode === "confirm") handleConfirmResponse(isImport ? false : "No");
         return;
       }
       const index = Number(event.key) - 1;
@@ -880,7 +988,7 @@ export default function ChatPage({
           };
           return next;
         });
-      } else if (evt.type === "confirm_websearch" || evt.type === "confirm_import") {
+      } else if (evt.type === "ask_user" || evt.type === "confirm_import") {
         setPendingConfirm(evt);
         return true;
       } else if (evt.type === "citations") {
