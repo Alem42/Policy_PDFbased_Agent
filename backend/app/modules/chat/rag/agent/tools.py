@@ -138,6 +138,7 @@ async def search_internal_documents(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search only the documents selected for this conversation.
 
@@ -147,7 +148,9 @@ async def search_internal_documents(
     actually support an answer. Each result has a `number`: cite it with
     exactly that [N], never a guessed or recomputed one. Briefly state why
     you chose this action in `decision_reason`; it is shown as a concise UI
-    trace, not hidden reasoning.
+    trace, not hidden reasoning. If this is not your first tool call this
+    turn, also fill `reflection_on_previous_result` — see its own
+    description for what goes there.
     """
     identifiers = document_ids or filenames or []
 
@@ -192,6 +195,7 @@ async def search_full_corpus(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search the ENTIRE document library, not just documents selected for
     this conversation.
@@ -199,7 +203,9 @@ async def search_full_corpus(
     Each result has a `number`: cite it with exactly that [N], never a
     guessed or recomputed one. The ReAct loop enforces a small per-turn call
     budget, so materially reformulate any second query. Briefly state why
-    you chose this action in `decision_reason`.
+    you chose this action in `decision_reason`. If this is not your first
+    tool call this turn, also fill `reflection_on_previous_result` — see its
+    own description for what goes there.
     """
 
     def _run() -> tuple[bool, str | None, list[dict]]:
@@ -241,6 +247,7 @@ def ask_user(
     decision_reason: str,
     mode: Literal["confirm", "choice", "freeform"] = "confirm",
     options: list[str] | None = None,
+    reflection_on_previous_result: str | None = None,
 ) -> str:
     """Pause the run and ask the user a question, resuming with their answer
     once given.
@@ -256,7 +263,9 @@ def ask_user(
     The UI always lets the user type their own answer instead of picking a
     listed option, so the returned string is not guaranteed to equal any
     option you offered — read it for intent, not exact match. Briefly state
-    why confirmation is needed in `decision_reason`.
+    why confirmation is needed in `decision_reason`. If this is not your
+    first tool call this turn, also fill `reflection_on_previous_result` —
+    see its own description for what goes there.
     """
     if mode == "choice" and len(options or []) < 2:
         return json.dumps(
@@ -282,6 +291,7 @@ def prepare_final_answer(
     answer_plan: str,
     citation_numbers: list[int] | None,
     tool_call_id: Annotated[str, InjectedToolCallId],
+    reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Finish the ReAct research loop and hand off to the streaming answer writer.
 
@@ -289,7 +299,9 @@ def prepare_final_answer(
     plan should briefly state what the final answer must say. Citation
     numbers must be exact source numbers already returned by search tools.
     Do not put the final prose answer in this tool call: a separate
-    generation node writes and streams it to the user.
+    generation node writes and streams it to the user. If this is not your
+    first tool call this turn, also fill `reflection_on_previous_result` —
+    see its own description for what goes there.
     """
     payload = {
         "ready": True,
@@ -370,6 +382,7 @@ async def search_web(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search the public web. Results are checked against the same
     relevance gate as document evidence (cosine distance + reranker score)
@@ -377,7 +390,9 @@ async def search_web(
 
     Each result has a `number`: cite it with exactly that [N], never a
     guessed or recomputed one. Briefly state why web search is the next
-    action in `decision_reason`.
+    action in `decision_reason`. If this is not your first tool call this
+    turn, also fill `reflection_on_previous_result` — see its own
+    description for what goes there.
     """
     provider = get_active_web_search_provider()
     try:
@@ -425,6 +440,7 @@ async def import_web_page(
     is_admin: Annotated[bool, InjectedState("is_admin")],
     user_id: Annotated[str, InjectedState("user_id")],
     citations: Annotated[list[dict], InjectedState("citations")],
+    reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Permanently import a web page into the shared knowledge base so every
     user can find it later via search_internal_documents/search_full_corpus.
@@ -432,7 +448,9 @@ async def import_web_page(
     ADMIN ONLY. Always confirm with the user first — this asks its own
     confirmation question, separate from the one-off web-search confirmation,
     because it permanently changes the shared library rather than answering
-    a single question.
+    a single question. If this is not your first tool call this turn, also
+    fill `reflection_on_previous_result` — see its own description for what
+    goes there.
     """
     if not is_admin:
         payload = {

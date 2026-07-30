@@ -196,6 +196,10 @@ def record_tool_call_node(state: AgentState) -> dict:
             "question": tool_args.get("question"),
             "url": tool_args.get("url"),
             "title": tool_args.get("title"),
+            # Belongs to the PREVIOUS step, not this one — router.py attaches
+            # it there rather than storing it on this new step (see
+            # REFLECTION_FIELD_RULE in prompts.py).
+            "reflection_on_previous_result": tool_args.get("reflection_on_previous_result"),
         },
     }
 

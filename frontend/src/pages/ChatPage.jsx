@@ -288,6 +288,15 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
                     {step.citationNumbers.map((number) => `[${number}]`).join(", ")}
                   </Typography>
                 )}
+                {/* Filled in retroactively once the NEXT tool call happens --
+                    the model's own read on this step's result, distinct from
+                    the deterministic evidenceReason above. */}
+                {step.reflection && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5, fontStyle: "italic" }}>
+                    <Box component="span" sx={{ fontWeight: 600, fontStyle: "normal" }}>Reflection: </Box>
+                    {step.reflection}
+                  </Typography>
+                )}
               </Box>
             </Box>
           ))}
@@ -957,8 +966,17 @@ export default function ChatPage({
         setMessages((current) => {
           const next = ensureStreamingPlaceholder(current);
           const last = next[next.length - 1];
+          // reflection_on_previous_result belongs to the step already in the
+          // list (the last completed tool call), not the new one about to be
+          // pushed -- mirrors router.py's _stream_agent_events.
+          const priorSteps = last.steps || [];
+          const reflection = evt.reflection_on_previous_result || null;
+          const updatedPriorSteps =
+            reflection && priorSteps.length
+              ? priorSteps.map((s, i) => (i === priorSteps.length - 1 ? { ...s, reflection } : s))
+              : priorSteps;
           const steps = [
-            ...(last.steps || []),
+            ...updatedPriorSteps,
             {
               tool: evt.tool,
               label: TOOL_STATUS_LABEL[evt.tool] || evt.tool,

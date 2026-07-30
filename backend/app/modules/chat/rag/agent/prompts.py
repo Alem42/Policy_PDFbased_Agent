@@ -29,6 +29,23 @@ placed right after the sentence that uses that source, before punctuation.
 Do not invent a source number that wasn't actually given to you by a tool.
 """
 
+# Every tool accepts an optional `reflection_on_previous_result` (see each
+# tool's own docstring). Unlike decision_reason — which justifies the action
+# you are ABOUT to take — this looks backward at the action you just took,
+# and is displayed attached to that earlier step in the UI trace, not the
+# new one, so the user can watch your reasoning unfold turn by turn instead
+# of only ever seeing a static "why" per action.
+REFLECTION_FIELD_RULE = """On every tool call except your first one this turn, fill
+`reflection_on_previous_result` with one or two short, user-readable
+sentences on what the previous tool's result actually told you — e.g. "The
+selected documents only covered the 2019 policy, not the 2023 update" or
+"That confirmed the EU position but said nothing about the UK" — before
+explaining, in `decision_reason`, what you're doing about it. Leave it out
+entirely on your first tool call this turn; there is nothing yet to reflect
+on. Like decision_reason, this is a short user-facing summary, not private
+chain-of-thought or a long transcript.
+"""
+
 # Document Analysis mode only has the selected-document search and the final
 # answer hand-off (see graph.py::_tools_for). No full-corpus/web escalation
 # tools exist in this mode.
@@ -47,6 +64,8 @@ prepare_final_answer is only a hand-off. Do not put the answer itself in its
 arguments; the final writer will generate and stream it.
 
 """
+    + REFLECTION_FIELD_RULE
+    + "\n"
     + CITATION_NUMBERING_RULE
 )
 
@@ -166,6 +185,8 @@ give it only a concise answer plan and exact citation numbers — never the
 full prose answer.
 
 """
+    + REFLECTION_FIELD_RULE
+    + "\n"
     + CITATION_NUMBERING_RULE
 )
 
