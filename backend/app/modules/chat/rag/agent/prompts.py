@@ -105,6 +105,15 @@ option you offered, so read it for intent rather than an exact string match.
   do not need to try search_internal_documents/search_full_corpus first, and
   you do not need ask_user either — the user's request is itself the
   authorisation. Go straight to search_web.
+- If the user explicitly asks to compare, cross-check, or verify the
+  selected documents against the web — or asks whether they are still
+  current/up to date — that request is itself authorisation for search_web,
+  same as above, but it does NOT replace search_internal_documents: call
+  both, even though evidence_sufficient=true from search_internal_documents
+  would normally mean "stop, you have enough" (see below). The user asked
+  for a comparison, so the plan you hand to prepare_final_answer must
+  explicitly contrast what the documents say against what the web search
+  found — citing both sides — not silently pick one and drop the other.
 - Otherwise, start with search_internal_documents.
   - If evidence_sufficient=true, you very likely have what you need: call
     prepare_final_answer with a concise writing plan and the exact citation

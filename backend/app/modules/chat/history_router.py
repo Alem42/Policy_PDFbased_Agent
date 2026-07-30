@@ -57,7 +57,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             content=m["content"],
             citations=_parse_citations(m.get("citations_json")),
             evidence_sufficient=m.get("evidence_sufficient"),
-            evidence_source=m.get("evidence_source"),
+            evidence_sources=_parse_json_list(m.get("evidence_sources")),
             response_mode=m.get("response_mode"),
             answer_mode=m.get("answer_mode"),
             agent_mode=m.get("agent_mode"),
@@ -127,3 +127,9 @@ def _parse_steps(raw) -> list[dict]:
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+
+# Same defensive jsonb-or-string-or-missing handling as _parse_steps, under a
+# name that fits a flat list of strings (evidence_sources) rather than a
+# trace of step dicts.
+_parse_json_list = _parse_steps

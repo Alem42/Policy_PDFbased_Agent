@@ -209,12 +209,12 @@ def route_after_tools(state: AgentState) -> str:
     deterministic refusal identical to the Direct/linear graph's
     (insufficient_evidence_node in rag/graph/nodes.py), not an LLM-written
     one. Open Discussion mode keeps its existing general-knowledge fallback
-    inside AGENT_STRATEGY_PROMPT/final_generation, since evidence_source can
-    legitimately stay None there while the model still answers.
+    inside AGENT_STRATEGY_PROMPT/final_generation, since evidence_sources can
+    legitimately stay empty there while the model still answers.
     """
     last = state["messages"][-1]
     if isinstance(last, ToolMessage) and last.name == "prepare_final_answer":
-        if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_source"):
+        if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_sources"):
             return "insufficient_evidence"
         return "final_generation"
     return "agent"

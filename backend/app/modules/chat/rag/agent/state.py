@@ -7,10 +7,13 @@ from langgraph.graph.message import add_messages
 
 from app.modules.chat.rag.graph.state import AnswerMode, ResponseMode
 
-# Which retrieval tier actually supplied the evidence behind the final
-# answer: "internal" (documents selected for this conversation), "full_corpus"
-# (the rest of the shared library), or "web" (a live web search). None means
-# no tier produced sufficient evidence this turn.
+# Which retrieval tier(s) actually supplied evidence behind the final answer:
+# "internal" (documents selected for this conversation), "full_corpus" (the
+# rest of the shared library), or "web" (a live web search). Usually a single
+# tier (the ReAct loop escalates and stops at the first one that succeeds),
+# but a comparison question ("check the web against my selected documents")
+# can deliberately use more than one — see the AGENT_STRATEGY_PROMPT branch
+# for that. An empty list means no tier produced sufficient evidence.
 EvidenceSource = Literal["internal", "full_corpus", "web"]
 
 
@@ -41,6 +44,29 @@ def add_citations(existing: list[dict] | None, new: list[dict] | None) -> list[d
     return merged
 
 
+def add_evidence_sources(
+    existing: list[EvidenceSource] | None, new: list[EvidenceSource] | None
+) -> list[EvidenceSource]:
+    """Merge newly-succeeded tier(s) into the running list for this turn,
+    de-duplicated, preserving the order they first succeeded in (internal
+    before full_corpus before web, per the escalation order search tools are
+    called in — see AGENT_STRATEGY_PROMPT).
+
+    NOT a LangGraph channel reducer — deliberately a plain helper that each
+    search tool calls itself (reading the current value via
+    InjectedState("evidence_sources"), same as tool_call_counts) and returns
+    as a full replacement update. A real reducer channel only ever merges,
+    so router.py's per-turn `"evidence_sources": []` reset on graph_input
+    would silently no-op instead of clearing anything.
+    """
+    existing = existing or []
+    merged = list(existing)
+    for source in new or []:
+        if source not in merged:
+            merged.append(source)
+    return merged
+
+
 class AgentState(TypedDict):
     """State for the web-search tool-calling agent loop.
 
@@ -64,12 +90,13 @@ class AgentState(TypedDict):
     tool_call_counts: NotRequired[dict[str, int]]
     last_tool_call: NotRequired[dict]
     citations: Annotated[list[dict], add_citations]
-    # Set (overwritten) by a search tool only when it returns
-    # evidence_sufficient=True — always reflects the most recent tier that
-    # actually justified an answer, since the ReAct loop escalates in order
-    # (internal -> full_corpus -> web) and any later success supersedes an
-    # earlier one. None if nothing this turn was ever sufficient.
-    evidence_source: NotRequired[EvidenceSource | None]
+    # Plain LastValue list (see add_evidence_sources for why this is not a
+    # reducer channel), merged into by a search tool only when it returns
+    # evidence_sufficient=True — every tier that actually contributed
+    # evidence this turn, not just the last one, so a deliberate multi-tier
+    # comparison answer (see AGENT_STRATEGY_PROMPT) isn't misreported as
+    # single-source. Empty if nothing this turn was ever sufficient.
+    evidence_sources: NotRequired[list[EvidenceSource]]
     # Overwritten by every search tool call (success or failure) with that
     # call's `reason` — used to explain an insufficient-evidence refusal even
     # though no citations were ever recorded for it.

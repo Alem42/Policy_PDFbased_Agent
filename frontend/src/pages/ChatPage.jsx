@@ -742,7 +742,7 @@ export default function ChatPage({
         citations: Array.isArray(m.citations) ? m.citations : [],
         evidenceSufficient: m.evidence_sufficient,
         evidenceReason: null,
-        evidenceSource: m.evidence_source,
+        evidenceSources: Array.isArray(m.evidence_sources) ? m.evidence_sources : [],
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
         agentMode: m.agent_mode,
@@ -1024,7 +1024,7 @@ export default function ChatPage({
             citations: Array.isArray(evt.data) ? evt.data : [],
             evidenceSufficient: evt.evidence_sufficient,
             evidenceReason: evt.evidence_reason || null,
-            evidenceSource: evt.evidence_source || null,
+            evidenceSources: Array.isArray(evt.evidence_sources) ? evt.evidence_sources : [],
             responseMode: evt.response_mode || responseMode,
             answerMode: evt.answer_mode || answerMode,
             agentMode: evt.agent_mode || last.agentMode || agentMode,
@@ -1495,17 +1495,23 @@ export default function ChatPage({
                     </Alert>
                   )}
 
-                  {/* Evidence escalated beyond the selected documents — full library search */}
-                  {message.role === "assistant" && message.evidenceSource === "full_corpus" && (
+                  {/* Evidence includes the wider library, beyond just the selected documents.
+                      Wording adapts to whether the selected documents also contributed
+                      (a deliberate comparison) or not (an escalation because they came up empty). */}
+                  {message.role === "assistant" && message.evidenceSources?.includes("full_corpus") && (
                     <Alert severity="info" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
-                      <strong>From the wider library</strong> — Your selected documents did not have enough relevant material, so this answer draws on the full document library instead.
+                      <strong>From the wider library</strong> — {message.evidenceSources.includes("internal")
+                        ? "This answer compares your selected documents against the full document library."
+                        : "Your selected documents did not have enough relevant material, so this answer draws on the full document library instead."}
                     </Alert>
                   )}
 
-                  {/* Evidence escalated beyond the selected documents — web search */}
-                  {message.role === "assistant" && message.evidenceSource === "web" && (
+                  {/* Same, for web search — wording adapts the same way. */}
+                  {message.role === "assistant" && message.evidenceSources?.includes("web") && (
                     <Alert severity="info" icon={<PublicIcon fontSize="inherit" />} sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
-                      <strong>From the web</strong> — Neither your selected documents nor the wider library had enough relevant material, so this answer draws on live web search results.
+                      <strong>From the web</strong> — {message.evidenceSources.includes("internal") || message.evidenceSources.includes("full_corpus")
+                        ? "This answer compares your documents against live web search results."
+                        : "Neither your selected documents nor the wider library had enough relevant material, so this answer draws on live web search results."}
                     </Alert>
                   )}
 

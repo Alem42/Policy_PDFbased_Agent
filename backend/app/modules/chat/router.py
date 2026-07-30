@@ -141,7 +141,7 @@ async def chat(
 
         citations = [Citation(**c) for c in result.get("citations", [])]
         evidence_sufficient = result.get("evidence_sufficient", True)
-        evidence_source = "internal" if evidence_sufficient else None
+        evidence_sources = ["internal"] if evidence_sufficient else []
 
         resolved_model = result.get("resolved_model")
 
@@ -157,7 +157,7 @@ async def chat(
             payload.answer_mode,
             resolved_model,
             "direct",
-            evidence_source,
+            evidence_sources,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -167,7 +167,7 @@ async def chat(
             truncated=result.get("truncated", False),
             evidence_sufficient=evidence_sufficient,
             evidence_reason=result.get("evidence_reason"),
-            evidence_source=evidence_source,
+            evidence_sources=evidence_sources,
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
             agent_mode="direct",
@@ -369,14 +369,14 @@ async def _stream_agent_events(
             messages[-1].content if messages and isinstance(messages[-1], AIMessage) else ""
         )
 
-        # "internal"/"full_corpus"/"web" — whichever retrieval tier last
-        # returned evidence_sufficient=True this turn (see
-        # agent/state.py::EvidenceSource); None covers both an Open
-        # Discussion general-knowledge fallback and a Document Analysis
-        # refusal (insufficient_evidence_node), which are told apart by
-        # answer_mode on the frontend.
-        evidence_source = values.get("evidence_source")
-        evidence_sufficient = evidence_source is not None
+        # Every retrieval tier that returned evidence_sufficient=True this
+        # turn, usually just one (see agent/state.py::EvidenceSource) but
+        # possibly several for a deliberate documents-vs-web comparison
+        # question. Empty covers both an Open Discussion general-knowledge
+        # fallback and a Document Analysis refusal (insufficient_evidence_node),
+        # which are told apart by answer_mode on the frontend.
+        evidence_sources = values.get("evidence_sources") or []
+        evidence_sufficient = bool(evidence_sources)
         evidence_reason = None if evidence_sufficient else values.get("last_evidence_reason")
 
         await asyncio.to_thread(
@@ -388,7 +388,7 @@ async def _stream_agent_events(
             response_mode,
             answer_mode,
             resolved_model,
-            evidence_source=evidence_source,
+            evidence_sources=evidence_sources,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -398,7 +398,7 @@ async def _stream_agent_events(
                 "data": citations,
                 "evidence_sufficient": evidence_sufficient,
                 "evidence_reason": evidence_reason,
-                "evidence_source": evidence_source,
+                "evidence_sources": evidence_sources,
                 "response_mode": response_mode,
                 "answer_mode": answer_mode,
                 "agent_mode": "react",
@@ -499,9 +499,9 @@ async def _stream_direct_events(
         answer = "".join(full_tokens)
         evidence_sufficient = state.get("evidence_sufficient", False)
         # Direct mode has only one evidence tier (the selected documents), so
-        # this is trivially "internal" or nothing — see EvidenceSource in
+        # this is trivially ["internal"] or empty — see EvidenceSource in
         # agent/state.py for the richer ReAct-mode set.
-        evidence_source = "internal" if evidence_sufficient else None
+        evidence_sources = ["internal"] if evidence_sufficient else []
 
         await asyncio.to_thread(
             chat_history_repository.finalize_message,
@@ -512,7 +512,7 @@ async def _stream_direct_events(
             response_mode,
             answer_mode,
             resolved_model,
-            evidence_source=evidence_source,
+            evidence_sources=evidence_sources,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -522,7 +522,7 @@ async def _stream_direct_events(
                 "data": citations,
                 "evidence_sufficient": evidence_sufficient,
                 "evidence_reason": state.get("evidence_reason"),
-                "evidence_source": evidence_source,
+                "evidence_sources": evidence_sources,
                 "response_mode": response_mode,
                 "answer_mode": answer_mode,
                 "agent_mode": "direct",
@@ -650,15 +650,15 @@ async def chat_stream(
         # overwritten for every new user question. Resume requests do not pass
         # graph_input, so the same question keeps its counts across interrupt().
         "tool_call_counts": {"__current_turn__": 1},
-        # evidence_source/last_evidence_reason are also plain LastValue
-        # channels (see agent/state.py) — explicitly reset them here for the
+        # evidence_sources/last_evidence_reason are also plain LastValue
+        # fields (see agent/state.py) — explicitly reset them here for the
         # same reason as tool_call_counts above. Without this, a prior
-        # question's successful search leaves evidence_source set in the
+        # question's successful search leaves evidence_sources set in the
         # thread's persisted checkpoint, so a later question with genuinely
         # no evidence inherits the stale value: route_after_tools skips the
         # insufficient_evidence node and the SSE/DB metadata falsely reports
         # evidence_sufficient=true for an answer that was actually a refusal.
-        "evidence_source": None,
+        "evidence_sources": [],
         "last_evidence_reason": None,
         "assistant_message_id": assistant_message_id,
     }

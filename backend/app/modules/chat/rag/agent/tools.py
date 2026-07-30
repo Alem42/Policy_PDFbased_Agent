@@ -10,7 +10,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from app.modules.chat.rag.agent.state import citation_key
+from app.modules.chat.rag.agent.state import EvidenceSource, add_evidence_sources, citation_key
 from app.modules.chat.rag.evidence import (
     assess_evidence_sufficiency,
     max_vector_distance,
@@ -120,6 +120,7 @@ async def search_internal_documents(
     top_k: Annotated[int, InjectedState("top_k")],
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
     citations: Annotated[list[dict], InjectedState("citations")],
+    evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
 ) -> Command:
     """Search only the documents selected for this conversation.
 
@@ -153,7 +154,7 @@ async def search_internal_documents(
         "last_evidence_reason": result.get("evidence_reason"),
     }
     if sufficient:
-        update["evidence_source"] = "internal"
+        update["evidence_sources"] = add_evidence_sources(evidence_sources, ["internal"])
     return Command(update=update)
 
 
@@ -165,6 +166,7 @@ async def search_full_corpus(
     top_k: Annotated[int, InjectedState("top_k")],
     include_restricted: Annotated[bool, InjectedState("include_restricted")],
     citations: Annotated[list[dict], InjectedState("citations")],
+    evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
 ) -> Command:
     """Search the ENTIRE document library, not just documents selected for
     this conversation.
@@ -201,7 +203,7 @@ async def search_full_corpus(
         "last_evidence_reason": reason,
     }
     if sufficient:
-        update["evidence_source"] = "full_corpus"
+        update["evidence_sources"] = add_evidence_sources(evidence_sources, ["full_corpus"])
     return Command(update=update)
 
 
@@ -338,6 +340,7 @@ async def search_web(
     decision_reason: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     citations: Annotated[list[dict], InjectedState("citations")],
+    evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
 ) -> Command:
     """Search the public web. Results are checked against the same
     relevance gate as document evidence (cosine distance + reranker score)
@@ -378,7 +381,7 @@ async def search_web(
         "last_evidence_reason": reason,
     }
     if sufficient:
-        update["evidence_source"] = "web"
+        update["evidence_sources"] = add_evidence_sources(evidence_sources, ["web"])
     return Command(update=update)
 
 
