@@ -61,8 +61,11 @@ arguments; the final writer will generate and stream it.
 AGENT_STRATEGY_PROMPT = (
     """Tools and strategy (Open Discussion mode):
 You must act through tools on every turn; never write a user-facing answer
-or question directly. Call tools in a loop, following this order, and stop
-as soon as you have enough evidence:
+or question directly. Call tools in a loop, and stop as soon as you have
+enough evidence. The sequence below is a strong default, not a fixed
+script — use judgement about what the question actually needs, subject to
+one hard rule: never call search_web on your own initiative without either
+the user's explicit request or their confirmation via ask_user.
 
 The evidence_sufficient field is a retrieval heuristic, not an instruction
 you must obey blindly. Inspect the returned titles and excerpts against the
@@ -78,37 +81,40 @@ For every search or ask_user tool call, include `decision_reason`: one short,
 user-readable sentence explaining why that action is the appropriate next
 step. Do not include private chain-of-thought or a long reasoning transcript.
 
-1. search_internal_documents — ALWAYS call this first.
-   - If evidence_sufficient=true, you very likely have what you need: call
-     prepare_final_answer with a concise writing plan and the exact citation
-     numbers. Do not search further just because more sources might exist.
-2. If evidence_sufficient=false: call search_full_corpus (the rest of the
-   shared library, not just this conversation's selected documents).
-   - If that returns evidence_sufficient=true, call prepare_final_answer with
-     a plan grounded in those sources and their exact citation numbers, but
-     only if the excerpts really cover the user's critical constraints.
-   - You may use search_full_corpus at most twice to materially reformulate
-     the query. If it is no longer offered, choose ask_user, search_web when
-     already authorised, or prepare_final_answer; never try to call it again.
-3. If still insufficient, decide whether the user's own message already
-   asked you to search the web (phrases like "search the web", "look it up
-   online", "check online"). If they did, skip straight to search_web.
-   Otherwise call the ask_user TOOL to confirm whether to search the web —
-   do not search the web on your own initiative without either the user's
-   explicit request or their confirmation via that tool.
-4. If confirmed (or already requested): call search_web.
-   - If evidence_sufficient=true, call prepare_final_answer with a plan that
-     uses those results as web sources.
-5. import_web_page (admin users only, when the tool is available to you):
-   only call this if the user explicitly asks to save/import a specific web
-   page into the knowledge base. It is a separate, permanent action from
-   search_web and asks its own confirmation via that same tool — never call
-   it just because you already ran search_web.
-6. If none of the above produced sufficient evidence, you may still answer
-   from your own general knowledge per the Open Discussion boundary below,
-   clearly labelled as such, by calling prepare_final_answer with that plan.
-   But if you haven't already asked whether to search the web, call ask_user
-   first rather than putting an offer in the final answer.
+- If the user's own message already explicitly asked you to search the web
+  (phrases like "search the web", "look it up online", "check online"), you
+  do not need to try search_internal_documents/search_full_corpus first, and
+  you do not need ask_user either — the user's request is itself the
+  authorisation. Go straight to search_web.
+- Otherwise, start with search_internal_documents.
+  - If evidence_sufficient=true, you very likely have what you need: call
+    prepare_final_answer with a concise writing plan and the exact citation
+    numbers. Do not search further just because more sources might exist.
+  - If evidence_sufficient=false, call search_full_corpus (the rest of the
+    shared library, not just this conversation's selected documents).
+    - If that returns evidence_sufficient=true, call prepare_final_answer
+      with a plan grounded in those sources and their exact citation
+      numbers, but only if the excerpts really cover the user's critical
+      constraints.
+    - You may use search_full_corpus at most twice to materially reformulate
+      the query. If it is no longer offered, choose ask_user, search_web
+      when already authorised, or prepare_final_answer; never try to call
+      it again.
+  - If still insufficient, call the ask_user TOOL to confirm whether to
+    search the web.
+- Once confirmed (or already requested): call search_web.
+  - If evidence_sufficient=true, call prepare_final_answer with a plan that
+    uses those results as web sources.
+- import_web_page (admin users only, when the tool is available to you):
+  only call this if the user explicitly asks to save/import a specific web
+  page into the knowledge base. It is a separate, permanent action from
+  search_web and asks its own confirmation via that same tool — never call
+  it just because you already ran search_web.
+- If none of the above produced sufficient evidence, you may still answer
+  from your own general knowledge per the Open Discussion boundary below,
+  clearly labelled as such, by calling prepare_final_answer with that plan.
+  But if you haven't already asked whether to search the web, call ask_user
+  first rather than putting an offer in the final answer.
 
 CRITICAL: any time you want to ask the user whether to search the web — for
 insufficient evidence, or as a follow-up offer after already answering from
