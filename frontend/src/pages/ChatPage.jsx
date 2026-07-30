@@ -33,6 +33,7 @@ import EditOutlinedIcon from "@mui/icons-material/Edit";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SendIcon from "@mui/icons-material/Send";
+import StopIcon from "@mui/icons-material/Stop";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import ReactMarkdown from "react-markdown";
@@ -445,6 +446,12 @@ export default function ChatPage({
   const sidebarRef = useRef(null);
   const dragCleanupRef = useRef(null);
   const messagesEndRef = useRef(null);
+  // Holds the AbortController for the in-flight /chat/stream or /chat/resume
+  // fetch, so the Stop button can cancel it. Aborting closes the SSE
+  // connection; the backend's `aclosing(...)` around the LangGraph stream
+  // (chat/router.py::_stream_agent_events) flushes the last checkpoint on
+  // that disconnect, so the partial turn doesn't corrupt resumed state.
+  const streamControllerRef = useRef(null);
   const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
 
   useEffect(() => {
@@ -897,6 +904,10 @@ export default function ChatPage({
     return false;
   }
 
+  function handleStop() {
+    streamControllerRef.current?.abort();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const cleanQuestion = question.trim();
@@ -907,20 +918,28 @@ export default function ChatPage({
     setBusy(true);
     setError("");
 
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+
     let paused = false;
     try {
       paused = await consumeAgentStream(
         askQuestionStream(
           cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
+          controller.signal,
         ),
       );
     } catch (chatError) {
-      setError(chatError.message);
-      setMessages((current) => current.filter((m) => !m.streaming));
+      if (chatError.name !== "AbortError") {
+        setError(chatError.message);
+        setMessages((current) => current.filter((m) => !m.streaming));
+      }
     } finally {
+      streamControllerRef.current = null;
       setBusy(false);
       // Clear streaming flag if the connection closed before a "done" event
-      // arrived and we're not waiting on a confirm_* dialog.
+      // arrived (including a user-initiated stop) and we're not waiting on
+      // a confirm_* dialog. Keeps whatever partial content already streamed.
       setMessages((current) => {
         const last = current[current.length - 1];
         if (!last?.streaming || paused) return current;
@@ -938,13 +957,19 @@ export default function ChatPage({
     setConfirmBusy(true);
     setBusy(true);
 
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+
     let paused = false;
     try {
-      paused = await consumeAgentStream(resumeChatStream(confirmSessionId, answer));
+      paused = await consumeAgentStream(resumeChatStream(confirmSessionId, answer, controller.signal));
     } catch (chatError) {
-      setError(chatError.message);
-      setMessages((current) => current.filter((m) => !m.streaming));
+      if (chatError.name !== "AbortError") {
+        setError(chatError.message);
+        setMessages((current) => current.filter((m) => !m.streaming));
+      }
     } finally {
+      streamControllerRef.current = null;
       setConfirmBusy(false);
       setBusy(false);
       setMessages((current) => {
@@ -1614,15 +1639,27 @@ export default function ChatPage({
               fullWidth
               size="small"
             />
-            <Button
-              variant="contained"
-              disabled={!question.trim() || !selected.length || busy}
-              type="submit"
-              sx={{ alignSelf: "flex-end", minWidth: 80 }}
-              endIcon={<SendIcon />}
-            >
-              Send
-            </Button>
+            {busy ? (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={handleStop}
+                sx={{ alignSelf: "flex-end", minWidth: 80 }}
+                endIcon={<StopIcon />}
+              >
+                Stop
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                disabled={!question.trim() || !selected.length}
+                type="submit"
+                sx={{ alignSelf: "flex-end", minWidth: 80 }}
+                endIcon={<SendIcon />}
+              >
+                Send
+              </Button>
+            )}
           </Box>
         </Card>
       </Box>

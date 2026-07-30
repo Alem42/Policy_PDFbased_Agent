@@ -265,7 +265,7 @@ export function askQuestion(
   });
 }
 
-async function postForSSE(path, body) {
+async function postForSSE(path, body, signal) {
   const token = localStorage.getItem("authToken");
   const response = await fetch(apiPath(path), {
     method: "POST",
@@ -274,6 +274,7 @@ async function postForSSE(path, body) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -334,6 +335,7 @@ export async function* askQuestionStream(
   history = [],
   sessionId = null,
   model = null,
+  signal = null,
 ) {
   const body = {
     question,
@@ -349,7 +351,7 @@ export async function* askQuestionStream(
       content: msg.content,
     }));
   }
-  const response = await postForSSE("/chat/stream", body);
+  const response = await postForSSE("/chat/stream", body, signal);
   yield* readSSEFrames(response);
 }
 
@@ -359,8 +361,8 @@ export async function* askQuestionStream(
  * event's `options`) for confirm_websearch, a boolean for confirm_import.
  * Yields the same SSE event shapes as askQuestionStream().
  */
-export async function* resumeChatStream(sessionId, answer) {
-  const response = await postForSSE("/chat/resume", { session_id: sessionId, answer });
+export async function* resumeChatStream(sessionId, answer, signal = null) {
+  const response = await postForSSE("/chat/resume", { session_id: sessionId, answer }, signal);
   yield* readSSEFrames(response);
 }
 
