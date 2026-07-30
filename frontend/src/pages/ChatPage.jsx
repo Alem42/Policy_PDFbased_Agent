@@ -202,12 +202,16 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
               key={`${step.tool}-${i}`}
               sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 0.55 }}
             >
-              {step.status === "running" ? (
+              {step.status === "running" && active ? (
                 <CircularProgress
                   size={12}
                   thickness={6}
                   sx={{ color: "#214f42", flexShrink: 0, mt: 0.3 }}
                 />
+              ) : step.status === "running" ? (
+                // Stream stopped mid-call: this step never got a tool_result,
+                // so show a static "stopped" mark instead of spinning forever.
+                <StopIcon sx={{ fontSize: 12, flexShrink: 0, mt: 0.3, color: "#98a29c" }} />
               ) : (
                 <CheckCircleOutlineIcon
                   sx={{
@@ -223,6 +227,7 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
                   {step.label}
                   {step.status === "done" && step.evidenceSufficient === true && " — found relevant sources"}
                   {step.status === "done" && step.evidenceSufficient === false && " — not enough evidence"}
+                  {step.status === "running" && !active && " — stopped"}
                 </Typography>
                 {(step.query || step.question || step.url) && (
                   <Typography
@@ -452,6 +457,10 @@ export default function ChatPage({
   // (chat/router.py::_stream_agent_events) flushes the last checkpoint on
   // that disconnect, so the partial turn doesn't corrupt resumed state.
   const streamControllerRef = useRef(null);
+  // Set right before a messages update that shouldn't jump the view to the
+  // bottom (e.g. toggling a reasoning trace open/closed) -- consumed once by
+  // the auto-scroll effect below, then reset.
+  const skipAutoScrollRef = useRef(false);
   const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
 
   useEffect(() => {
@@ -536,6 +545,10 @@ export default function ChatPage({
   }, [contextSourceIds]);
 
   useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
@@ -983,6 +996,7 @@ export default function ChatPage({
   }
 
   function toggleSteps(messageIndex) {
+    skipAutoScrollRef.current = true;
     setMessages((current) => {
       const target = current[messageIndex];
       if (!target) return current;
