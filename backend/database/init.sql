@@ -817,6 +817,7 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "model"               text        COLLATE "pg_catalog"."default",
   "reasoning_steps"     jsonb       NOT NULL DEFAULT '[]',
   "status"              text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'complete',
+  "agent_mode"          text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'react',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 
@@ -856,3 +857,9 @@ CREATE INDEX IF NOT EXISTS "idx_documents_content_hash"
 ALTER TABLE public.chat_messages
     ADD COLUMN IF NOT EXISTS reasoning_steps jsonb NOT NULL DEFAULT '[]',
     ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'complete';
+
+-- ----------------------------
+-- Migration 013: per-turn ReAct vs direct agent mode
+-- ----------------------------
+ALTER TABLE public.chat_messages
+    ADD COLUMN IF NOT EXISTS agent_mode text NOT NULL DEFAULT 'react';

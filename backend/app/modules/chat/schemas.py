@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 
 ResponseMode = Literal["researcher", "policymaker", "student"]
 AnswerMode = Literal["analysis", "chat"]
+# "react": multi-step tool-calling agent (web search, escalation, reasoning
+# trace). "direct": single retrieval pass + one-shot answer, no tool loop.
+AgentMode = Literal["react", "direct"]
 
 # Maximum number of prior conversation turns sent to the LLM for context.
 # Each turn = one user message + one assistant reply (2 messages).
@@ -36,6 +39,7 @@ class ChatRequest(BaseModel):
     model: str | None = None
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"
+    agent_mode: AgentMode = "react"
     # When session_id is provided the backend reads history from the DB directly.
     # When None a new session is created automatically.
     session_id: UUID | None = None
@@ -76,6 +80,7 @@ class ChatResponse(BaseModel):
     evidence_reason: str | None = None
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"
+    agent_mode: AgentMode = "direct"
     session_id: UUID | None = None
     # Resolved "<provider>/<model-id>" that actually answered, e.g. "openai/gpt-4o".
     model: str | None = None
@@ -103,6 +108,7 @@ class SessionMessage(BaseModel):
     evidence_sufficient: bool | None = None
     response_mode: ResponseMode | None = None
     answer_mode: AnswerMode | None = None
+    agent_mode: AgentMode | None = None
     model: str | None = None
     # The tool-call trace recorded while this message was generated (empty
     # for user messages and for turns that predate this field).

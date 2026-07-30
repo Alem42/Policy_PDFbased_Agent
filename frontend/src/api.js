@@ -336,12 +336,14 @@ export async function* askQuestionStream(
   sessionId = null,
   model = null,
   signal = null,
+  agentMode = "react",
 ) {
   const body = {
     question,
     document_ids: documentIds,
     response_mode: responseMode,
     answer_mode: answerMode,
+    agent_mode: agentMode,
     session_id: sessionId,
   };
   if (model) body.model = model;

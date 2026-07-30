@@ -132,6 +132,19 @@ const ANSWER_MODE_OPTIONS = [
   },
 ];
 
+const AGENT_MODE_OPTIONS = [
+  {
+    value: "react",
+    label: "Agent (ReAct)",
+    description: "Multi-step reasoning with web search and a visible trace",
+  },
+  {
+    value: "direct",
+    label: "Direct",
+    description: "One retrieval pass, fastest answer, no reasoning trace",
+  },
+];
+
 function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
 }
@@ -506,8 +519,10 @@ export default function ChatPage({
   const [question, setQuestion] = useState("");
   const [responseMode, setResponseMode] = useState("researcher");
   const [answerMode, setAnswerMode] = useState("analysis");
+  const [agentMode, setAgentMode] = useState("react");
   const [responseModeAnchor, setResponseModeAnchor] = useState(null);
   const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
+  const [agentModeAnchor, setAgentModeAnchor] = useState(null);
 
   // Per-message model selection: null means "use the workspace default model".
   const [modelGroups, setModelGroups] = useState([]);
@@ -728,6 +743,7 @@ export default function ChatPage({
         evidenceReason: null,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
+        agentMode: m.agent_mode,
         model: m.model,
         // Historical trace steps carry the same shape consumeAgentStream
         // builds live, minus `label` (recomputed here since it's derived
@@ -925,7 +941,7 @@ export default function ChatPage({
     if (last?.role === "assistant" && last.streaming) return [...current];
     return [
       ...current,
-      { role: "assistant", content: "", streaming: true, responseMode, answerMode, steps: [], showSteps: true },
+      { role: "assistant", content: "", streaming: true, responseMode, answerMode, agentMode, steps: [], showSteps: true },
     ];
   }
 
@@ -1008,6 +1024,7 @@ export default function ChatPage({
             evidenceReason: evt.evidence_reason || null,
             responseMode: evt.response_mode || responseMode,
             answerMode: evt.answer_mode || answerMode,
+            agentMode: evt.agent_mode || last.agentMode || agentMode,
             model: evt.model || null,
           };
           return next;
@@ -1053,7 +1070,7 @@ export default function ChatPage({
       paused = await consumeAgentStream(
         askQuestionStream(
           cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
-          controller.signal,
+          controller.signal, agentMode,
         ),
       );
     } catch (chatError) {
@@ -1410,6 +1427,7 @@ export default function ChatPage({
                         {[
                           getResponseModeLabel(message.responseMode || "researcher"),
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
+                          message.agentMode === "direct" ? "Direct" : null,
                           message.model ? `Answered by ${getModelLabel(modelLabels, message.model)}` : null,
                         ].filter(Boolean).join(" · ")}
                       </Typography>
@@ -1683,6 +1701,52 @@ export default function ChatPage({
                     key={option.value}
                     selected={option.value === answerMode}
                     onClick={() => { setAnswerMode(option.value); setAnswerModeAnchor(null); }}
+                  >
+                    <ListItemText primary={option.label} secondary={option.description} />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
+
+            <Box>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                onClick={(event) => setAgentModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+                sx={{
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  py: 0.75,
+                  px: 1.25,
+                  gap: 0,
+                  minWidth: 0,
+                  textTransform: "none",
+                }}
+              >
+                <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                  Reasoning mode
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                  <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                    {getOptionLabel(AGENT_MODE_OPTIONS, agentMode)}
+                  </Typography>
+                  <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                </Box>
+              </Button>
+              <Menu
+                anchorEl={agentModeAnchor}
+                open={Boolean(agentModeAnchor)}
+                onClose={() => setAgentModeAnchor(null)}
+                anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                {AGENT_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === agentMode}
+                    onClick={() => { setAgentMode(option.value); setAgentModeAnchor(null); }}
                   >
                     <ListItemText primary={option.label} secondary={option.description} />
                   </MenuItem>

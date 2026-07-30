@@ -14,8 +14,11 @@ from app.modules.auth.dependencies import get_current_user
 from app.modules.catalog.service import get_catalog
 from app.modules.chat.history_repository import chat_history_repository
 from app.modules.chat.rag.agent.graph import get_agent_graph
+from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
+from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.graph.state import normalize_answer_mode
-from app.modules.chat.rag.graph.workflow import run_pdf_qa
+from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
+from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 from app.modules.chat.schemas import (
     MAX_HISTORY_TURNS,
     ChatRequest,
@@ -152,6 +155,7 @@ async def chat(
             payload.response_mode,
             payload.answer_mode,
             resolved_model,
+            "direct",
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -163,6 +167,7 @@ async def chat(
             evidence_reason=result.get("evidence_reason"),
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
+            agent_mode="direct",
             session_id=UUID(session_id),
             model=resolved_model,
         )
@@ -369,6 +374,7 @@ async def _stream_agent_events(
                 "evidence_reason": None,
                 "response_mode": response_mode,
                 "answer_mode": answer_mode,
+                "agent_mode": "react",
                 "session_id": session_id,
                 "model": resolved_model,
             }
@@ -376,28 +382,131 @@ async def _stream_agent_events(
         yield _sse({"type": "done"})
 
     except TimeoutError:
-        await asyncio.to_thread(
-            chat_history_repository.finalize_message,
-            assistant_message_id,
-            "".join(full_tokens),
-            status="error",
-        )
+        await _finalize_as_error(assistant_message_id, full_tokens)
         yield _sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
-        await asyncio.to_thread(
-            chat_history_repository.finalize_message,
-            assistant_message_id,
-            "".join(full_tokens),
-            status="error",
-        )
+        await _finalize_as_error(assistant_message_id, full_tokens)
         yield _sse({"type": "error", "message": str(exc)})
     except Exception as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
+
+
+async def _finalize_as_error(assistant_message_id: str, full_tokens: list[str]) -> None:
+    """Close out a pending message row that failed mid-stream, keeping
+    whatever partial answer text had already streamed rather than losing it."""
+    await asyncio.to_thread(
+        chat_history_repository.finalize_message,
+        assistant_message_id,
+        "".join(full_tokens),
+        status="error",
+    )
+
+
+async def _stream_direct_events(
+    *,
+    question: str,
+    document_ids: list[str] | None,
+    filenames: list[str] | None,
+    model: str | None,
+    response_mode: str,
+    answer_mode: str,
+    top_k: int,
+    include_restricted: bool,
+    history: list[dict],
+    session_id: str,
+    assistant_message_id: str,
+) -> AsyncGenerator[str, None]:
+    """Direct (non-ReAct) mode: one retrieval pass + a single streamed
+    answer, with no tool-calling loop — so unlike _stream_agent_events, no
+    tool_call/tool_result events are emitted and the message's
+    reasoning_steps stays empty, correctly showing "no reasoning trace" for
+    this mode. Reuses the same building blocks as the classic /chat endpoint
+    (run_retrieval, generate_answer_streaming) and emits the same
+    token/citations/done/error SSE shapes as _stream_agent_events so the
+    frontend's stream consumer needs no branching by mode.
+    """
+    full_tokens: list[str] = []
+    try:
+        state = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_retrieval,
+                question=question,
+                document_ids=document_ids,
+                filenames=filenames,
+                model=model,
+                response_mode=response_mode,
+                answer_mode=answer_mode,
+                top_k=top_k,
+                include_restricted=include_restricted,
+                history=history,
+            ),
+            timeout=120.0,
+        )
+
+        citations = state.get("citations", [])
+        provider, selected_model, _config = resolve_generation_target(model)
+        resolved_model = f"{provider}/{selected_model}"
+
+        if route_after_evidence_check(state) == "insufficient_evidence":
+            answer = get_insufficient_evidence_message(
+                question=question,
+                reason=state.get("evidence_reason") or "The retrieved excerpts are too weak.",
+                mode=response_mode,
+            )
+            full_tokens.append(answer)
+            yield _sse({"type": "token", "value": answer})
+        else:
+            async for chunk in generate_answer_streaming(
+                question=question,
+                context=state.get("context", ""),
+                model=model,
+                response_mode=response_mode,
+                history=history,
+                citations=citations,
+                answer_mode=answer_mode,
+            ):
+                full_tokens.append(chunk)
+                yield _sse({"type": "token", "value": chunk})
+
+        answer = "".join(full_tokens)
+        evidence_sufficient = state.get("evidence_sufficient", False)
+
         await asyncio.to_thread(
             chat_history_repository.finalize_message,
             assistant_message_id,
-            "".join(full_tokens),
-            status="error",
+            answer,
+            citations,
+            evidence_sufficient,
+            response_mode,
+            answer_mode,
+            resolved_model,
         )
+        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+
+        yield _sse(
+            {
+                "type": "citations",
+                "data": citations,
+                "evidence_sufficient": evidence_sufficient,
+                "evidence_reason": state.get("evidence_reason"),
+                "response_mode": response_mode,
+                "answer_mode": answer_mode,
+                "agent_mode": "direct",
+                "session_id": session_id,
+                "model": resolved_model,
+            }
+        )
+        yield _sse({"type": "done"})
+
+    except TimeoutError:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": "Request timed out."})
+    except (FileNotFoundError, ValueError) as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": str(exc)})
+    except Exception as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
         yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
 
 
@@ -441,8 +550,35 @@ async def chat_stream(
     # steps can be written to this row as they happen — see
     # _stream_agent_events and history_repository.create_pending_message.
     assistant_message_id = await asyncio.to_thread(
-        chat_history_repository.create_pending_message, session_id
+        chat_history_repository.create_pending_message,
+        session_id,
+        "assistant",
+        payload.agent_mode,
     )
+
+    if payload.agent_mode == "direct":
+        # No LangGraph checkpointer involved in this mode — always read
+        # conversation context straight from the DB, same as /chat.
+        history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+        return StreamingResponse(
+            _stream_direct_events(
+                question=payload.question,
+                document_ids=doc_ids or None,
+                filenames=filenames or None,
+                model=payload.model,
+                response_mode=payload.response_mode,
+                answer_mode=effective_answer_mode,
+                top_k=payload.top_k,
+                include_restricted=is_admin,
+                history=history,
+                session_id=session_id,
+                assistant_message_id=assistant_message_id,
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     config = {"configurable": {"thread_id": session_id}}
     graph = get_agent_graph()

@@ -44,14 +44,15 @@ class ChatHistoryRepository:
         response_mode: str | None = None,
         answer_mode: str | None = None,
         model: str | None = None,
+        agent_mode: str | None = None,
     ) -> str:
         with get_connection() as conn:
             row = conn.execute(
                 """
                 INSERT INTO chat_messages
                     (id, session_id, role, content, citations_json,
-                     evidence_sufficient, response_mode, answer_mode, model)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                     evidence_sufficient, response_mode, answer_mode, model, agent_mode)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -64,12 +65,15 @@ class ChatHistoryRepository:
                     response_mode,
                     answer_mode,
                     model,
+                    agent_mode,
                 ),
             ).fetchone()
             conn.commit()
         return str(row["id"])
 
-    def create_pending_message(self, session_id: str, role: str = "assistant") -> str:
+    def create_pending_message(
+        self, session_id: str, role: str = "assistant", agent_mode: str = "react"
+    ) -> str:
         """Insert a placeholder row the moment an assistant turn starts.
 
         Its reasoning_steps/content are filled in afterwards via
@@ -81,11 +85,11 @@ class ChatHistoryRepository:
         with get_connection() as conn:
             row = conn.execute(
                 """
-                INSERT INTO chat_messages (id, session_id, role, content, status)
-                VALUES (%s, %s, %s, '', 'streaming')
+                INSERT INTO chat_messages (id, session_id, role, content, status, agent_mode)
+                VALUES (%s, %s, %s, '', 'streaming', %s)
                 RETURNING id
                 """,
-                (str(uuid4()), session_id, role),
+                (str(uuid4()), session_id, role, agent_mode),
             ).fetchone()
             conn.commit()
         return str(row["id"])
@@ -217,7 +221,7 @@ class ChatHistoryRepository:
                 """
                 SELECT id, session_id, role, content, citations_json,
                        evidence_sufficient, response_mode, answer_mode, model,
-                       reasoning_steps, status, created_at
+                       reasoning_steps, status, agent_mode, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC
