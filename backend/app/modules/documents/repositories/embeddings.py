@@ -296,7 +296,7 @@ class EmbeddingRepository:
                     WHERE c.document_id = ANY(%s::uuid[])
                     ORDER BY e.embedding <=> q.embedding
                     LIMIT %s
-                ) matched ON true
+                ) matched
                 ORDER BY q.query_index, matched.distance
                 """,
                 (*query_vectors, document_ids, limit),

@@ -60,19 +60,33 @@ def _parse_candidates(raw: str) -> list[str]:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?", "", text).strip()
         text = re.sub(r"```$", "", text).strip()
-    try:
-        data = json.loads(text)
-    except Exception:
-        match = re.search(r"\[.*\]", text, flags=re.DOTALL)
-        if not match:
-            return []
+
+    # Strict parse first: the whole text, then the first [...] block.
+    blocks = [text]
+    match = re.search(r"\[.*\]", text, flags=re.DOTALL)
+    if match:
+        blocks.append(match.group(0))
+    for block in blocks:
         try:
-            data = json.loads(match.group(0))
+            data = json.loads(block)
         except Exception:
-            return []
-    if not isinstance(data, list):
-        return []
-    return [str(item).strip() for item in data if str(item).strip()]
+            continue
+        if isinstance(data, list):
+            return [str(item).strip() for item in data if str(item).strip()]
+
+    # Fallback: providers occasionally truncate the array before its closing "]"
+    # (the strings are all complete, just the final bracket is dropped). Recover
+    # every COMPLETE JSON string literal so one missing bracket doesn't cost us
+    # all the suggestions; unterminated partial strings are ignored by design.
+    recovered: list[str] = []
+    for literal in re.findall(r'"(?:[^"\\]|\\.)*"', text):
+        try:
+            value = str(json.loads(literal)).strip()
+        except Exception:
+            continue
+        if value:
+            recovered.append(value)
+    return recovered
 
 
 def _normalize(text: str) -> str:
@@ -126,9 +140,11 @@ def _propose_candidates(
         f"Selected document excerpts:\n{context[:_MAX_CONTEXT_CHARS]}"
     )
     provider, selected_model, _ = resolve_generation_target(model)
-    # Suggestions are short JSON strings. A bounded output prevents a verbose or
-    # reasoning-heavy provider from extending this post-answer request unnecessarily.
-    output_budget = max(160, cfg.candidate_pool * 64)
+    # Suggestions are short JSON strings, but leave enough headroom for the whole
+    # array to close — too tight a cap truncates the JSON. The tolerant parser
+    # (_parse_candidates) still recovers complete strings if a provider drops the
+    # closing bracket anyway.
+    output_budget = max(512, cfg.candidate_pool * 96)
     client = create_chat_client(
         provider,
         selected_model,

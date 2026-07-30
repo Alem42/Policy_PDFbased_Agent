@@ -339,3 +339,33 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         "message_id": message_id,
         "items": ["Next grounded question?"],
     }
+
+
+# ── _parse_candidates robustness (guards the truncated-JSON regression) ────────
+
+
+def test_parse_candidates_valid_array():
+    raw = '["Question one?", "Question two?"]'
+    assert generator._parse_candidates(raw) == ["Question one?", "Question two?"]
+
+
+def test_parse_candidates_strips_code_fence():
+    raw = '```json\n["Q one?", "Q two?"]\n```'
+    assert generator._parse_candidates(raw) == ["Q one?", "Q two?"]
+
+
+def test_parse_candidates_recovers_from_missing_closing_bracket():
+    # Provider truncation quirk: all strings complete, but the final "]" is dropped.
+    # Must recover the complete questions instead of returning [] (the actual bug).
+    raw = '[\n  "First question?",\n  "Second question?",\n  "Third question?"'
+    assert generator._parse_candidates(raw) == [
+        "First question?",
+        "Second question?",
+        "Third question?",
+    ]
+
+
+def test_parse_candidates_drops_trailing_partial_string():
+    # Cut off mid-string: keep the complete ones, ignore the unterminated fragment.
+    raw = '[\n  "Complete one?",\n  "Complete two?",\n  "Partial thi'
+    assert generator._parse_candidates(raw) == ["Complete one?", "Complete two?"]
