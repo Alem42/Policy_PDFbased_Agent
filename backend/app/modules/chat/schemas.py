@@ -64,6 +64,8 @@ class ChatResponse(BaseModel):
     session_id: UUID | None = None
     # Resolved "<provider>/<model-id>" that actually answered, e.g. "openai/gpt-4o".
     model: str | None = None
+    # Validated follow-up questions the selected documents can answer (may be empty).
+    suggestions: list[str] = Field(default_factory=list)
 
 
 # ----- Chat history schemas -----
@@ -89,6 +91,7 @@ class SessionMessage(BaseModel):
     response_mode: ResponseMode | None = None
     answer_mode: AnswerMode | None = None
     model: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
     created_at: datetime
 
 

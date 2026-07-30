@@ -14,6 +14,8 @@ from app.modules.chat.rag.generation import generate_answer_streaming, resolve_g
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
+from app.modules.chat.suggestions import service as suggestions_service
+from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.chat.schemas import (
     MAX_HISTORY_TURNS,
     ChatRequest,
@@ -138,6 +140,31 @@ async def chat(
 
         resolved_model = result.get("resolved_model")
 
+        # Follow-up suggestions (Approach A + D), same guard as the streaming path.
+        suggestions: list[str] = []
+        if evidence_sufficient and str(result.get("answer", "")).strip():
+            sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+            if sug_cfg.enabled:
+                try:
+                    suggestions = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_followup_suggestions,
+                            question=payload.question,
+                            answer=result["answer"],
+                            context=result.get("context", ""),
+                            identifiers=doc_ids or filenames,
+                            response_mode=payload.response_mode,
+                            history=history,
+                            include_restricted=user["role"] == "admin",
+                            model=payload.model,
+                            user_id=user_id,
+                            config=sug_cfg,
+                        ),
+                        timeout=45.0,
+                    )
+                except Exception:
+                    suggestions = []
+
         # ── Save the assistant answer ───────────────────────────────────
         await asyncio.to_thread(
             chat_history_repository.add_message,
@@ -149,6 +176,7 @@ async def chat(
             payload.response_mode,
             payload.answer_mode,
             resolved_model,
+            suggestions,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -162,6 +190,7 @@ async def chat(
             answer_mode=effective_answer_mode,
             session_id=UUID(session_id),
             model=resolved_model,
+            suggestions=suggestions,
         )
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Request timed out after 120 s.") from exc
@@ -287,6 +316,34 @@ async def chat_stream(
                 yield _sse({"type": "token", "value": refusal})
 
             complete_answer = "".join(full_tokens)
+
+            # Follow-up suggestions (Approach A + D). Only when we actually produced a
+            # grounded answer; each candidate is re-validated against the same documents,
+            # so we never suggest a question the corpus can't answer. Fail-open to [].
+            suggestions: list[str] = []
+            if evidence_sufficient and complete_answer.strip():
+                sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+                if sug_cfg.enabled:
+                    try:
+                        suggestions = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                generate_followup_suggestions,
+                                question=payload.question,
+                                answer=complete_answer,
+                                context=state.get("context", ""),
+                                identifiers=doc_ids or filenames,
+                                response_mode=payload.response_mode,
+                                history=history,
+                                include_restricted=user["role"] == "admin",
+                                model=payload.model,
+                                user_id=user_id,
+                                config=sug_cfg,
+                            ),
+                            timeout=45.0,
+                        )
+                    except Exception:
+                        suggestions = []
+
             await asyncio.to_thread(
                 chat_history_repository.add_message,
                 session_id,
@@ -297,6 +354,7 @@ async def chat_stream(
                 payload.response_mode,
                 payload.answer_mode,
                 resolved_model,
+                suggestions,
             )
             await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -312,6 +370,8 @@ async def chat_stream(
                     "model": resolved_model,
                 }
             )
+            if suggestions:
+                yield _sse({"type": "suggestions", "items": suggestions})
             yield _sse({"type": "done"})
 
         except TimeoutError:

@@ -461,6 +461,28 @@ export function addCatalogProvider(payload) {
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }
+// ── Follow-up suggestions ────────────────────────────────────────────────
+export function getSuggestionSettings() {
+  return request("/admin/suggestions");
+}
+
+export function saveSuggestionSettings(payload) {
+  return request("/admin/suggestions", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// Best-effort click log for personalization; ignore failures.
+export function logSuggestionClick(sessionId, question) {
+  return request("/chat/suggestions/click", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId || null, question }),
+  }).catch(() => {});
+}
+
 export function getTaxonomy() {
   return request("/taxonomy");
 }

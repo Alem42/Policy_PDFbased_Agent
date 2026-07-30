@@ -363,6 +363,33 @@ CREATE TABLE IF NOT EXISTS "public"."reranking_settings" (
 ;
 
 -- ----------------------------
+-- Table structure for suggestion_settings (admin-tunable follow-up suggestions, one JSON row)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."suggestion_settings" (
+  "id" int4 NOT NULL DEFAULT 1,
+  "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "suggestion_settings_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "suggestion_settings_singleton" CHECK ("id" = 1)
+)
+;
+
+-- ----------------------------
+-- Table structure for suggestion_clicks (which suggested questions users click)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."suggestion_clicks" (
+  "id" uuid NOT NULL,
+  "user_id" uuid NOT NULL,
+  "session_id" uuid,
+  "question" text COLLATE "pg_catalog"."default" NOT NULL,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "suggestion_clicks_pkey" PRIMARY KEY ("id")
+)
+;
+CREATE INDEX IF NOT EXISTS "idx_suggestion_clicks_user"
+  ON "public"."suggestion_clicks" ("user_id", "created_at" DESC);
+
+-- ----------------------------
 -- Table structure for documents
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."documents";
@@ -815,6 +842,7 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "response_mode"       text        COLLATE "pg_catalog"."default",
   "answer_mode"         text        COLLATE "pg_catalog"."default" DEFAULT 'analysis',
   "model"               text        COLLATE "pg_catalog"."default",
+  "suggestions_json"    jsonb       NOT NULL DEFAULT '[]',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 
