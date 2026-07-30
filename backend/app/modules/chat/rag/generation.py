@@ -85,17 +85,27 @@ def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
     return provider, selected_model, config
 
 
-def create_chat_client(provider: str, model: str, temperature: float = 0) -> ChatOpenAI:
+def create_chat_client(
+    provider: str,
+    model: str,
+    temperature: float = 0,
+    max_tokens: int | None = None,
+) -> ChatOpenAI:
     api_key = get_provider_api_key(provider)
     if not api_key:
         raise ValueError(f"No API key is configured for provider '{provider}'.")
     config = get_provider_config(provider)
+    client_options = {
+        "api_key": api_key,
+        "base_url": config["base_url"],
+        "model": model,
+        "temperature": temperature,
+        "extra_body": config["extra_body"],
+    }
+    if max_tokens is not None:
+        client_options["max_tokens"] = max_tokens
     return ChatOpenAI(
-        api_key=api_key,
-        base_url=config["base_url"],
-        model=model,
-        temperature=temperature,
-        extra_body=config["extra_body"],
+        **client_options,
     )
 
 

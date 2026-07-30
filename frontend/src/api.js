@@ -270,6 +270,8 @@ export function askQuestion(
  * Returns an async generator that yields SSE event objects:
  *   {type:"retrieving"} | {type:"thinking"} | {type:"token",value:str}
  *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
+ *   | {type:"answer_done",suggestions_pending:bool}
+ *   | {type:"suggestions",items:[]}
  *   | {type:"done"} | {type:"error",message:str}
  */
 export async function* askQuestionStream(

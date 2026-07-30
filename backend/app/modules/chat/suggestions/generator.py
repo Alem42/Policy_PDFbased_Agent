@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -26,7 +27,10 @@ from app.modules.chat.rag.generation import create_chat_client, resolve_generati
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.config import SuggestionConfig
 from app.modules.chat.suggestions.profile import personalization_hint
-from app.modules.documents.service import retrieve_relevant_chunks
+from app.modules.documents.repositories.embeddings import embedding_repository
+from app.modules.documents.service import resolve_document_ids
+from app.modules.embedding import service as embedding
+from app.modules.reranking import service as reranking
 
 logger = logging.getLogger(__name__)
 
@@ -122,39 +126,103 @@ def _propose_candidates(
         f"Selected document excerpts:\n{context[:_MAX_CONTEXT_CHARS]}"
     )
     provider, selected_model, _ = resolve_generation_target(model)
-    client = create_chat_client(provider, selected_model, temperature=cfg.temperature)
+    # Suggestions are short JSON strings. A bounded output prevents a verbose or
+    # reasoning-heavy provider from extending this post-answer request unnecessarily.
+    output_budget = max(160, cfg.candidate_pool * 64)
+    client = create_chat_client(
+        provider,
+        selected_model,
+        temperature=cfg.temperature,
+        max_tokens=output_budget,
+    )
     response = client.invoke([SystemMessage(content=system), HumanMessage(content=human)])
     return _parse_candidates(str(response.content))
 
 
-def _passes_evidence_gate(
+def _passes_reranker_gate(
     candidate: str,
+    chunks: list[dict],
+    cfg: SuggestionConfig,
+) -> bool:
+    """Apply the expensive secondary gate only after dense distance passes."""
+    try:
+        ranked = reranking.rerank(
+            candidate,
+            chunks[: cfg.validation_top_k],
+            limit=cfg.validation_top_k,
+        )
+    except Exception:
+        logger.exception("Reranker validation failed for candidate; dropping it")
+        return False
+    scores = [chunk["reranker_score"] for chunk in ranked if "reranker_score" in chunk]
+    return bool(scores) and max(scores) >= min_reranker_score()
+
+
+def _validated_candidates(
+    candidates: list[str],
     identifiers: list[str],
     include_restricted: bool,
     cfg: SuggestionConfig,
-    gate_distance: float,
-) -> bool:
-    """Approach D: keep only candidates the corpus can actually answer.
+) -> list[str]:
+    """Batch dense retrieval, then progressively apply the evidence gates."""
+    document_ids = resolve_document_ids(identifiers, include_restricted)
+    vectors = embedding.embed_queries(candidates)
+    if len(vectors) != len(candidates):
+        raise RuntimeError("Embedding provider returned an unexpected query-vector count.")
 
-    Reuses retrieve_relevant_chunks (identifier resolution, multi-file pgvector
-    filter, and the reranker toggle) so validation mirrors a real question exactly.
-    """
-    chunks = retrieve_relevant_chunks(
-        candidate,
-        identifiers,
-        limit=cfg.validation_top_k,
-        include_restricted=include_restricted,
+    # Preserve normal RAG's wider dense recall pool, but do not send all 20
+    # chunks through the expensive reranker.
+    dense_limit = max(cfg.validation_top_k * 3, 20)
+    dense_results = embedding_repository.retrieve_many(
+        [embedding.vector_literal(vector) for vector in vectors],
+        document_ids,
+        limit=dense_limit,
     )
-    if not chunks:
-        return False
-    best_distance = min(float(c.get("distance", 1.0)) for c in chunks)
-    if best_distance > gate_distance:
-        return False
-    if cfg.use_reranker_validation:
-        scores = [c["reranker_score"] for c in chunks if "reranker_score" in c]
-        if scores and max(scores) < min_reranker_score():
-            return False
-    return True
+    if len(dense_results) != len(candidates):
+        raise RuntimeError("Batch retrieval returned an unexpected result-group count.")
+
+    gate_distance = cfg.effective_distance(max_vector_distance())
+    distance_survivors: list[tuple[int, str, list[dict]]] = []
+    for index, (candidate, chunks) in enumerate(zip(candidates, dense_results, strict=True)):
+        if not chunks:
+            continue
+        best_distance = min(float(chunk.get("distance", 1.0)) for chunk in chunks)
+        if best_distance <= gate_distance:
+            distance_survivors.append((index, candidate, chunks))
+
+    if not cfg.use_reranker_validation or not reranking.enabled():
+        return [candidate for _, candidate, _ in distance_survivors][: cfg.max_suggestions]
+
+    passed_indices: set[int] = set()
+    reranker_provider = reranking.active_config().provider
+    if reranker_provider == "local":
+        # Local inference already batches a candidate's chunk pairs internally.
+        # Keep it sequential to avoid CPU/GPU contention, stopping once enough pass.
+        for index, candidate, chunks in distance_survivors:
+            if _passes_reranker_gate(candidate, chunks, cfg):
+                passed_indices.add(index)
+            if len(passed_indices) >= cfg.max_suggestions:
+                break
+    else:
+        # Remote APIs generally accept one query with many documents, not many
+        # queries. Bound concurrency so their network latency overlaps without
+        # creating a request spike.
+        workers = min(3, len(distance_survivors))
+        if workers:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    index: executor.submit(_passes_reranker_gate, candidate, chunks, cfg)
+                    for index, candidate, chunks in distance_survivors
+                }
+                for index, future in futures.items():
+                    if future.result():
+                        passed_indices.add(index)
+
+    return [
+        candidate
+        for index, candidate, _ in distance_survivors
+        if index in passed_indices
+    ][: cfg.max_suggestions]
 
 
 def generate_followup_suggestions(
@@ -192,14 +260,13 @@ def generate_followup_suggestions(
     if not candidates:
         return []
 
-    gate_distance = cfg.effective_distance(max_vector_distance())
-    kept: list[str] = []
-    for candidate in candidates:
-        try:
-            if _passes_evidence_gate(candidate, identifiers, include_restricted, cfg, gate_distance):
-                kept.append(candidate)
-        except Exception:
-            logger.exception("Validation failed for candidate; dropping it")
-        if len(kept) >= cfg.max_suggestions:
-            break
-    return kept
+    try:
+        return _validated_candidates(
+            candidates,
+            identifiers,
+            include_restricted,
+            cfg,
+        )
+    except Exception:
+        logger.exception("Follow-up validation failed")
+        return []

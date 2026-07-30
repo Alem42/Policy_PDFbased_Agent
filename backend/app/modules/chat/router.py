@@ -1,5 +1,6 @@
 import asyncio
 import json as _json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import UUID
@@ -28,6 +29,7 @@ from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+logger = logging.getLogger(__name__)
 
 
 @router.get("/chat/models", response_model=list[ProviderModels])
@@ -214,7 +216,9 @@ async def chat_stream(
       {"type": "thinking"}                      — LLM generation about to start
       {"type": "token", "value": "..."}         — one text chunk from the LLM
       {"type": "citations", "data": [...], ...} — final metadata (sent once)
-      {"type": "done"}                          — stream complete
+      {"type": "answer_done", ...}              — answer is complete; suggestions may follow
+      {"type": "suggestions", "items": [...]}   — validated follow-ups
+      {"type": "done"}                          — stream connection complete
       {"type": "error", "message": "..."}       — terminal error
     """
     doc_ids = [str(d) for d in payload.document_ids]
@@ -317,34 +321,19 @@ async def chat_stream(
 
             complete_answer = "".join(full_tokens)
 
-            # Follow-up suggestions (Approach A + D). Only when we actually produced a
-            # grounded answer; each candidate is re-validated against the same documents,
-            # so we never suggest a question the corpus can't answer. Fail-open to [].
-            suggestions: list[str] = []
+            # Persist and publish the completed answer before starting the slower
+            # suggestion pipeline. The frontend can stop rendering the answer as a
+            # token stream and show a suggestion-specific progress indicator.
+            sug_cfg = None
+            suggestions_pending = False
             if evidence_sufficient and complete_answer.strip():
-                sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
-                if sug_cfg.enabled:
-                    try:
-                        suggestions = await asyncio.wait_for(
-                            asyncio.to_thread(
-                                generate_followup_suggestions,
-                                question=payload.question,
-                                answer=complete_answer,
-                                context=state.get("context", ""),
-                                identifiers=doc_ids or filenames,
-                                response_mode=payload.response_mode,
-                                history=history,
-                                include_restricted=user["role"] == "admin",
-                                model=payload.model,
-                                user_id=user_id,
-                                config=sug_cfg,
-                            ),
-                            timeout=45.0,
-                        )
-                    except Exception:
-                        suggestions = []
+                try:
+                    sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+                    suggestions_pending = bool(sug_cfg.enabled)
+                except Exception:
+                    logger.exception("Suggestion settings unavailable; skipping follow-ups")
 
-            await asyncio.to_thread(
+            assistant_message_id = await asyncio.to_thread(
                 chat_history_repository.add_message,
                 session_id,
                 "assistant",
@@ -354,7 +343,7 @@ async def chat_stream(
                 payload.response_mode,
                 payload.answer_mode,
                 resolved_model,
-                suggestions,
+                [],
             )
             await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -370,7 +359,45 @@ async def chat_stream(
                     "model": resolved_model,
                 }
             )
-            if suggestions:
+            yield _sse(
+                {
+                    "type": "answer_done",
+                    "suggestions_pending": suggestions_pending,
+                }
+            )
+
+            if suggestions_pending and sug_cfg is not None:
+                suggestions: list[str] = []
+                try:
+                    suggestions = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_followup_suggestions,
+                            question=payload.question,
+                            answer=complete_answer,
+                            context=state.get("context", ""),
+                            identifiers=doc_ids or filenames,
+                            response_mode=payload.response_mode,
+                            history=history,
+                            include_restricted=user["role"] == "admin",
+                            model=payload.model,
+                            user_id=user_id,
+                            config=sug_cfg,
+                        ),
+                        timeout=45.0,
+                    )
+                except Exception:
+                    logger.exception("Follow-up generation timed out or failed")
+
+                try:
+                    await asyncio.to_thread(
+                        chat_history_repository.update_message_suggestions,
+                        assistant_message_id,
+                        suggestions,
+                    )
+                except Exception:
+                    logger.exception("Generated suggestions could not be persisted")
+                # Always emit the completion event, including an empty list, so
+                # the frontend can clear its suggestion-specific loading state.
                 yield _sse({"type": "suggestions", "items": suggestions})
             yield _sse({"type": "done"})
 

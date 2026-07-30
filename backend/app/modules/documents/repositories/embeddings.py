@@ -247,5 +247,71 @@ class EmbeddingRepository:
             for row in rows
         ]
 
+    def retrieve_many(
+        self,
+        query_vectors: list[str],
+        document_ids: list[str],
+        *,
+        limit: int,
+    ) -> list[list[dict]]:
+        """Retrieve a per-query top-k in one PostgreSQL round trip.
+
+        The outer result preserves the input query order. Each inner list is
+        independently distance-ranked and filtered to the same selected documents.
+        """
+        if not query_vectors:
+            return []
+        if not document_ids:
+            return [[] for _ in query_vectors]
+        if limit <= 0:
+            raise ValueError("Retrieval limit must be greater than zero.")
+
+        table, dim = _active_table_dim()
+        cast = _vector_type(dim)
+        values_sql = ", ".join(
+            f"({query_index}, %s::{cast})"
+            for query_index in range(len(query_vectors))
+        )
+        with get_connection() as connection:
+            if not _table_exists(connection, table):
+                return [[] for _ in query_vectors]
+            rows = connection.execute(
+                f"""
+                WITH query_vectors(query_index, embedding) AS (
+                    VALUES {values_sql}
+                )
+                SELECT q.query_index, matched.*
+                FROM query_vectors q
+                CROSS JOIN LATERAL (
+                    SELECT c.id AS chunk_id, c.document_id,
+                        d.original_filename AS file,
+                        COALESCE(dm.title, d.original_filename) AS doc_title,
+                        c.page_start, c.page_end,
+                        c.text, c.token_count, c.language,
+                        e.embedding <=> q.embedding AS distance
+                    FROM "{table}" e
+                    JOIN document_chunks c ON c.id = e.chunk_id
+                    JOIN documents d ON d.id = c.document_id
+                    LEFT JOIN document_metadata dm ON dm.document_id = d.id
+                    WHERE c.document_id = ANY(%s::uuid[])
+                    ORDER BY e.embedding <=> q.embedding
+                    LIMIT %s
+                ) matched ON true
+                ORDER BY q.query_index, matched.distance
+                """,
+                (*query_vectors, document_ids, limit),
+            ).fetchall()
+
+        grouped: list[list[dict]] = [[] for _ in query_vectors]
+        for row in rows:
+            item = dict(row)
+            query_index = int(item.pop("query_index"))
+            item["chunk_id"] = str(item["chunk_id"])
+            item["document_id"] = str(item["document_id"])
+            item["page"] = item["page_start"]
+            item["distance"] = float(item["distance"])
+            grouped[query_index].append(item)
+        return grouped
+
 
 embedding_repository = EmbeddingRepository()

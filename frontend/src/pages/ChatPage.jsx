@@ -600,6 +600,19 @@ export default function ChatPage({
             setSessionId(String(evt.session_id));
             loadSessions();
           }
+        } else if (evt.type === "answer_done") {
+          setMessages((current) => {
+            const next = [...current];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = {
+                ...last,
+                streaming: false,
+                suggestionsLoading: evt.suggestions_pending === true,
+              };
+            }
+            return next;
+          });
         } else if (evt.type === "suggestions") {
           setMessages((current) => {
             const next = [...current];
@@ -608,6 +621,7 @@ export default function ChatPage({
               next[next.length - 1] = {
                 ...last,
                 suggestions: Array.isArray(evt.items) ? evt.items : [],
+                suggestionsLoading: false,
               };
             }
             return next;
@@ -619,7 +633,11 @@ export default function ChatPage({
             const next = [...current];
             const last = next[next.length - 1];
             if (!last?.streaming) return current;
-            next[next.length - 1] = { ...last, streaming: false };
+            next[next.length - 1] = {
+              ...last,
+              streaming: false,
+              suggestionsLoading: false,
+            };
             return next;
           });
         }
@@ -1066,6 +1084,24 @@ export default function ChatPage({
 
                   {/* Suggested follow-ups — each is validated server-side to be answerable
                       from the selected documents, so clicking one won't dead-end. */}
+                  {message.role === "assistant" && !message.streaming && message.suggestionsLoading && (
+                    <Box
+                      sx={{
+                        mt: 1.5,
+                        pt: 1.5,
+                        borderTop: "1px dashed #e2e5df",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        color: "text.secondary",
+                      }}
+                    >
+                      <CircularProgress size={14} sx={{ color: "#52756b" }} />
+                      <Typography variant="caption">
+                        Checking suggested follow-ups against the selected documents…
+                      </Typography>
+                    </Box>
+                  )}
                   {message.role === "assistant" && !message.streaming && message.suggestions?.length > 0 && (
                     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: "1px dashed #e2e5df" }}>
                       <Typography
@@ -1112,7 +1148,9 @@ export default function ChatPage({
                 </Box>
               );
             })}
-            {busy && !messages[messages.length - 1]?.streaming && (
+            {busy
+              && !messages[messages.length - 1]?.streaming
+              && !messages[messages.length - 1]?.suggestionsLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
                 <Box sx={{ display: "flex", gap: "4px", alignItems: "center" }}>
                   {[0, 1, 2].map((i) => (

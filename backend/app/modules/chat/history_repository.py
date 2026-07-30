@@ -79,6 +79,25 @@ class ChatHistoryRepository:
             )
             conn.commit()
 
+    def update_message_suggestions(
+        self,
+        message_id: str,
+        suggestions: list[str],
+    ) -> bool:
+        """Attach asynchronously generated suggestions to an assistant message."""
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE chat_messages
+                SET suggestions_json = %s::jsonb
+                WHERE id = %s AND role = 'assistant'
+                RETURNING id
+                """,
+                (json.dumps(suggestions), message_id),
+            ).fetchone()
+            conn.commit()
+        return row is not None
+
     def delete_session(self, session_id: str, user_id: str) -> bool:
         with get_connection() as conn:
             row = conn.execute(
