@@ -45,14 +45,16 @@ class ChatHistoryRepository:
         answer_mode: str | None = None,
         model: str | None = None,
         agent_mode: str | None = None,
+        evidence_source: str | None = None,
     ) -> str:
         with get_connection() as conn:
             row = conn.execute(
                 """
                 INSERT INTO chat_messages
                     (id, session_id, role, content, citations_json,
-                     evidence_sufficient, response_mode, answer_mode, model, agent_mode)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+                     evidence_sufficient, response_mode, answer_mode, model, agent_mode,
+                     evidence_source)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -66,6 +68,7 @@ class ChatHistoryRepository:
                     answer_mode,
                     model,
                     agent_mode,
+                    evidence_source,
                 ),
             ).fetchone()
             conn.commit()
@@ -113,6 +116,7 @@ class ChatHistoryRepository:
         answer_mode: str | None = None,
         model: str | None = None,
         status: str = "complete",
+        evidence_source: str | None = None,
     ) -> None:
         """Fill in a pending message's final answer, closing out the turn
         started by create_pending_message."""
@@ -121,7 +125,8 @@ class ChatHistoryRepository:
                 """
                 UPDATE chat_messages
                 SET content = %s, citations_json = %s::jsonb, evidence_sufficient = %s,
-                    response_mode = %s, answer_mode = %s, model = %s, status = %s
+                    response_mode = %s, answer_mode = %s, model = %s, status = %s,
+                    evidence_source = %s
                 WHERE id = %s
                 """,
                 (
@@ -132,6 +137,7 @@ class ChatHistoryRepository:
                     answer_mode,
                     model,
                     status,
+                    evidence_source,
                     message_id,
                 ),
             )
@@ -221,7 +227,7 @@ class ChatHistoryRepository:
                 """
                 SELECT id, session_id, role, content, citations_json,
                        evidence_sufficient, response_mode, answer_mode, model,
-                       reasoning_steps, status, agent_mode, created_at
+                       reasoning_steps, status, agent_mode, evidence_source, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC

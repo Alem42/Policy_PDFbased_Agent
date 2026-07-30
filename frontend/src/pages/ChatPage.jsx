@@ -36,6 +36,7 @@ import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import PublicIcon from "@mui/icons-material/Public";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -741,6 +742,7 @@ export default function ChatPage({
         citations: Array.isArray(m.citations) ? m.citations : [],
         evidenceSufficient: m.evidence_sufficient,
         evidenceReason: null,
+        evidenceSource: m.evidence_source,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
         agentMode: m.agent_mode,
@@ -1022,6 +1024,7 @@ export default function ChatPage({
             citations: Array.isArray(evt.data) ? evt.data : [],
             evidenceSufficient: evt.evidence_sufficient,
             evidenceReason: evt.evidence_reason || null,
+            evidenceSource: evt.evidence_source || null,
             responseMode: evt.response_mode || responseMode,
             answerMode: evt.answer_mode || answerMode,
             agentMode: evt.agent_mode || last.agentMode || agentMode,
@@ -1489,6 +1492,20 @@ export default function ChatPage({
                   {message.role === "assistant" && isLowEvidence && isChatMode && (
                     <Alert severity="warning" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
                       <strong>Low-confidence answer</strong> — The selected documents contain limited relevant evidence. This response may draw on general knowledge beyond the provided documents.
+                    </Alert>
+                  )}
+
+                  {/* Evidence escalated beyond the selected documents — full library search */}
+                  {message.role === "assistant" && message.evidenceSource === "full_corpus" && (
+                    <Alert severity="info" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>From the wider library</strong> — Your selected documents did not have enough relevant material, so this answer draws on the full document library instead.
+                    </Alert>
+                  )}
+
+                  {/* Evidence escalated beyond the selected documents — web search */}
+                  {message.role === "assistant" && message.evidenceSource === "web" && (
+                    <Alert severity="info" icon={<PublicIcon fontSize="inherit" />} sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>From the web</strong> — Neither your selected documents nor the wider library had enough relevant material, so this answer draws on live web search results.
                     </Alert>
                   )}
 

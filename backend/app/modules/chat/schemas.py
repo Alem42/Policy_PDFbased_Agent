@@ -9,6 +9,11 @@ AnswerMode = Literal["analysis", "chat"]
 # "react": multi-step tool-calling agent (web search, escalation, reasoning
 # trace). "direct": single retrieval pass + one-shot answer, no tool loop.
 AgentMode = Literal["react", "direct"]
+# Which retrieval tier produced the evidence behind an assistant answer.
+# None (omitted on the wire) means no tier was sufficient this turn — either
+# an Open Discussion general-knowledge fallback or a Document Analysis
+# refusal, told apart by answer_mode on the frontend.
+EvidenceSource = Literal["internal", "full_corpus", "web"]
 
 # Maximum number of prior conversation turns sent to the LLM for context.
 # Each turn = one user message + one assistant reply (2 messages).
@@ -78,6 +83,7 @@ class ChatResponse(BaseModel):
     truncated: bool = False
     evidence_sufficient: bool = True
     evidence_reason: str | None = None
+    evidence_source: EvidenceSource | None = None
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"
     agent_mode: AgentMode = "direct"
@@ -106,6 +112,7 @@ class SessionMessage(BaseModel):
     content: str
     citations: list[Citation] = Field(default_factory=list)
     evidence_sufficient: bool | None = None
+    evidence_source: EvidenceSource | None = None
     response_mode: ResponseMode | None = None
     answer_mode: AnswerMode | None = None
     agent_mode: AgentMode | None = None

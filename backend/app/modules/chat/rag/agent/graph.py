@@ -20,6 +20,7 @@ from app.modules.chat.rag.agent.tools import (
 )
 from app.modules.chat.rag.checkpointer import get_checkpointer
 from app.modules.chat.rag.generation import create_chat_client, resolve_generation_target
+from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,8 @@ ANALYSIS_MODE_TOOLS = [search_internal_documents, prepare_final_answer]
 TOOL_CALL_LIMITS = {
     "search_internal_documents": 1,
     "search_full_corpus": 2,
-    "ask_user": 1,
-    "search_web": 2,
+    "ask_user": 20,
+    "search_web": 4,
     "import_web_page": 1,
     "prepare_final_answer": 1,
 }
@@ -200,11 +201,42 @@ def record_tool_call_node(state: AgentState) -> dict:
 
 
 def route_after_tools(state: AgentState) -> str:
-    """The prepare tool is the only exit from the ReAct action loop."""
+    """The prepare tool is the only exit from the ReAct action loop.
+
+    Document Analysis mode has no full-corpus/web escalation (see
+    ANALYSIS_MODE_TOOLS) — search_internal_documents is its only evidence
+    tier, so if that never became sufficient this turn, the answer must be a
+    deterministic refusal identical to the Direct/linear graph's
+    (insufficient_evidence_node in rag/graph/nodes.py), not an LLM-written
+    one. Open Discussion mode keeps its existing general-knowledge fallback
+    inside AGENT_STRATEGY_PROMPT/final_generation, since evidence_source can
+    legitimately stay None there while the model still answers.
+    """
     last = state["messages"][-1]
     if isinstance(last, ToolMessage) and last.name == "prepare_final_answer":
+        if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_source"):
+            return "insufficient_evidence"
         return "final_generation"
     return "agent"
+
+
+def insufficient_evidence_node(state: AgentState) -> dict:
+    """Document Analysis mode, no tier ever produced sufficient evidence:
+    return the same mode-aware templated refusal the Direct/linear graph
+    uses (see rag/graph/nodes.py::insufficient_evidence_node), instead of
+    letting the LLM writer improvise wording for it.
+    """
+    question = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "",
+    )
+    reason = state.get("last_evidence_reason") or "The retrieved excerpts are too weak."
+    message = get_insufficient_evidence_message(
+        question=question,
+        reason=reason,
+        mode=state.get("response_mode", "researcher"),
+    )
+    return {"messages": [AIMessage(content=message)]}
 
 
 async def final_generation_node(state: AgentState) -> dict:
@@ -238,6 +270,7 @@ def build_agent_graph():
     builder.add_node("record_tool_call", record_tool_call_node)
     builder.add_node("tools", ToolNode(ALL_TOOLS))
     builder.add_node("final_generation", final_generation_node)
+    builder.add_node("insufficient_evidence", insufficient_evidence_node)
     builder.add_edge(START, "agent")
     builder.add_conditional_edges(
         "agent", route_after_agent, {"record_tool_call": "record_tool_call"}
@@ -246,9 +279,14 @@ def build_agent_graph():
     builder.add_conditional_edges(
         "tools",
         route_after_tools,
-        {"agent": "agent", "final_generation": "final_generation"},
+        {
+            "agent": "agent",
+            "final_generation": "final_generation",
+            "insufficient_evidence": "insufficient_evidence",
+        },
     )
     builder.add_edge("final_generation", END)
+    builder.add_edge("insufficient_evidence", END)
     return builder.compile(checkpointer=get_checkpointer())
 
 

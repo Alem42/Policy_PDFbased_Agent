@@ -139,19 +139,22 @@ async def search_internal_documents(
         )
 
     result = await asyncio.to_thread(_run)
+    sufficient = result.get("evidence_sufficient", False)
     raw_citations = [dict(c, source_type="document") for c in result.get("citations", [])]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {
-        "evidence_sufficient": result.get("evidence_sufficient", False),
+        "evidence_sufficient": sufficient,
         "reason": result.get("evidence_reason"),
         "results": numbered_results,
     }
-    return Command(
-        update={
-            "messages": [_tool_message(tool_call_id, payload)],
-            "citations": new_citations,
-        }
-    )
+    update: dict = {
+        "messages": [_tool_message(tool_call_id, payload)],
+        "citations": new_citations,
+        "last_evidence_reason": result.get("evidence_reason"),
+    }
+    if sufficient:
+        update["evidence_source"] = "internal"
+    return Command(update=update)
 
 
 @tool
@@ -192,12 +195,14 @@ async def search_full_corpus(
     raw_citations = [_document_citation(c) for c in relevant]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
-    return Command(
-        update={
-            "messages": [_tool_message(tool_call_id, payload)],
-            "citations": new_citations,
-        }
-    )
+    update: dict = {
+        "messages": [_tool_message(tool_call_id, payload)],
+        "citations": new_citations,
+        "last_evidence_reason": reason,
+    }
+    if sufficient:
+        update["evidence_source"] = "full_corpus"
+    return Command(update=update)
 
 
 @tool
@@ -347,7 +352,12 @@ async def search_web(
         results = await provider.search(query, limit=5)
     except WebSearchProviderError as exc:
         payload = {"evidence_sufficient": False, "reason": str(exc), "results": []}
-        return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
+        return Command(
+            update={
+                "messages": [_tool_message(tool_call_id, payload)],
+                "last_evidence_reason": str(exc),
+            }
+        )
 
     sufficient, reason, candidates = await asyncio.to_thread(_score_web_results, query, results)
     raw_citations = [
@@ -362,12 +372,14 @@ async def search_web(
     ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
-    return Command(
-        update={
-            "messages": [_tool_message(tool_call_id, payload)],
-            "citations": new_citations,
-        }
-    )
+    update: dict = {
+        "messages": [_tool_message(tool_call_id, payload)],
+        "citations": new_citations,
+        "last_evidence_reason": reason,
+    }
+    if sufficient:
+        update["evidence_source"] = "web"
+    return Command(update=update)
 
 
 @tool
