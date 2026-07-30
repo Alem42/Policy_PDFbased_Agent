@@ -59,11 +59,12 @@ class Citation(BaseModel):
 
 class ResumeChatRequest(BaseModel):
     """Resumes a chat turn that was paused by interrupt() — e.g. the user's
-    answer to a confirm_websearch or confirm_import prompt."""
+    answer to an ask_user or confirm_import prompt."""
 
     session_id: UUID
-    # Whatever the interrupted tool's `interrupt()` call expects back: a
-    # yes/no string for ask_user, a bool for import_web_page's confirmation.
+    # Whatever the interrupted tool's `interrupt()` call expects back: any
+    # string (a listed option or free-typed text) for ask_user, a bool for
+    # import_web_page's confirmation.
     answer: str | bool
 
 

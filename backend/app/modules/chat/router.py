@@ -228,8 +228,9 @@ async def _stream_agent_events(
       {"type": "tool_call", "tool": "..."}          — the agent is calling a tool
       {"type": "tool_result", "tool": "...", ...}    — that tool's result summary
       {"type": "token", "value": "..."}              — one text chunk of the final answer
-      {"type": "confirm_websearch", "question": ..., "options": [...]} — paused,
-          call POST /chat/resume with {"session_id", "answer": "<one of options>"}
+      {"type": "ask_user", "mode": "confirm"|"choice"|"freeform", "question": ...,
+       "options": [...] | null} — paused, call POST /chat/resume with
+          {"session_id", "answer": "<one of options, or any free-typed text>"}
       {"type": "confirm_import", "url": ..., "title": ..., "question": ...} — paused,
           call POST /chat/resume with {"session_id", "answer": true|false}
       {"type": "citations", "data": [...], ...}      — final metadata (sent once)
@@ -265,7 +266,7 @@ async def _stream_agent_events(
                 if "__interrupt__" in chunk:
                     interrupts = chunk["__interrupt__"]
                     value: dict[str, Any] = dict(interrupts[0].value) if interrupts else {}
-                    event_type = value.pop("type", "confirm_websearch")
+                    event_type = value.pop("type", "ask_user")
                     yield _sse({"type": event_type, "session_id": session_id, **value})
                     interrupted = True
                     break  # paused — client must call /chat/resume to continue
@@ -421,7 +422,7 @@ async def chat_resume(
     payload: ResumeChatRequest,
     user: CurrentUser,
 ) -> StreamingResponse:
-    """Resume a chat turn paused by interrupt() (a confirm_websearch or
+    """Resume a chat turn paused by interrupt() (an ask_user or
     confirm_import event from /chat/stream). Streams the same SSE event
     types as /chat/stream, continuing exactly where the agent left off.
     """
