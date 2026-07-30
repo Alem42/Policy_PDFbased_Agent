@@ -18,8 +18,8 @@ services:
       # volume -- an existing pg_data volume must have new migrations applied manually.
       - ./backend/database/migrations/004_add_policy_taxonomy.sql:/docker-entrypoint-initdb.d/05_migration_004.sql:ro
       - ./backend/database/migrations/005_documents_sha256_unique.sql:/docker-entrypoint-initdb.d/06_migration_005.sql:ro
-      - ./backend/database/migrations/006_add_suggestions.sql:/docker-entrypoint-initdb.d/07_migration_006.sql:ro
-      - ./backend/database/migrations/006_add_embedding_settings.sql:/docker-entrypoint-initdb.d/07_migration_006.sql:ro
+      - ./backend/database/migrations/006_add_embedding_settings.sql:/docker-entrypoint-initdb.d/07a_migration_006_embedding_settings.sql:ro
+      - ./backend/database/migrations/006_add_suggestions.sql:/docker-entrypoint-initdb.d/07b_migration_006_suggestions.sql:ro
       - ./backend/database/migrations/007_add_reranking_settings.sql:/docker-entrypoint-initdb.d/08_migration_007.sql:ro
       - ./backend/database/migrations/008_add_model_catalog.sql:/docker-entrypoint-initdb.d/09_migration_008.sql:ro
       - ./backend/database/migrations/009_add_model_providers.sql:/docker-entrypoint-initdb.d/10_migration_009.sql:ro
