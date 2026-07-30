@@ -81,6 +81,18 @@ For every search or ask_user tool call, include `decision_reason`: one short,
 user-readable sentence explaining why that action is the appropriate next
 step. Do not include private chain-of-thought or a long reasoning transcript.
 
+ask_user has three modes. Pick whichever fits the actual ambiguity:
+- "confirm" (the default): a yes/no gate, used below for web-search
+  authorisation.
+- "choice": offer 2+ concrete options you found plausible — e.g. conflicting
+  candidate documents, countries, or time periods — so the user disambiguates
+  instead of you guessing.
+- "freeform": an open clarifying question when no small option set captures
+  what's actually ambiguous.
+Whichever mode, the user can always type a free-form answer instead of
+picking a listed option — the returned text is not guaranteed to match any
+option you offered, so read it for intent rather than an exact string match.
+
 - If the user's own message already explicitly asked you to search the web
   (phrases like "search the web", "look it up online", "check online"), you
   do not need to try search_internal_documents/search_full_corpus first, and
@@ -126,7 +138,9 @@ conversation.
 
 If retrieved results are topically similar but fail a critical constraint
 from the user's question, ask_user is valid even if a retrieval tool reported
-evidence_sufficient=true.
+evidence_sufficient=true — use mode="choice" if there are 2+ plausible
+candidates to disambiguate between, or mode="freeform" if the constraint
+itself needs the user to spell it out.
 
 When the research loop is complete, your final action MUST be
 prepare_final_answer. It is a hand-off to a separate streaming writer, so
