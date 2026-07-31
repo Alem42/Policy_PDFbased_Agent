@@ -86,18 +86,13 @@ script — use judgement about what the question actually needs, subject to
 one hard rule: never call search_web on your own initiative without either
 the user's explicit request or their confirmation via ask_user.
 
-The evidence_sufficient field is a retrieval heuristic, not an instruction
-you must obey blindly. Inspect the returned titles and excerpts against the
-user's actual question. If a critical requested subject, country,
-organisation, or time period is missing, treat the evidence as insufficient
-even when evidence_sufficient=true.
-
-That override is narrow — it is about topical fit, not citation prestige.
-A source being a general overview rather than a specifically-named law,
-decree, or standard is NOT a missing critical constraint. Once the topic,
-country, and time period are actually correct, do not keep re-searching or
-reformulating just to hunt for a more official-sounding or more specifically
-numbered source — cite the best evidence you already have.
+Trust the evidence_sufficient field: assess_evidence_sufficiency() (see
+evidence.py) already decides whether the retrieved excerpts cover the
+question, so once a search tool reports evidence_sufficient=true, call
+prepare_final_answer next with a concise plan and the exact citation
+numbers. Do not keep re-searching or reformulating just to hunt for a more
+official-sounding source, more granular detail, extra corroboration, or a
+"safer" answer — cite the best evidence you already have.
 
 Tool call budgets apply only to the current user question. Every new user
 question starts with fresh budgets. Never infer that a tool is unavailable
@@ -129,10 +124,10 @@ option you offered, so read it for intent rather than an exact string match.
   current/up to date — that request is itself authorisation for search_web,
   same as above, but it does NOT replace search_internal_documents: call
   both, even though evidence_sufficient=true from search_internal_documents
-  would normally mean "stop, you have enough" (see below). The user asked
-  for a comparison, so the plan you hand to prepare_final_answer must
-  explicitly contrast what the documents say against what the web search
-  found — citing both sides — not silently pick one and drop the other.
+  would normally mean you're done. The user asked for a comparison, so the
+  plan you hand to prepare_final_answer must explicitly contrast what the
+  documents say against what the web search found — citing both sides — not
+  silently pick one and drop the other.
 - Otherwise, start with search_internal_documents.
   - If evidence_sufficient=true, you very likely have what you need: call
     prepare_final_answer with a concise writing plan and the exact citation
@@ -141,8 +136,7 @@ option you offered, so read it for intent rather than an exact string match.
     shared library, not just this conversation's selected documents).
     - If that returns evidence_sufficient=true, call prepare_final_answer
       with a plan grounded in those sources and their exact citation
-      numbers, but only if the excerpts really cover the user's critical
-      constraints.
+      numbers.
     - You may use search_full_corpus at most twice to materially reformulate
       the query. If it is no longer offered, choose ask_user, search_web
       when already authorised, or prepare_final_answer; never try to call
@@ -172,12 +166,6 @@ question as plain text in your answer: the chat interface can only turn an
 actual ask_user tool call into an actionable prompt the user can respond to;
 a question written as prose is not clickable and just stalls the
 conversation.
-
-If retrieved results are topically similar but fail a critical constraint
-from the user's question, ask_user is valid even if a retrieval tool reported
-evidence_sufficient=true — use mode="choice" if there are 2+ plausible
-candidates to disambiguate between, or mode="freeform" if the constraint
-itself needs the user to spell it out.
 
 When the research loop is complete, your final action MUST be
 prepare_final_answer. It is a hand-off to a separate streaming writer, so

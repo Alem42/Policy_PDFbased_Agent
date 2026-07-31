@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
@@ -64,6 +65,188 @@ def _tools_for(
         for tool in available
         if counts.get(tool.name, 0) < TOOL_CALL_LIMITS.get(tool.name, 1)
     ]
+
+
+EVIDENCE_TIER_TOOLS = {"search_internal_documents", "search_full_corpus", "search_web"}
+
+# --- TEMPORARY code-level backstop -----------------------------------------
+# Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
+# in prompts.py / tools.py) does not reliably stop some models from
+# re-searching "for more detail" even when evidence_sufficient=true and the
+# question names nothing the results fail to cover — verified against
+# deepseek-chat, the default provider (DEFAULT_PROVIDER in llm_providers.py).
+# Rather than trust the model's own stop/continue judgement on the very first
+# sufficient result, skip its turn outright when this cheap check can't find
+# a plausible reason to keep searching. This is a blunt, narrow heuristic —
+# not real NER — and should be replaced (or removed) once model behavior
+# improves or a proper cheap classifier takes its place; every case it
+# doesn't confidently recognize as "safe to stop" just falls through to the
+# unchanged model-decides behavior, so it can only make the loop stop
+# *earlier*, never search *less carefully*.
+_AUTO_FINALIZE_ANSWER_PLAN = (
+    "Answer using the evidence already retrieved this turn — the retrieval "
+    "gate and coverage check both agree it already covers the question."
+)
+
+# Mirrors the "compare/verify against the web" exception in
+# AGENT_STRATEGY_PROMPT: that flow deliberately calls a search tool even
+# after an earlier tier was already sufficient, so the backstop must not
+# short-circuit before the model gets to run that intentional second call.
+_COMPARISON_TRIGGER_WORDS = (
+    "对比",
+    "比对",
+    "核实",
+    "核对",
+    "compare",
+    "cross-check",
+    "cross check",
+    "verify",
+    "up to date",
+    "up-to-date",
+    "still accurate",
+    "still current",
+)
+
+# Deliberately small and curated, not an exhaustive gazetteer: each entry
+# lists the Chinese and English surface forms of one commonly-asked-about
+# country/organisation, so a question naming it in one language still
+# matches evidence text written in the other. Anything outside this list
+# (a country/org this list doesn't know, or a genuinely novel entity) simply
+# never trips the "possibly uncovered" check below and falls through to the
+# model's own judgement — unrecognized terms cannot cause a wrong skip.
+_KNOWN_ENTITIES: dict[str, tuple[str, ...]] = {
+    "china": ("中国", "china", "chinese"),
+    "united states": ("美国", "united states", "u.s.", "usa", "american"),
+    "germany": ("德国", "germany", "german"),
+    "france": ("法国", "france", "french"),
+    "united kingdom": ("英国", "united kingdom", "uk", "britain", "british"),
+    "japan": ("日本", "japan", "japanese"),
+    "south korea": ("韩国", "south korea", "korean"),
+    "russia": ("俄罗斯", "russia", "russian"),
+    "india": ("印度", "india", "indian"),
+    "canada": ("加拿大", "canada", "canadian"),
+    "australia": ("澳大利亚", "australia", "australian"),
+    "singapore": ("新加坡", "singapore"),
+    "eu": ("欧盟", "european union"),
+    "un": ("联合国", "united nations"),
+    "oecd": ("经合组织", "oecd"),
+}
+
+_YEAR_PATTERN = re.compile(r"(?:19|20)\d{2}")
+_LATIN_PROPER_NOUN = re.compile(r"\b[A-Z][a-zA-Z]{2,}\b")
+
+
+def _question_has_uncovered_entity(question: str, evidence_text: str) -> bool:
+    """TEMPORARY heuristic, not real NER (see block comment above). Returns
+    True — "let the model decide, do not auto-finalize" — only when the
+    question names a curated country/org, an explicit year, or a Latin
+    capitalized proper noun that the retrieved text says nothing about."""
+    question_lower = question.lower()
+    evidence_lower = evidence_text.lower()
+
+    for surface_forms in _KNOWN_ENTITIES.values():
+        if any(form in question_lower for form in surface_forms) and not any(
+            form in evidence_lower for form in surface_forms
+        ):
+            return True
+
+    for year in _YEAR_PATTERN.findall(question):
+        if year not in evidence_text:
+            return True
+
+    for match in _LATIN_PROPER_NOUN.finditer(question):
+        word = match.group(0)
+        if word.lower() not in evidence_lower:
+            return True
+
+    return False
+
+
+def _should_auto_finalize(state: AgentState) -> bool:
+    """True if the just-received tool result is the first sufficient
+    evidence-tier result this turn, in Open Discussion mode, for a question
+    that isn't asking for a web comparison, and names nothing our narrow
+    heuristic can tell is missing from it."""
+    if state.get("answer_mode", "analysis") != "chat":
+        return False
+    last = state["messages"][-1]
+    if not (isinstance(last, ToolMessage) and last.name in EVIDENCE_TIER_TOOLS):
+        return False
+    try:
+        payload = json.loads(last.content)
+    except (TypeError, ValueError):
+        return False
+    if not payload.get("evidence_sufficient"):
+        return False
+
+    counts = state.get("tool_call_counts", {})
+    search_calls_this_turn = sum(counts.get(name, 0) for name in EVIDENCE_TIER_TOOLS)
+    if search_calls_this_turn != 1:
+        # Only short-circuit the very first search of the turn. If the model
+        # already chose to escalate past that, let its own loop play out
+        # rather than second-guessing a decision already in flight.
+        return False
+
+    question = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "",
+    )
+    question = question if isinstance(question, str) else str(question)
+    if any(word in question.lower() for word in _COMPARISON_TRIGGER_WORDS):
+        return False
+
+    results = payload.get("results") or []
+    evidence_text = " ".join(
+        f"{item.get('quote', '')} {item.get('title', '')}"
+        for item in results
+        if isinstance(item, dict)
+    )
+    return not _question_has_uncovered_entity(question, evidence_text)
+
+
+def auto_finalize_node(state: AgentState) -> dict:
+    """TEMPORARY: synthesize the prepare_final_answer step the model would
+    presumably have taken anyway, instead of giving it another turn to
+    second-guess sufficient evidence (see _should_auto_finalize above). The
+    synthetic messages keep final_generation_node's input shape identical to
+    the normal path — it always expects the transcript to end with a
+    prepare_final_answer tool result."""
+    citations = state.get("citations", [])
+    numbers = sorted({c["number"] for c in citations if isinstance(c.get("number"), int)})
+    call_id = f"auto-finalize-{len(state['messages'])}"
+    return {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "prepare_final_answer",
+                        "args": {
+                            "answer_plan": _AUTO_FINALIZE_ANSWER_PLAN,
+                            "citation_numbers": numbers,
+                        },
+                        "id": call_id,
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=json.dumps(
+                    {
+                        "ready": True,
+                        "answer_plan": _AUTO_FINALIZE_ANSWER_PLAN,
+                        "citation_numbers": numbers,
+                        "auto_finalized": True,
+                    }
+                ),
+                tool_call_id=call_id,
+                name="prepare_final_answer",
+            ),
+        ]
+    }
+
+
+# --- end TEMPORARY code-level backstop --------------------------------------
 
 
 def _messages_for_current_turn(messages: list) -> list:
@@ -221,6 +404,8 @@ def route_after_tools(state: AgentState) -> str:
         if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_sources"):
             return "insufficient_evidence"
         return "final_generation"
+    if _should_auto_finalize(state):
+        return "auto_finalize"
     return "agent"
 
 
@@ -275,6 +460,7 @@ def build_agent_graph():
     builder.add_node("tools", ToolNode(ALL_TOOLS))
     builder.add_node("final_generation", final_generation_node)
     builder.add_node("insufficient_evidence", insufficient_evidence_node)
+    builder.add_node("auto_finalize", auto_finalize_node)
     builder.add_edge(START, "agent")
     builder.add_conditional_edges(
         "agent", route_after_agent, {"record_tool_call": "record_tool_call"}
@@ -287,10 +473,12 @@ def build_agent_graph():
             "agent": "agent",
             "final_generation": "final_generation",
             "insufficient_evidence": "insufficient_evidence",
+            "auto_finalize": "auto_finalize",
         },
     )
     builder.add_edge("final_generation", END)
     builder.add_edge("insufficient_evidence", END)
+    builder.add_edge("auto_finalize", "final_generation")
     return builder.compile(checkpointer=get_checkpointer())
 
 

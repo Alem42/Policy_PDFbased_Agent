@@ -38,6 +38,17 @@ from app.modules.reranking.service import rerank as rerank_chunks
 
 logger = logging.getLogger(__name__)
 
+# Repeated on every sufficient result, not just stated once in the system
+# prompt: some models (verified with deepseek-chat) keep re-searching "for
+# more detail/corroboration" even when the system prompt explicitly says not
+# to — a reminder attached right next to the decision point measurably cuts
+# that down, where the same wording living only in the system prompt did not.
+SUFFICIENT_EVIDENCE_REMINDER = (
+    "This is enough to answer. Your next tool call should be "
+    "prepare_final_answer — do not search again just for more detail or "
+    "corroboration."
+)
+
 
 def _document_citation(chunk: dict) -> dict:
     return {
@@ -169,6 +180,8 @@ async def search_internal_documents(
         "reason": result.get("evidence_reason"),
         "results": numbered_results,
     }
+    if sufficient:
+        payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
@@ -229,6 +242,8 @@ async def search_full_corpus(
     raw_citations = [_document_citation(c) for c in relevant]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
+    if sufficient:
+        payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
@@ -459,6 +474,8 @@ async def search_web(
     ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
+    if sufficient:
+        payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
