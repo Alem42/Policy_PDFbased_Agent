@@ -87,8 +87,15 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
     return _provider().embed_documents(texts)
 
 
+def embed_queries(texts: list[str]) -> list[list[float]]:
+    """Batch query-mode embedding, preserving query/passage asymmetry."""
+    if not texts:
+        return []
+    return _provider().embed_queries(texts)
+
+
 def embed_query(text: str) -> list[float]:
-    return _provider().embed_query(text)
+    return embed_queries([text])[0]
 
 
 def count_tokens(text: str) -> int:

@@ -270,6 +270,8 @@ export function askQuestion(
  * Returns an async generator that yields SSE event objects:
  *   {type:"retrieving"} | {type:"thinking"} | {type:"token",value:str}
  *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
+ *   | {type:"answer_done",suggestions_pending:bool}
+ *   | {type:"suggestions",items:[]}
  *   | {type:"done"} | {type:"error",message:str}
  */
 export async function* askQuestionStream(
@@ -461,6 +463,28 @@ export function addCatalogProvider(payload) {
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }
+// ── Follow-up suggestions ────────────────────────────────────────────────
+export function getSuggestionSettings() {
+  return request("/admin/suggestions");
+}
+
+export function saveSuggestionSettings(payload) {
+  return request("/admin/suggestions", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// Best-effort click log for personalization; ignore failures.
+export function logSuggestionClick(sessionId, question) {
+  return request("/chat/suggestions/click", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId || null, question }),
+  }).catch(() => {});
+}
+
 export function getTaxonomy() {
   return request("/taxonomy");
 }

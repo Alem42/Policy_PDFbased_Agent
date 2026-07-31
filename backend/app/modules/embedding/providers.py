@@ -58,8 +58,12 @@ class EmbeddingProvider(ABC):
         """Passage-mode vectors for stored chunks."""
 
     @abstractmethod
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        """Query-mode vectors for one or more user questions, preserving order."""
+
     def embed_query(self, text: str) -> list[float]:
-        """Query-mode vector for a user question."""
+        """Compatibility wrapper for callers that have a single question."""
+        return self.embed_queries([text])[0]
 
     def count_tokens(self, text: str) -> int | None:
         """Exact token count if the provider has a tokenizer, else None (caller approximates)."""
@@ -107,13 +111,17 @@ class LocalFastembedProvider(EmbeddingProvider):
             vectors.extend(_vector_to_list(v, self.dimension) for v in model.passage_embed(batch))
         return vectors
 
-    def embed_query(self, text: str) -> list[float]:
-        cleaned = text.strip()
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        cleaned = [text.strip() for text in texts]
         if not cleaned:
+            return []
+        if any(not text for text in cleaned):
             raise ValueError("Query text must not be blank.")
         model = _load_fastembed_model(self.model_id)
         vectors = list(model.query_embed(cleaned))
-        return _vector_to_list(vectors[0], self.dimension)
+        if len(vectors) != len(cleaned):
+            raise RuntimeError("Embedding provider returned a different number of query vectors.")
+        return [_vector_to_list(vector, self.dimension) for vector in vectors]
 
     def count_tokens(self, text: str) -> int | None:
         # bge's max sequence length is close to our chunk budget, so exactness matters.
@@ -165,11 +173,19 @@ class OpenAICompatibleProvider(EmbeddingProvider):
             vectors.extend(_vector_to_list(v, self.dimension) for v in self._post(batch))
         return vectors
 
-    def embed_query(self, text: str) -> list[float]:
-        cleaned = text.strip()
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        cleaned = [text.strip() for text in texts]
         if not cleaned:
+            return []
+        if any(not text for text in cleaned):
             raise ValueError("Query text must not be blank.")
-        return _vector_to_list(self._post([cleaned])[0], self.dimension)
+        vectors: list[list[float]] = []
+        for start in range(0, len(cleaned), self._batch_size):
+            batch = cleaned[start : start + self._batch_size]
+            vectors.extend(_vector_to_list(vector, self.dimension) for vector in self._post(batch))
+        if len(vectors) != len(cleaned):
+            raise RuntimeError("Embedding provider returned a different number of query vectors.")
+        return vectors
 
 # test connection probe (used by the admin UI) to verify connectivity and report the real dimension
 def probe(config: EmbeddingConfig) -> dict:

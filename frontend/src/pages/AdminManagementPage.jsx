@@ -5,6 +5,7 @@ import TaxonomySection from "./manage/TaxonomySection";
 import LlmProvidersSection from "./manage/LlmProvidersSection";
 import EmbeddingSection from "./manage/EmbeddingSection";
 import RerankingSection from "./manage/RerankingSection";
+import SuggestionsSection from "./manage/SuggestionsSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
@@ -34,6 +35,12 @@ const SECTIONS = [
     label: "Reranker",
     desc: "Choose the reranker (local cross-encoder or a /rerank API such as Zhipu), tune its evidence floor, or turn it off.",
     Component: RerankingSection,
+  },
+  {
+    id: "suggestions",
+    label: "Suggested follow-ups",
+    desc: "Tune the follow-up questions shown after each answer: how many, how strictly they must be answerable from the documents, and generation style.",
+    Component: SuggestionsSection,
   },
 ];
 

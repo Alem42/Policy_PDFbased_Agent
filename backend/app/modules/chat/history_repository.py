@@ -44,14 +44,15 @@ class ChatHistoryRepository:
         response_mode: str | None = None,
         answer_mode: str | None = None,
         model: str | None = None,
+        suggestions: list[str] | None = None,
     ) -> str:
         with get_connection() as conn:
             row = conn.execute(
                 """
                 INSERT INTO chat_messages
                     (id, session_id, role, content, citations_json,
-                     evidence_sufficient, response_mode, answer_mode, model)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                     evidence_sufficient, response_mode, answer_mode, model, suggestions_json)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id
                 """,
                 (
@@ -64,6 +65,7 @@ class ChatHistoryRepository:
                     response_mode,
                     answer_mode,
                     model,
+                    json.dumps(suggestions or []),
                 ),
             ).fetchone()
             conn.commit()
@@ -76,6 +78,25 @@ class ChatHistoryRepository:
                 (session_id,),
             )
             conn.commit()
+
+    def update_message_suggestions(
+        self,
+        message_id: str,
+        suggestions: list[str],
+    ) -> bool:
+        """Attach asynchronously generated suggestions to an assistant message."""
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE chat_messages
+                SET suggestions_json = %s::jsonb
+                WHERE id = %s AND role = 'assistant'
+                RETURNING id
+                """,
+                (json.dumps(suggestions), message_id),
+            ).fetchone()
+            conn.commit()
+        return row is not None
 
     def delete_session(self, session_id: str, user_id: str) -> bool:
         with get_connection() as conn:
@@ -152,7 +173,8 @@ class ChatHistoryRepository:
             msgs = conn.execute(
                 """
                 SELECT id, session_id, role, content, citations_json,
-                       evidence_sufficient, response_mode, answer_mode, model, created_at
+                       evidence_sufficient, response_mode, answer_mode, model,
+                       suggestions_json, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC

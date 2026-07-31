@@ -14,6 +14,7 @@ from app.modules.embedding.tokens import _tiktoken_count
 
 # Public embedding API (unchanged signatures).
 embed_documents = _embedding.embed_documents
+embed_queries = _embedding.embed_queries
 embed_query = _embedding.embed_query
 vector_literal = _embedding.vector_literal
 

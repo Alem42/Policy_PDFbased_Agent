@@ -4,6 +4,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.catalog.router import router as catalog_admin_router
 from app.modules.chat.history_router import router as chat_history_router
 from app.modules.chat.router import router as chat_router
+from app.modules.chat.suggestions.router import admin_router as suggestions_admin_router
+from app.modules.chat.suggestions.router import user_router as suggestions_user_router
 from app.modules.crawling.routers.documents import router as crawled_documents_router
 from app.modules.crawling.routers.jobs import router as crawl_jobs_router
 from app.modules.crawling.routers.sources import router as crawl_sources_router
@@ -21,6 +23,8 @@ api_router.include_router(system_router)
 api_router.include_router(auth_router)
 api_router.include_router(chat_router)
 api_router.include_router(chat_history_router)
+api_router.include_router(suggestions_admin_router)
+api_router.include_router(suggestions_user_router)
 api_router.include_router(documents_router)
 api_router.include_router(admin_documents_router)
 api_router.include_router(embedding_admin_router)
