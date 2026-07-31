@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
@@ -72,20 +71,26 @@ EVIDENCE_TIER_TOOLS = {"search_internal_documents", "search_full_corpus", "searc
 # --- TEMPORARY code-level backstop -----------------------------------------
 # Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
 # in prompts.py / tools.py) does not reliably stop some models from
-# re-searching "for more detail" even when evidence_sufficient=true and the
-# question names nothing the results fail to cover — verified against
-# deepseek-chat, the default provider (DEFAULT_PROVIDER in llm_providers.py).
-# Rather than trust the model's own stop/continue judgement on the very first
-# sufficient result, skip its turn outright when this cheap check can't find
-# a plausible reason to keep searching. This is a blunt, narrow heuristic —
-# not real NER — and should be replaced (or removed) once model behavior
-# improves or a proper cheap classifier takes its place; every case it
-# doesn't confidently recognize as "safe to stop" just falls through to the
-# unchanged model-decides behavior, so it can only make the loop stop
-# *earlier*, never search *less carefully*.
+# re-searching "for more detail" even when evidence_sufficient=true —
+# verified against deepseek-chat, the default provider (DEFAULT_PROVIDER in
+# llm_providers.py). Rather than trust the model's own stop/continue
+# judgement on the very first sufficient result, skip its turn outright and
+# finalize immediately.
+#
+# This trusts evidence_sufficient at face value with no topical/entity check
+# of its own. assess_evidence_sufficiency() (see evidence.py) is planned to
+# become keyword/entity-aware itself, at which point evidence_sufficient=true
+# will already mean "and it covers what the question named" — an earlier
+# version of this function additionally cross-checked question entities
+# against the retrieved text in Python, which became redundant work once
+# that lands there instead, so it was deliberately dropped here. Until the
+# keyword-aware gate ships, this can auto-finalize on evidence that is
+# topically close but silent on a specific country/org/date the question
+# named (e.g. EU-level content answering a Germany-specific question) — a
+# known, accepted gap, not an oversight.
 _AUTO_FINALIZE_ANSWER_PLAN = (
     "Answer using the evidence already retrieved this turn — the retrieval "
-    "gate and coverage check both agree it already covers the question."
+    "gate already confirmed it covers the question."
 )
 
 # Mirrors the "compare/verify against the web" exception in
@@ -107,66 +112,11 @@ _COMPARISON_TRIGGER_WORDS = (
     "still current",
 )
 
-# Deliberately small and curated, not an exhaustive gazetteer: each entry
-# lists the Chinese and English surface forms of one commonly-asked-about
-# country/organisation, so a question naming it in one language still
-# matches evidence text written in the other. Anything outside this list
-# (a country/org this list doesn't know, or a genuinely novel entity) simply
-# never trips the "possibly uncovered" check below and falls through to the
-# model's own judgement — unrecognized terms cannot cause a wrong skip.
-_KNOWN_ENTITIES: dict[str, tuple[str, ...]] = {
-    "china": ("中国", "china", "chinese"),
-    "united states": ("美国", "united states", "u.s.", "usa", "american"),
-    "germany": ("德国", "germany", "german"),
-    "france": ("法国", "france", "french"),
-    "united kingdom": ("英国", "united kingdom", "uk", "britain", "british"),
-    "japan": ("日本", "japan", "japanese"),
-    "south korea": ("韩国", "south korea", "korean"),
-    "russia": ("俄罗斯", "russia", "russian"),
-    "india": ("印度", "india", "indian"),
-    "canada": ("加拿大", "canada", "canadian"),
-    "australia": ("澳大利亚", "australia", "australian"),
-    "singapore": ("新加坡", "singapore"),
-    "eu": ("欧盟", "european union"),
-    "un": ("联合国", "united nations"),
-    "oecd": ("经合组织", "oecd"),
-}
-
-_YEAR_PATTERN = re.compile(r"(?:19|20)\d{2}")
-_LATIN_PROPER_NOUN = re.compile(r"\b[A-Z][a-zA-Z]{2,}\b")
-
-
-def _question_has_uncovered_entity(question: str, evidence_text: str) -> bool:
-    """TEMPORARY heuristic, not real NER (see block comment above). Returns
-    True — "let the model decide, do not auto-finalize" — only when the
-    question names a curated country/org, an explicit year, or a Latin
-    capitalized proper noun that the retrieved text says nothing about."""
-    question_lower = question.lower()
-    evidence_lower = evidence_text.lower()
-
-    for surface_forms in _KNOWN_ENTITIES.values():
-        if any(form in question_lower for form in surface_forms) and not any(
-            form in evidence_lower for form in surface_forms
-        ):
-            return True
-
-    for year in _YEAR_PATTERN.findall(question):
-        if year not in evidence_text:
-            return True
-
-    for match in _LATIN_PROPER_NOUN.finditer(question):
-        word = match.group(0)
-        if word.lower() not in evidence_lower:
-            return True
-
-    return False
-
 
 def _should_auto_finalize(state: AgentState) -> bool:
     """True if the just-received tool result is the first sufficient
     evidence-tier result this turn, in Open Discussion mode, for a question
-    that isn't asking for a web comparison, and names nothing our narrow
-    heuristic can tell is missing from it."""
+    that isn't asking for a web comparison."""
     if state.get("answer_mode", "analysis") != "chat":
         return False
     last = state["messages"][-1]
@@ -192,16 +142,7 @@ def _should_auto_finalize(state: AgentState) -> bool:
         "",
     )
     question = question if isinstance(question, str) else str(question)
-    if any(word in question.lower() for word in _COMPARISON_TRIGGER_WORDS):
-        return False
-
-    results = payload.get("results") or []
-    evidence_text = " ".join(
-        f"{item.get('quote', '')} {item.get('title', '')}"
-        for item in results
-        if isinstance(item, dict)
-    )
-    return not _question_has_uncovered_entity(question, evidence_text)
+    return not any(word in question.lower() for word in _COMPARISON_TRIGGER_WORDS)
 
 
 def auto_finalize_node(state: AgentState) -> dict:
