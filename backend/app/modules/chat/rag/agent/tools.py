@@ -58,6 +58,10 @@ def _document_citation(chunk: dict) -> dict:
         "page": chunk.get("page_start") or chunk.get("page"),
         "quote": (chunk.get("text") or "")[:500],
         "source_type": "document",
+        # Which EvidenceSource tier found this (see agent/state.py) — router.py
+        # uses this to report only the tier(s) the final answer actually cites,
+        # not every tier that merely surfaced a candidate during the loop.
+        "tier": "full_corpus",
     }
 
 
@@ -173,7 +177,9 @@ async def search_internal_documents(
 
     result = await asyncio.to_thread(_run)
     sufficient = result.get("evidence_sufficient", False)
-    raw_citations = [dict(c, source_type="document") for c in result.get("citations", [])]
+    raw_citations = [
+        dict(c, source_type="document", tier="internal") for c in result.get("citations", [])
+    ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     payload = {
         "evidence_sufficient": sufficient,
@@ -468,6 +474,7 @@ async def search_web(
             "source_url": c["url"],
             "quote": c["text"][:500],
             "source_type": "web",
+            "tier": "web",
         }
         for c in candidates
         if c["passed"]
@@ -547,6 +554,7 @@ async def import_web_page(
         "title": document.get("title") or document.get("name"),
         "source_url": document.get("source_url") or page.url or url,
         "source_type": "document",
+        "tier": "full_corpus",
     }
     numbered_results, new_citations = _number_citations(citations, [raw_citation])
     payload = {

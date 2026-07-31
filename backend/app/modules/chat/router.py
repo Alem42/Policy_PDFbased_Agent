@@ -1,6 +1,7 @@
 import asyncio
 import json as _json
 import logging
+import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Annotated, Any
@@ -219,6 +220,37 @@ def _sse(obj: dict) -> str:
     return f"data: {_json.dumps(obj, default=str)}\n\n"
 
 
+_CITATION_MARKER = re.compile(r"\[(\d+)\]")
+
+
+def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answer: str) -> list:
+    """Narrow evidence_sources (see agent/state.py::EvidenceSource) down to
+    the tier(s) the final answer text actually cites.
+
+    evidence_sources, as built during the ReAct loop, records every tier
+    that returned evidence_sufficient=true with a new citation at some point
+    this turn (see agent/tools.py) — e.g. a search_full_corpus call made to
+    fill a gap left by the selected documents still marks "full_corpus" even
+    if the writer's final answer settles on citing only the
+    already-selected-document sources it found. That mismatch is what
+    produces the "From the wider library" / "From the web" banner
+    (ChatPage.jsx) on answers that don't actually draw from beyond the
+    selected documents. Cross-referencing the citation numbers that literally
+    appear as [N] markers in the answer against each citation's `tier` (set
+    at creation time by the tool that found it) reports only what the reader
+    can actually see cited.
+    """
+    cited_numbers = {int(match) for match in _CITATION_MARKER.findall(answer)}
+    if not cited_numbers:
+        return []
+    cited_tiers = {
+        citation.get("tier")
+        for citation in citations
+        if citation.get("number") in cited_numbers and citation.get("tier")
+    }
+    return [source for source in evidence_sources if source in cited_tiers]
+
+
 def _tool_result_event(message: Any) -> dict:
     """Return a compact, user-readable tool result summary for the trace UI."""
     result: dict = {}
@@ -419,6 +451,13 @@ async def _stream_agent_events(
         evidence_sources = values.get("evidence_sources") or []
         evidence_sufficient = bool(evidence_sources)
         evidence_reason = None if evidence_sufficient else values.get("last_evidence_reason")
+        # What actually gets reported/shown, though: only the tier(s) whose
+        # citations the answer literally cites — see _cited_evidence_sources.
+        # evidence_sufficient/evidence_reason above stay based on the
+        # unfiltered set (did some tier find enough evidence this turn at
+        # all), unrelated to the "From the wider library"/"From the web"
+        # banner this narrows.
+        reported_evidence_sources = _cited_evidence_sources(evidence_sources, citations, answer)
 
         await asyncio.to_thread(
             chat_history_repository.finalize_message,
@@ -429,7 +468,7 @@ async def _stream_agent_events(
             response_mode,
             answer_mode,
             resolved_model,
-            evidence_sources=evidence_sources,
+            evidence_sources=reported_evidence_sources,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -439,7 +478,7 @@ async def _stream_agent_events(
                 "data": citations,
                 "evidence_sufficient": evidence_sufficient,
                 "evidence_reason": evidence_reason,
-                "evidence_sources": evidence_sources,
+                "evidence_sources": reported_evidence_sources,
                 "response_mode": response_mode,
                 "answer_mode": answer_mode,
                 "agent_mode": "react",

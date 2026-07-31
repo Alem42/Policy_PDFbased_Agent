@@ -38,6 +38,38 @@ def test_tool_result_event_exposes_compact_trace_summary() -> None:
     }
 
 
+def test_cited_evidence_sources_only_reports_tiers_the_answer_cites() -> None:
+    # Reproduces a real trace: search_internal_documents (tier "internal")
+    # was sufficient, but the model still escalated to search_full_corpus
+    # (tier "full_corpus") "to check a sub-topic" before writing an answer
+    # that, in the end, only cited [1] from the internal tier. evidence_sources
+    # already credits both tiers (see agent/tools.py) — the badge should not.
+    citations = [
+        {"number": 1, "tier": "internal", "title": "Selected doc"},
+        {"number": 2, "tier": "full_corpus", "title": "Wider-library doc"},
+    ]
+    result = chat_router._cited_evidence_sources(
+        ["internal", "full_corpus"], citations, "The plan does X [1]."
+    )
+    assert result == ["internal"]
+
+
+def test_cited_evidence_sources_reports_every_tier_actually_cited() -> None:
+    citations = [
+        {"number": 1, "tier": "internal"},
+        {"number": 2, "tier": "web"},
+    ]
+    result = chat_router._cited_evidence_sources(
+        ["internal", "web"], citations, "Documents say X [1]. The web confirms Y [2]."
+    )
+    assert result == ["internal", "web"]
+
+
+def test_cited_evidence_sources_empty_when_answer_has_no_citation_markers() -> None:
+    citations = [{"number": 1, "tier": "internal"}]
+    assert chat_router._cited_evidence_sources(["internal"], citations, "No markers here.") == []
+
+
 @pytest.mark.asyncio
 async def test_chat_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_session_belongs_to_user(session_id: str, user_id: str) -> bool:
