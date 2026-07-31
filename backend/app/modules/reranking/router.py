@@ -25,7 +25,9 @@ async def get_reranking_settings(_: AdminUser) -> dict:
 
 
 @router.put("")
-async def update_reranking_settings(_: AdminUser, payload: dict = Body(...)) -> dict:
+async def update_reranking_settings(
+    _: AdminUser, payload: Annotated[dict, Body()]
+) -> dict:
     try:
         await asyncio.to_thread(reranking.update_config, payload)
     except Exception as exc:
@@ -34,7 +36,9 @@ async def update_reranking_settings(_: AdminUser, payload: dict = Body(...)) -> 
 
 
 @router.post("/test")
-async def test_reranking_connection(_: AdminUser, payload: dict = Body(...)) -> dict:
+async def test_reranking_connection(
+    _: AdminUser, payload: Annotated[dict, Body()]
+) -> dict:
     try:
         return await asyncio.to_thread(reranking.test_connection, payload)
     except Exception as exc:

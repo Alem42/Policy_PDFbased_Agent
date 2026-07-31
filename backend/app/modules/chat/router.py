@@ -20,8 +20,6 @@ from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
-from app.modules.chat.suggestions import service as suggestions_service
-from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.chat.schemas import (
     MAX_HISTORY_TURNS,
     ChatRequest,
@@ -31,6 +29,8 @@ from app.modules.chat.schemas import (
     ProviderModels,
     ResumeChatRequest,
 )
+from app.modules.chat.suggestions import service as suggestions_service
+from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])

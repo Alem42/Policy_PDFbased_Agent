@@ -180,6 +180,7 @@ def test_record_tool_call_increments_only_selected_action() -> None:
         "question": None,
         "url": None,
         "title": None,
+        "reflection_on_previous_result": None,
     }
 
 
@@ -310,6 +311,7 @@ async def test_agent_retries_when_provider_selects_exhausted_tool(
 
 def test_prepare_final_answer_routes_to_streaming_generation() -> None:
     state = {
+        "answer_mode": "chat",
         "messages": [
             ToolMessage(
                 content='{"ready": true}',

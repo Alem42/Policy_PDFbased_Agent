@@ -24,6 +24,7 @@ import httpx
 from app.core.config import get_settings, resolve_backend_path
 from app.modules.embedding.settings import EmbeddingConfig
 
+
 # model may return many types of values, so we convert to list[float]
 def _embeddings_url(base_url: str) -> str:
     """Normalise any Zhipu/OpenAI base to the single /embeddings endpoint.
@@ -40,7 +41,9 @@ def _embeddings_url(base_url: str) -> str:
 def _vector_to_list(vector, expected_dim: int) -> list[float]:
     values = [float(v) for v in vector]
     if len(values) != expected_dim:
-        raise ValueError(f"Embedding dimension mismatch: expected {expected_dim}, got {len(values)}.")
+        raise ValueError(
+            f"Embedding dimension mismatch: expected {expected_dim}, got {len(values)}."
+        )
     if not all(math.isfinite(v) for v in values):
         raise ValueError("Embedding contains a non-finite value.")
     return values
