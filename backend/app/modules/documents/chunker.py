@@ -122,8 +122,24 @@ class DocumentChunker:
         return paragraphs
 
 
+def _tail_slice(text: str, budget: int, token_counter: TokenCounter) -> str:
+    """Largest trailing slice of text whose token count is <= budget."""
+    if token_counter(text) <= budget:
+        return text
+    # Smallest start index such that text[start:] fits the budget (monotonic:
+    # a shorter suffix has fewer tokens), found by binary search.
+    low, high = 0, len(text)
+    while low < high:
+        mid = (low + high) // 2
+        if token_counter(text[mid:]) <= budget:
+            high = mid
+        else:
+            low = mid + 1
+    return text[low:].strip()
+
+
 def _tail_sentences(item: dict, budget: int, token_counter: TokenCounter) -> dict | None:
-    """Build an overlap item from the trailing sentences of a long paragraph."""
+    """Build an overlap item (<= budget tokens) from the trailing text of a paragraph."""
     carried: list[str] = []
     tokens = 0
     for sentence in reversed(_SENTENCE_BOUNDARY.split(item["text"])):
@@ -132,6 +148,15 @@ def _tail_sentences(item: dict, budget: int, token_counter: TokenCounter) -> dic
             continue
         sentence_tokens = token_counter(sentence)
         if carried and tokens + sentence_tokens > budget:
+            break
+        if not carried and sentence_tokens > budget:
+            # A single trailing sentence already exceeds the budget (e.g. unpunctuated
+            # text is one giant "sentence"). Carry only its trailing slice, else the
+            # overlap balloons and pushes the next chunk past max_tokens.
+            sliced = _tail_slice(sentence, budget, token_counter)
+            if sliced:
+                carried.insert(0, sliced)
+                tokens += token_counter(sliced)
             break
         carried.insert(0, sentence)
         tokens += sentence_tokens

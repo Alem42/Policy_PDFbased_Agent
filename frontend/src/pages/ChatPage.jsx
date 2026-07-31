@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Chip,
   CircularProgress,
   Collapse,
   Dialog,
@@ -47,6 +48,7 @@ import {
   getChatSessions,
   getDocumentChunks,
   getDocumentDetail,
+  logSuggestionClick,
   openDocumentFile,
   renameChatSession,
   resumeChatStream,
@@ -762,6 +764,7 @@ export default function ChatPage({
         steps: Array.isArray(m.steps)
           ? m.steps.map((s) => ({ ...s, label: TOOL_STATUS_LABEL[s.tool] || s.tool }))
           : [],
+        suggestions: Array.isArray(m.suggestions) ? m.suggestions : [],
       })),
     );
     setSessionId(String(detail.id));
@@ -1054,14 +1057,42 @@ export default function ChatPage({
           setSessionId(String(evt.session_id));
           loadSessions();
         }
+      } else if (evt.type === "answer_done") {
+        // The answer text itself is complete -- stop the streaming cursor
+        // here rather than waiting for "done", since a suggestions_pending
+        // answer keeps the stream open a while longer just to generate
+        // follow-ups (see _stream_suggestion_events in router.py).
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role !== "assistant") return current;
+          next[next.length - 1] = {
+            ...last,
+            streaming: false,
+            suggestionsLoading: evt.suggestions_pending === true,
+          };
+          return next;
+        });
+      } else if (evt.type === "suggestions") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role !== "assistant") return current;
+          next[next.length - 1] = {
+            ...last,
+            suggestions: Array.isArray(evt.items) ? evt.items : [],
+            suggestionsLoading: false,
+          };
+          return next;
+        });
       } else if (evt.type === "error") {
         throw new Error(evt.message);
       } else if (evt.type === "done") {
         setMessages((current) => {
           const next = [...current];
           const last = next[next.length - 1];
-          if (!last?.streaming) return current;
-          next[next.length - 1] = { ...last, streaming: false };
+          if (!last?.streaming && !last?.suggestionsLoading) return current;
+          next[next.length - 1] = { ...last, streaming: false, suggestionsLoading: false };
           return next;
         });
       }
@@ -1075,7 +1106,18 @@ export default function ChatPage({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const cleanQuestion = question.trim();
+    await submitQuestion(question);
+  }
+
+  // Submit a suggested follow-up: log the click (personalization) then run it.
+  function handleSuggestionClick(text) {
+    if (busy) return;
+    logSuggestionClick(sessionId, text);
+    submitQuestion(text);
+  }
+
+  async function submitQuestion(rawQuestion) {
+    const cleanQuestion = (rawQuestion || "").trim();
     if (!cleanQuestion || !selected.length || busy) return;
 
     setMessages((current) => [...current, { role: "user", content: cleanQuestion }]);
@@ -1609,6 +1651,64 @@ export default function ChatPage({
                     />
                   )}
 
+                  {/* Suggested follow-ups — each is validated server-side to be answerable
+                      from the selected documents, so clicking one won't dead-end. */}
+                  {message.role === "assistant" && !message.streaming && message.suggestionsLoading && (
+                    <Box
+                      sx={{
+                        mt: 1.5,
+                        pt: 1.5,
+                        borderTop: "1px dashed #e2e5df",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        color: "text.secondary",
+                      }}
+                    >
+                      <CircularProgress size={14} sx={{ color: "#52756b" }} />
+                      <Typography variant="caption">
+                        Checking suggested follow-ups against the selected documents…
+                      </Typography>
+                    </Box>
+                  )}
+                  {message.role === "assistant" && !message.streaming && message.suggestions?.length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: "1px dashed #e2e5df" }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ color: "text.secondary", fontWeight: 700, display: "block", mb: 0.75 }}
+                      >
+                        Suggested follow-ups
+                      </Typography>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                        {message.suggestions.map((suggestion, sIdx) => (
+                          <Chip
+                            key={sIdx}
+                            label={suggestion}
+                            clickable
+                            disabled={busy}
+                            onClick={() => handleSuggestionClick(suggestion)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              maxWidth: "100%",
+                              height: "auto",
+                              borderColor: "#c8d9d4",
+                              color: "#214f42",
+                              "& .MuiChip-label": {
+                                whiteSpace: "normal",
+                                display: "block",
+                                py: 0.5,
+                                fontSize: 12.5,
+                                lineHeight: 1.4,
+                              },
+                              "&:hover": { bgcolor: "#f0f7f4", borderColor: "#214f42" },
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
                   {message.truncated && (
                     <Typography variant="caption" sx={{ color: "warning.main" }}>
                       The combined PDF text was truncated.
@@ -1618,7 +1718,9 @@ export default function ChatPage({
               );
             })}
             <ConfirmPrompt confirm={pendingConfirm} busy={confirmBusy} onAnswer={handleConfirmResponse} />
-            {busy && !messages[messages.length - 1]?.streaming && (
+            {busy
+              && !messages[messages.length - 1]?.streaming
+              && !messages[messages.length - 1]?.suggestionsLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
                 <Box sx={{ display: "flex", gap: "4px", alignItems: "center" }}>
                   {[0, 1, 2].map((i) => (

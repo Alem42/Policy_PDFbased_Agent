@@ -1,5 +1,6 @@
 import asyncio
 import json as _json
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Annotated, Any
@@ -19,6 +20,8 @@ from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
+from app.modules.chat.suggestions import service as suggestions_service
+from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.chat.schemas import (
     MAX_HISTORY_TURNS,
     ChatRequest,
@@ -32,6 +35,7 @@ from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+logger = logging.getLogger(__name__)
 
 
 @router.get("/chat/models", response_model=list[ProviderModels])
@@ -145,6 +149,31 @@ async def chat(
 
         resolved_model = result.get("resolved_model")
 
+        # Follow-up suggestions (Approach A + D), same guard as the streaming path.
+        suggestions: list[str] = []
+        if evidence_sufficient and str(result.get("answer", "")).strip():
+            sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+            if sug_cfg.enabled:
+                try:
+                    suggestions = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_followup_suggestions,
+                            question=payload.question,
+                            answer=result["answer"],
+                            context=result.get("context", ""),
+                            identifiers=doc_ids or filenames,
+                            response_mode=payload.response_mode,
+                            history=history,
+                            include_restricted=user["role"] == "admin",
+                            model=payload.model,
+                            user_id=user_id,
+                            config=sug_cfg,
+                        ),
+                        timeout=45.0,
+                    )
+                except Exception:
+                    suggestions = []
+
         # ── Save the assistant answer ───────────────────────────────────
         await asyncio.to_thread(
             chat_history_repository.add_message,
@@ -158,6 +187,7 @@ async def chat(
             resolved_model,
             "direct",
             evidence_sources,
+            suggestions,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -173,6 +203,7 @@ async def chat(
             agent_mode="direct",
             session_id=UUID(session_id),
             model=resolved_model,
+            suggestions=suggestions,
         )
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Request timed out after 120 s.") from exc
@@ -279,6 +310,8 @@ async def _stream_agent_events(
       {"type": "confirm_import", "url": ..., "title": ..., "question": ...} — paused,
           call POST /chat/resume with {"session_id", "answer": true|false}
       {"type": "citations", "data": [...], ...}      — final metadata (sent once)
+      {"type": "answer_done", "suggestions_pending": bool} — answer complete; follow-ups may follow
+      {"type": "suggestions", "items": [...]}         — validated follow-up questions
       {"type": "done"}                                — stream complete
       {"type": "error", "message": "..."}             — terminal error
     """
@@ -414,7 +447,31 @@ async def _stream_agent_events(
                 "model": resolved_model,
             }
         )
-        yield _sse({"type": "done"})
+
+        # The ReAct graph state has no single "context" string (unlike direct
+        # mode's run_retrieval output) — approximate it from the retrieved
+        # excerpts actually cited this turn, same text the model itself cited from.
+        context = "\n\n".join(c.get("quote", "") for c in citations if c.get("quote"))
+        question = next(
+            (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
+        )
+        suggestion_history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+        async for event in _stream_suggestion_events(
+            question=question,
+            answer=answer,
+            context=context,
+            identifiers=values.get("document_ids") or values.get("filenames") or [],
+            response_mode=response_mode,
+            history=suggestion_history,
+            include_restricted=bool(values.get("include_restricted", False)),
+            model=values.get("model"),
+            user_id=values.get("user_id"),
+            evidence_sufficient=evidence_sufficient,
+            assistant_message_id=assistant_message_id,
+        ):
+            yield event
 
     except TimeoutError:
         await _finalize_as_error(assistant_message_id, full_tokens)
@@ -438,6 +495,81 @@ async def _finalize_as_error(assistant_message_id: str, full_tokens: list[str]) 
     )
 
 
+async def _stream_suggestion_events(
+    *,
+    question: str,
+    answer: str,
+    context: str,
+    identifiers: list[str],
+    response_mode: str,
+    history: list[dict],
+    include_restricted: bool,
+    model: str | None,
+    user_id: str | None,
+    evidence_sufficient: bool,
+    assistant_message_id: str,
+) -> AsyncGenerator[str, None]:
+    """Shared tail for both streaming modes (_stream_agent_events and
+    _stream_direct_events): generate and persist follow-up suggestions after
+    the answer is finalized, then close the stream with "done".
+
+    Same suggestion gate as the non-streaming /chat endpoint — only bother
+    once there's an actual evidence-backed answer to suggest follow-ups for —
+    and the same answer_done/suggestions event pair the frontend already
+    expects (ported from the pre-ReAct streaming implementation).
+    """
+    if not (evidence_sufficient and answer.strip()):
+        yield _sse({"type": "answer_done", "suggestions_pending": False})
+        yield _sse({"type": "done"})
+        return
+
+    sug_cfg = None
+    suggestions_pending = False
+    try:
+        sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+        suggestions_pending = bool(sug_cfg.enabled)
+    except Exception:
+        logger.exception("Suggestion settings unavailable; skipping follow-ups")
+
+    yield _sse({"type": "answer_done", "suggestions_pending": suggestions_pending})
+
+    if suggestions_pending and sug_cfg is not None:
+        suggestions: list[str] = []
+        try:
+            suggestions = await asyncio.wait_for(
+                asyncio.to_thread(
+                    generate_followup_suggestions,
+                    question=question,
+                    answer=answer,
+                    context=context,
+                    identifiers=identifiers,
+                    response_mode=response_mode,
+                    history=history,
+                    include_restricted=include_restricted,
+                    model=model,
+                    user_id=user_id,
+                    config=sug_cfg,
+                ),
+                timeout=45.0,
+            )
+        except Exception:
+            logger.exception("Follow-up generation timed out or failed")
+
+        try:
+            await asyncio.to_thread(
+                chat_history_repository.update_message_suggestions,
+                assistant_message_id,
+                suggestions,
+            )
+        except Exception:
+            logger.exception("Generated suggestions could not be persisted")
+        # Always emit the completion event, including an empty list, so the
+        # frontend can clear its suggestion-specific loading state.
+        yield _sse({"type": "suggestions", "items": suggestions})
+
+    yield _sse({"type": "done"})
+
+
 async def _stream_direct_events(
     *,
     question: str,
@@ -451,6 +583,7 @@ async def _stream_direct_events(
     history: list[dict],
     session_id: str,
     assistant_message_id: str,
+    user_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Direct (non-ReAct) mode: one retrieval pass + a single streamed
     answer, with no tool-calling loop — so unlike _stream_agent_events, no
@@ -458,8 +591,9 @@ async def _stream_direct_events(
     reasoning_steps stays empty, correctly showing "no reasoning trace" for
     this mode. Reuses the same building blocks as the classic /chat endpoint
     (run_retrieval, generate_answer_streaming) and emits the same
-    token/citations/done/error SSE shapes as _stream_agent_events so the
-    frontend's stream consumer needs no branching by mode.
+    token/citations/answer_done/suggestions/done/error SSE shapes as
+    _stream_agent_events so the frontend's stream consumer needs no
+    branching by mode.
     """
     full_tokens: list[str] = []
     try:
@@ -538,7 +672,21 @@ async def _stream_direct_events(
                 "model": resolved_model,
             }
         )
-        yield _sse({"type": "done"})
+
+        async for event in _stream_suggestion_events(
+            question=question,
+            answer=answer,
+            context=state.get("context", ""),
+            identifiers=document_ids or filenames or [],
+            response_mode=response_mode,
+            history=history,
+            include_restricted=include_restricted,
+            model=model,
+            user_id=user_id,
+            evidence_sufficient=evidence_sufficient,
+            assistant_message_id=assistant_message_id,
+        ):
+            yield event
 
     except TimeoutError:
         await _finalize_as_error(assistant_message_id, full_tokens)
@@ -616,6 +764,7 @@ async def chat_stream(
                 history=history,
                 session_id=session_id,
                 assistant_message_id=assistant_message_id,
+                user_id=user_id,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

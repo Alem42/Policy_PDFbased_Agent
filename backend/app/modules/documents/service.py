@@ -421,22 +421,35 @@ def _rerank_or_dense(question: str, candidates: list[dict], limit: int) -> list[
         return candidates[:limit]
 
 
+def resolve_document_ids(
+    identifiers: list[str],
+    include_restricted: bool = False,
+) -> list[str]:
+    """Resolve filenames/UUIDs once while enforcing the caller's access level."""
+    return [
+        str(
+            document_repository.get_record(
+                identifier,
+                include_restricted=include_restricted,
+            )["id"]
+        )
+        for identifier in identifiers
+    ]
+
+
 def retrieve_relevant_chunks(
     question: str,
     identifiers: list[str],
     limit: int = 8,
     include_restricted: bool = False,
 ) -> list[dict]:
-    documents = [
-        document_repository.get_record(identifier, include_restricted=include_restricted)
-        for identifier in identifiers
-    ]
+    document_ids = resolve_document_ids(identifiers, include_restricted)
     query_vector = vector_literal(embed_query(question))
 
     candidate_limit = max(limit * 3, 20)
     candidates = embedding_repository.retrieve(
         query_vector,
-        [str(document["id"]) for document in documents],
+        document_ids,
         limit=candidate_limit,
     )
     return _rerank_or_dense(question, candidates, limit)

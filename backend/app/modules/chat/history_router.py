@@ -64,6 +64,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             model=m.get("model"),
             steps=_parse_steps(m.get("reasoning_steps")),
             status=m.get("status") or "complete",
+            suggestions=_parse_suggestions(m.get("suggestions_json")),
             created_at=m["created_at"],
         )
         for m in msgs
@@ -133,3 +134,13 @@ def _parse_steps(raw) -> list[dict]:
 # name that fits a flat list of strings (evidence_sources) rather than a
 # trace of step dicts.
 _parse_json_list = _parse_steps
+
+
+def _parse_suggestions(raw) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = raw if isinstance(raw, list) else json.loads(raw)
+        return [str(item) for item in data if str(item).strip()]
+    except Exception:
+        return []

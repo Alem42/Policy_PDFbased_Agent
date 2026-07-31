@@ -6,6 +6,7 @@ import LlmProvidersSection from "./manage/LlmProvidersSection";
 import EmbeddingSection from "./manage/EmbeddingSection";
 import RerankingSection from "./manage/RerankingSection";
 import WebSearchSection from "./manage/WebSearchSection";
+import SuggestionsSection from "./manage/SuggestionsSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
@@ -41,6 +42,12 @@ const SECTIONS = [
     label: "Web search",
     desc: "Choose the web search provider and its API key, used by the chat agent's search_web and import_web_page tools.",
     Component: WebSearchSection,
+  },
+  {
+    id: "suggestions",
+    label: "Suggested follow-ups",
+    desc: "Tune the follow-up questions shown after each answer: how many, how strictly they must be answerable from the documents, and generation style.",
+    Component: SuggestionsSection,
   },
 ];
 

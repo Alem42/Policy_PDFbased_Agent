@@ -46,6 +46,7 @@ class ChatHistoryRepository:
         model: str | None = None,
         agent_mode: str | None = None,
         evidence_sources: list[str] | None = None,
+        suggestions: list[str] | None = None,
     ) -> str:
         with get_connection() as conn:
             row = conn.execute(
@@ -53,8 +54,8 @@ class ChatHistoryRepository:
                 INSERT INTO chat_messages
                     (id, session_id, role, content, citations_json,
                      evidence_sufficient, response_mode, answer_mode, model, agent_mode,
-                     evidence_sources)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb)
+                     evidence_sources, suggestions_json)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
                 RETURNING id
                 """,
                 (
@@ -69,6 +70,7 @@ class ChatHistoryRepository:
                     model,
                     agent_mode,
                     json.dumps(evidence_sources or []),
+                    json.dumps(suggestions or []),
                 ),
             ).fetchone()
             conn.commit()
@@ -151,6 +153,25 @@ class ChatHistoryRepository:
             )
             conn.commit()
 
+    def update_message_suggestions(
+        self,
+        message_id: str,
+        suggestions: list[str],
+    ) -> bool:
+        """Attach asynchronously generated suggestions to an assistant message."""
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE chat_messages
+                SET suggestions_json = %s::jsonb
+                WHERE id = %s AND role = 'assistant'
+                RETURNING id
+                """,
+                (json.dumps(suggestions), message_id),
+            ).fetchone()
+            conn.commit()
+        return row is not None
+
     def delete_session(self, session_id: str, user_id: str) -> bool:
         with get_connection() as conn:
             row = conn.execute(
@@ -227,7 +248,8 @@ class ChatHistoryRepository:
                 """
                 SELECT id, session_id, role, content, citations_json,
                        evidence_sufficient, response_mode, answer_mode, model,
-                       reasoning_steps, status, agent_mode, evidence_sources, created_at
+                       reasoning_steps, status, agent_mode, evidence_sources,
+                       suggestions_json, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC

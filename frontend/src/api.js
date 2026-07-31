@@ -323,6 +323,7 @@ async function* readSSEFrames(response) {
  *   | {type:"ask_user",session_id,mode:"confirm"|"choice"|"freeform",question,options:[str]|null}
  *   | {type:"confirm_import",session_id,url,title,question}
  *   | {type:"citations",data:[],evidence_sufficient,evidence_reason,response_mode,answer_mode,session_id}
+ *   | {type:"answer_done",suggestions_pending:bool} | {type:"suggestions",items:[str]}
  *   | {type:"done"} | {type:"error",message:str}
  * An ask_user/confirm_import event ends the stream — call resumeChatStream()
  * with the user's answer to continue it.
@@ -488,6 +489,28 @@ export function addCatalogProvider(payload) {
 // ── Policy taxonomy (two-level categories) ──────────────────────────────────
 
 // Returns { groups: [{ parent, children: [], source_ref }] }
+// ── Follow-up suggestions ────────────────────────────────────────────────
+export function getSuggestionSettings() {
+  return request("/admin/suggestions");
+}
+
+export function saveSuggestionSettings(payload) {
+  return request("/admin/suggestions", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// Best-effort click log for personalization; ignore failures.
+export function logSuggestionClick(sessionId, question) {
+  return request("/chat/suggestions/click", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId || null, question }),
+  }).catch(() => {});
+}
+
 export function getTaxonomy() {
   return request("/taxonomy");
 }
