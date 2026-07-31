@@ -225,7 +225,8 @@ _CITATION_MARKER = re.compile(r"\[(\d+)\]")
 
 def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answer: str) -> list:
     """Narrow evidence_sources (see agent/state.py::EvidenceSource) down to
-    the tier(s) the final answer text actually cites.
+    the tier(s) the final answer text actually draws from beyond the
+    selected documents.
 
     evidence_sources, as built during the ReAct loop, records every tier
     that returned evidence_sufficient=true with a new citation at some point
@@ -235,19 +236,42 @@ def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answe
     already-selected-document sources it found. That mismatch is what
     produces the "From the wider library" / "From the web" banner
     (ChatPage.jsx) on answers that don't actually draw from beyond the
-    selected documents. Cross-referencing the citation numbers that literally
-    appear as [N] markers in the answer against each citation's `tier` (set
-    at creation time by the tool that found it) reports only what the reader
-    can actually see cited.
+    selected documents.
+
+    Two corrections, both against the citation numbers that literally appear
+    as [N] markers in the answer text:
+    1. A tier only counts if the answer actually cites one of its numbers —
+       not merely because that tier returned something sufficient at some
+       point in the loop.
+    2. A cited search_full_corpus result whose document_id was already
+       visible to a search_internal_documents call this turn (regardless of
+       whether that call itself was sufficient — the unfiltered full-corpus
+       search can surface a chunk of an already-selected document that a
+       narrower, worse-matching query missed) is the same selected document,
+       not "wider library" content, so it doesn't count as full_corpus here
+       even though that's which tool mechanically found it.
     """
     cited_numbers = {int(match) for match in _CITATION_MARKER.findall(answer)}
     if not cited_numbers:
         return []
-    cited_tiers = {
-        citation.get("tier")
+
+    internal_document_ids = {
+        citation.get("document_id")
         for citation in citations
-        if citation.get("number") in cited_numbers and citation.get("tier")
+        if citation.get("tier") == "internal" and citation.get("document_id")
     }
+
+    cited_tiers: set = set()
+    for citation in citations:
+        if citation.get("number") not in cited_numbers:
+            continue
+        tier = citation.get("tier")
+        if not tier:
+            continue
+        if tier == "full_corpus" and citation.get("document_id") in internal_document_ids:
+            continue
+        cited_tiers.add(tier)
+
     return [source for source in evidence_sources if source in cited_tiers]
 
 

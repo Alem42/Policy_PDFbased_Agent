@@ -70,6 +70,39 @@ def test_cited_evidence_sources_empty_when_answer_has_no_citation_markers() -> N
     assert chat_router._cited_evidence_sources(["internal"], citations, "No markers here.") == []
 
 
+def test_cited_evidence_sources_drops_full_corpus_hit_on_an_already_selected_document() -> None:
+    # Reproduces a real trace: search_internal_documents returned
+    # evidence_sufficient=false but still surfaced candidates from "doc-1"
+    # (tier "internal", not credited into evidence_sources since it wasn't
+    # sufficient — see agent/tools.py). search_full_corpus then found a
+    # DIFFERENT chunk of that SAME document (doc-1) that passed, plus a
+    # genuinely new document (doc-2) that ended up uncited. The answer only
+    # cites [1] (doc-1, tier full_corpus) and [2] (doc-2's citation number is
+    # never referenced). Since doc-1 was already visible to the internal
+    # search, this isn't "wider library" content even though the tool that
+    # mechanically found citation [1] was search_full_corpus.
+    citations = [
+        {"number": 1, "tier": "full_corpus", "document_id": "doc-1", "title": "Selected doc, other chunk"},
+        {"number": 2, "tier": "internal", "document_id": "doc-1", "title": "Selected doc, first chunk"},
+        {"number": 3, "tier": "full_corpus", "document_id": "doc-2", "title": "Genuinely new doc"},
+    ]
+    result = chat_router._cited_evidence_sources(
+        ["full_corpus"], citations, "The plan says X [1]."
+    )
+    assert result == []
+
+
+def test_cited_evidence_sources_keeps_full_corpus_hit_on_a_genuinely_new_document() -> None:
+    citations = [
+        {"number": 1, "tier": "internal", "document_id": "doc-1"},
+        {"number": 2, "tier": "full_corpus", "document_id": "doc-2"},
+    ]
+    result = chat_router._cited_evidence_sources(
+        ["full_corpus"], citations, "The plan says X [2]."
+    )
+    assert result == ["full_corpus"]
+
+
 @pytest.mark.asyncio
 async def test_chat_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_session_belongs_to_user(session_id: str, user_id: str) -> bool:
