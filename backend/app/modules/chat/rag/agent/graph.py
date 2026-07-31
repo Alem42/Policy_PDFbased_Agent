@@ -40,8 +40,8 @@ ANALYSIS_MODE_TOOLS = [search_internal_documents, prepare_final_answer]
 # Per user turn. Exhausted tools are removed from the next agent call's tool
 # schema, so the model cannot keep selecting the same action indefinitely.
 TOOL_CALL_LIMITS = {
-    "search_internal_documents": 1,
-    "search_full_corpus": 2,
+    "search_internal_documents": 5,
+    "search_full_corpus": 5,
     "ask_user": 20,
     "search_web": 4,
     "import_web_page": 1,
@@ -67,6 +67,15 @@ def _tools_for(
 
 
 EVIDENCE_TIER_TOOLS = {"search_internal_documents", "search_full_corpus", "search_web"}
+
+# DISABLED (2026-08-01) at the user's request while testing: skipping the
+# model's own turn also skips the visible "Preparing the final answer…" trace
+# step (auto_finalize_node bypasses record_tool_call/tools, the two nodes
+# router.py turns into tool_call/tool_result SSE events), which made it look
+# like the agent had stopped calling prepare_final_answer at all. Flip back
+# to True to re-enable — _should_auto_finalize/auto_finalize_node below are
+# untouched, only route_after_tools' use of them is gated.
+AUTO_FINALIZE_ENABLED = False
 
 # --- TEMPORARY code-level backstop -----------------------------------------
 # Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
@@ -345,7 +354,7 @@ def route_after_tools(state: AgentState) -> str:
         if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_sources"):
             return "insufficient_evidence"
         return "final_generation"
-    if _should_auto_finalize(state):
+    if AUTO_FINALIZE_ENABLED and _should_auto_finalize(state):
         return "auto_finalize"
     return "agent"
 

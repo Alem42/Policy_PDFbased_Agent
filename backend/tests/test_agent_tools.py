@@ -434,12 +434,29 @@ def test_should_auto_finalize_false_in_document_analysis_mode() -> None:
     assert _should_auto_finalize(state) is False
 
 
-def test_route_after_tools_returns_auto_finalize_when_eligible() -> None:
+def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # AUTO_FINALIZE_ENABLED is off by default right now (disabled 2026-08-01
+    # while testing — see graph.py) — force it on here so this still covers
+    # the real route_after_tools wiring, not just _should_auto_finalize in
+    # isolation.
+    import app.modules.chat.rag.agent.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "AUTO_FINALIZE_ENABLED", True)
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
         {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
     )
     assert route_after_tools(state) == "auto_finalize"
+
+
+def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled() -> None:
+    state = _auto_finalize_state(
+        "生成式人工智能对就业市场有什么影响？",
+        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+    )
+    assert route_after_tools(state) == "agent"
 
 
 def test_auto_finalize_node_synthesizes_prepare_final_answer_pair() -> None:
