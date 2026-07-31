@@ -266,6 +266,11 @@ function ReasoningSteps({ steps, expanded, onToggle, active }) {
                     {step.resultCount} candidate source{step.resultCount === 1 ? "" : "s"}
                   </Typography>
                 )}
+                {Number.isInteger(step.tokensUsed) && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#98a29c", fontSize: 11 }}>
+                    {step.tokensUsed.toLocaleString()} tokens
+                  </Typography>
+                )}
                 {step.evidenceReason && (
                   <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
                     <Box component="span" sx={{ fontWeight: 600 }}>Evidence: </Box>
@@ -754,6 +759,7 @@ export default function ChatPage({
         evidenceSufficient: m.evidence_sufficient,
         evidenceReason: null,
         evidenceSources: Array.isArray(m.evidence_sources) ? m.evidence_sources : [],
+        tokenUsage: m.token_usage && Number.isInteger(m.token_usage.total_tokens) ? m.token_usage : null,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
         agentMode: m.agent_mode,
@@ -989,6 +995,7 @@ export default function ChatPage({
               question: evt.question || null,
               url: evt.url || null,
               title: evt.title || null,
+              tokensUsed: Number.isInteger(evt.tokens_used) ? evt.tokens_used : null,
             },
           ];
           next[next.length - 1] = { ...last, steps, showSteps: true };
@@ -1046,6 +1053,7 @@ export default function ChatPage({
             evidenceSufficient: evt.evidence_sufficient,
             evidenceReason: evt.evidence_reason || null,
             evidenceSources: Array.isArray(evt.evidence_sources) ? evt.evidence_sources : [],
+            tokenUsage: evt.token_usage && Number.isInteger(evt.token_usage.total_tokens) ? evt.token_usage : null,
             responseMode: evt.response_mode || responseMode,
             answerMode: evt.answer_mode || answerMode,
             agentMode: evt.agent_mode || last.agentMode || agentMode,
@@ -1492,6 +1500,7 @@ export default function ChatPage({
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
                           message.agentMode === "direct" ? "Direct" : null,
                           message.model ? `Answered by ${getModelLabel(modelLabels, message.model)}` : null,
+                          message.tokenUsage ? `${message.tokenUsage.total_tokens.toLocaleString()} tokens` : null,
                         ].filter(Boolean).join(" · ")}
                       </Typography>
                     )}

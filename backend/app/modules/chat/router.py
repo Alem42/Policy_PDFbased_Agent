@@ -275,6 +275,38 @@ def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answe
     return [source for source in evidence_sources if source in cited_tiers]
 
 
+def _turn_token_usage(messages: list) -> dict:
+    """Sum LLM token usage across every AIMessage produced THIS turn — each
+    ReAct agent_node decision step plus the final answer writer — from the
+    latest HumanMessage onward, same turn-boundary logic as
+    agent/graph.py::_messages_for_current_turn. Skips messages with no
+    usage_metadata (a synthetic step like auto_finalize_node's, or a
+    provider that never reported usage). Returns {} if nothing had usage —
+    stored as-is in the token_usage jsonb column, never null.
+    """
+    latest_human_index = next(
+        (index for index in range(len(messages) - 1, -1, -1) if isinstance(messages[index], HumanMessage)),
+        0,
+    )
+    prompt_tokens = completion_tokens = total_tokens = 0
+    found = False
+    for message in messages[latest_human_index:]:
+        usage = getattr(message, "usage_metadata", None) if isinstance(message, AIMessage) else None
+        if not usage:
+            continue
+        found = True
+        prompt_tokens += usage.get("input_tokens") or 0
+        completion_tokens += usage.get("output_tokens") or 0
+        total_tokens += usage.get("total_tokens") or 0
+    if not found:
+        return {}
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
 def _tool_result_event(message: Any) -> dict:
     """Return a compact, user-readable tool result summary for the trace UI."""
     result: dict = {}
@@ -320,6 +352,10 @@ def _step_from_tool_call(call: dict) -> dict:
         "question": call.get("question"),
         "url": call.get("url"),
         "title": call.get("title"),
+        # Tokens the agent_node LLM call that chose THIS action spent (see
+        # record_tool_call_node in agent/graph.py) — None if the provider
+        # didn't report usage.
+        "tokensUsed": call.get("tokens_used"),
     }
 
 
@@ -482,6 +518,7 @@ async def _stream_agent_events(
         # all), unrelated to the "From the wider library"/"From the web"
         # banner this narrows.
         reported_evidence_sources = _cited_evidence_sources(evidence_sources, citations, answer)
+        token_usage = _turn_token_usage(messages)
 
         await asyncio.to_thread(
             chat_history_repository.finalize_message,
@@ -493,6 +530,7 @@ async def _stream_agent_events(
             answer_mode,
             resolved_model,
             evidence_sources=reported_evidence_sources,
+            token_usage=token_usage,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
 
@@ -503,6 +541,7 @@ async def _stream_agent_events(
                 "evidence_sufficient": evidence_sufficient,
                 "evidence_reason": evidence_reason,
                 "evidence_sources": reported_evidence_sources,
+                "token_usage": token_usage,
                 "response_mode": response_mode,
                 "answer_mode": answer_mode,
                 "agent_mode": "react",

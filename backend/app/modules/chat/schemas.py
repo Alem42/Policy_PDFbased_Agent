@@ -55,6 +55,12 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
 
 
+class TokenUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class Citation(BaseModel):
     document_id: UUID | None = None  # None when built from page-level fallback
     title: str
@@ -129,6 +135,11 @@ class SessionMessage(BaseModel):
     status: str = "complete"
     # Validated follow-up questions generated after this answer (may be empty).
     suggestions: list[str] = Field(default_factory=list)
+    # LLM tokens spent generating this turn (every ReAct decision step plus
+    # the final answer writer, summed). None for user messages, direct-mode
+    # answers, and turns predating this field / whose provider never
+    # reported usage.
+    token_usage: TokenUsage | None = None
     created_at: datetime
 
 

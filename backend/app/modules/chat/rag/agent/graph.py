@@ -320,6 +320,13 @@ def record_tool_call_node(state: AgentState) -> dict:
     tool_args = dict(calls[0].get("args") or {})
     counts = dict(state.get("tool_call_counts", {}))
     counts[tool_name] = counts.get(tool_name, 0) + 1
+    # Tokens spent on the single agent_node LLM call that decided to take
+    # THIS action — usage_metadata is populated by the provider on the
+    # AIMessage itself (langchain_core standard field), None if it didn't
+    # report usage. Not the tool's own cost (the tools here don't call an
+    # LLM directly) — this is "what did it cost to decide on this step."
+    usage = getattr(last, "usage_metadata", None)
+    tokens_used = usage.get("total_tokens") if usage else None
     return {
         "tool_call_counts": counts,
         "last_tool_call": {
@@ -333,6 +340,7 @@ def record_tool_call_node(state: AgentState) -> dict:
             # it there rather than storing it on this new step (see
             # REFLECTION_FIELD_RULE in prompts.py).
             "reflection_on_previous_result": tool_args.get("reflection_on_previous_result"),
+            "tokens_used": tokens_used,
         },
     }
 

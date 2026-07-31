@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.modules.chat import router as chat_router
 from app.modules.chat.schemas import ChatRequest
@@ -101,6 +101,38 @@ def test_cited_evidence_sources_keeps_full_corpus_hit_on_a_genuinely_new_documen
         ["full_corpus"], citations, "The plan says X [2]."
     )
     assert result == ["full_corpus"]
+
+
+def test_turn_token_usage_sums_only_this_turns_ai_messages() -> None:
+    messages = [
+        HumanMessage(content="prior question"),
+        AIMessage(content="prior answer", usage_metadata={"input_tokens": 999, "output_tokens": 999, "total_tokens": 1998}),
+        HumanMessage(content="current question"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "search_internal_documents", "args": {}, "id": "c1", "type": "tool_call"}],
+            usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+        ),
+        ToolMessage(content="{}", tool_call_id="c1", name="search_internal_documents"),
+        AIMessage(content="final answer", usage_metadata={"input_tokens": 150, "output_tokens": 40, "total_tokens": 190}),
+    ]
+    result = chat_router._turn_token_usage(messages)
+    assert result == {"prompt_tokens": 250, "completion_tokens": 60, "total_tokens": 310}
+
+
+def test_turn_token_usage_skips_messages_without_usage_metadata() -> None:
+    # auto_finalize_node's synthetic AIMessage (see agent/graph.py) never
+    # called an LLM, so it carries no usage_metadata at all.
+    messages = [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=[{"name": "x", "args": {}, "id": "c1", "type": "tool_call"}]),
+        ToolMessage(content="{}", tool_call_id="c1", name="x"),
+    ]
+    assert chat_router._turn_token_usage(messages) == {}
+
+
+def test_turn_token_usage_empty_when_no_ai_messages_have_usage() -> None:
+    assert chat_router._turn_token_usage([HumanMessage(content="q")]) == {}
 
 
 @pytest.mark.asyncio

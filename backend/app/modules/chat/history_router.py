@@ -65,6 +65,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             steps=_parse_steps(m.get("reasoning_steps")),
             status=m.get("status") or "complete",
             suggestions=_parse_suggestions(m.get("suggestions_json")),
+            token_usage=_parse_token_usage(m.get("token_usage")),
             created_at=m["created_at"],
         )
         for m in msgs
@@ -144,3 +145,13 @@ def _parse_suggestions(raw) -> list[str]:
         return [str(item) for item in data if str(item).strip()]
     except Exception:
         return []
+
+
+def _parse_token_usage(raw) -> dict | None:
+    if not raw:
+        return None
+    try:
+        data = raw if isinstance(raw, dict) else json.loads(raw)
+        return data if isinstance(data, dict) and data else None
+    except Exception:
+        return None

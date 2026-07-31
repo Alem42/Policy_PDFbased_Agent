@@ -185,7 +185,25 @@ def test_record_tool_call_increments_only_selected_action() -> None:
         "url": None,
         "title": None,
         "reflection_on_previous_result": None,
+        "tokens_used": None,
     }
+
+
+def test_record_tool_call_captures_tokens_used_from_usage_metadata() -> None:
+    message = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_internal_documents",
+                "args": {"query": "q", "decision_reason": "why"},
+                "id": "call-1",
+                "type": "tool_call",
+            }
+        ],
+        usage_metadata={"input_tokens": 200, "output_tokens": 30, "total_tokens": 230},
+    )
+    update = record_tool_call_node({"messages": [message], "tool_call_counts": {}})
+    assert update["last_tool_call"]["tokens_used"] == 230
 
 
 def test_current_turn_messages_hide_prior_tool_budget_observations() -> None:

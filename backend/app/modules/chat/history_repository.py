@@ -119,6 +119,7 @@ class ChatHistoryRepository:
         model: str | None = None,
         status: str = "complete",
         evidence_sources: list[str] | None = None,
+        token_usage: dict | None = None,
     ) -> None:
         """Fill in a pending message's final answer, closing out the turn
         started by create_pending_message."""
@@ -128,7 +129,7 @@ class ChatHistoryRepository:
                 UPDATE chat_messages
                 SET content = %s, citations_json = %s::jsonb, evidence_sufficient = %s,
                     response_mode = %s, answer_mode = %s, model = %s, status = %s,
-                    evidence_sources = %s::jsonb
+                    evidence_sources = %s::jsonb, token_usage = %s::jsonb
                 WHERE id = %s
                 """,
                 (
@@ -140,6 +141,7 @@ class ChatHistoryRepository:
                     model,
                     status,
                     json.dumps(evidence_sources or []),
+                    json.dumps(token_usage or {}),
                     message_id,
                 ),
             )
@@ -249,7 +251,7 @@ class ChatHistoryRepository:
                 SELECT id, session_id, role, content, citations_json,
                        evidence_sufficient, response_mode, answer_mode, model,
                        reasoning_steps, status, agent_mode, evidence_sources,
-                       suggestions_json, created_at
+                       suggestions_json, token_usage, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC
