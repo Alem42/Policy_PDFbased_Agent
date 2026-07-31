@@ -29,6 +29,7 @@ from app.modules.chat.rag.graph.nodes import (
 from app.modules.chat.rag.graph.state import PDFQAState
 from app.modules.chat.rag.web_search.contracts import WebSearchProviderError, WebSearchResult
 from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
+from app.modules.documents.chunker import TiktokenDocumentChunker
 from app.modules.documents.embeddings import embed_documents, embed_query
 from app.modules.documents.service import save_web_import
 from app.modules.documents.service import search_full_corpus as search_full_corpus_service
@@ -330,30 +331,69 @@ def _cosine_distance(a: list[float], b: list[float]) -> float:
     return 1 - dot / (norm_a * norm_b)
 
 
+# Tiktoken-based (no live embedding-config/DB lookup), unlike the
+# EmbeddingModelDocumentChunker document ingestion uses — splitting a web
+# result into retrieval-sized pieces doesn't need to match the admin-tunable
+# ingestion budget exactly, and staying DB-free keeps this a pure, fast helper.
+_web_result_chunker = TiktokenDocumentChunker()
+
+
+def _chunk_web_result_text(text: str) -> list[str]:
+    """Split one page's content into retrieval-sized pieces before embedding.
+
+    Firecrawl's search() requests full-page markdown per hit, not a short
+    excerpt (see web_search/providers/firecrawl.py), so embedding a whole
+    page as one vector blurs together everything on it and risks silently
+    exceeding the reranker's own max input length. Reuse the same chunker
+    document ingestion uses instead of a page-sized vector.
+    """
+    clean = text.strip()
+    if not clean:
+        return []
+    chunks = _web_result_chunker.chunk([{"page": 1, "text": clean}])
+    return [c["text"] for c in chunks] or [clean]
+
+
 def _score_web_results(
     query: str, results: list[WebSearchResult]
 ) -> tuple[bool, str | None, list[dict]]:
     """Apply the SAME evidence gate as document chunks: cosine distance, then
-    reranker score. Only results that pass both are usable citations."""
+    reranker score. Each result is chunked first so a long page is judged by
+    its single best-matching chunk, not one oversized whole-page vector.
+    Only results that pass both are usable citations."""
     if not results:
         return False, "The web search returned no results.", []
 
-    texts = [r.content or r.title for r in results]
+    owners: list[int] = []
+    texts: list[str] = []
+    for index, result in enumerate(results):
+        for chunk_text in _chunk_web_result_text(result.content or result.title):
+            owners.append(index)
+            texts.append(chunk_text)
+
+    if not texts:
+        return False, "The web search returned no usable content.", []
+
     query_vector = embed_query(query)
-    doc_vectors = embed_documents(texts)
+    chunk_vectors = embed_documents(texts)
+
+    # Collapse per-chunk scores back to one candidate per URL: the chunk
+    # closest to the query represents that page as a citation.
+    best_per_result: dict[int, dict] = {}
+    for owner, text, vector in zip(owners, texts, chunk_vectors, strict=True):
+        distance = _cosine_distance(query_vector, vector)
+        current = best_per_result.get(owner)
+        if current is None or distance < current["distance"]:
+            best_per_result[owner] = {
+                "title": results[owner].title,
+                "url": results[owner].url,
+                "text": text,
+                "distance": distance,
+                "passed": False,
+            }
+    candidates = [best_per_result[i] for i in range(len(results)) if i in best_per_result]
+
     threshold = max_vector_distance()
-
-    candidates = [
-        {
-            "title": result.title,
-            "url": result.url,
-            "text": text,
-            "distance": _cosine_distance(query_vector, vector),
-            "passed": False,
-        }
-        for result, text, vector in zip(results, texts, doc_vectors, strict=True)
-    ]
-
     relevant = [c for c in candidates if c["distance"] <= threshold]
     if not relevant:
         return False, "No web result was close enough to the question.", candidates
