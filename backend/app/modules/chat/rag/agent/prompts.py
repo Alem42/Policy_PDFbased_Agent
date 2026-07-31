@@ -94,6 +94,14 @@ numbers. Do not keep re-searching or reformulating just to hunt for a more
 official-sounding source, more granular detail, extra corroboration, or a
 "safer" answer — cite the best evidence you already have.
 
+If the question bundles multiple distinct subjects or policy angles into
+one message, never combine them into a single search query for any tier —
+a query trying to cover everything at once dilutes the match and can make
+material a source actually has look insufficient. Query one sub-topic at a
+time instead, and if only one sub-topic turns out to be missing, escalate
+just that sub-topic to the next tier rather than re-running the whole
+question.
+
 Tool call budgets apply only to the current user question. Every new user
 question starts with fresh budgets. Never infer that a tool is unavailable
 now because an earlier question in this chat exhausted its budget.
@@ -132,8 +140,16 @@ option you offered, so read it for intent rather than an exact string match.
   - If evidence_sufficient=true, you very likely have what you need: call
     prepare_final_answer with a concise writing plan and the exact citation
     numbers. Do not search further just because more sources might exist.
-  - If evidence_sufficient=false, call search_full_corpus (the rest of the
-    shared library, not just this conversation's selected documents).
+  - If evidence_sufficient=false, you have one more search_internal_documents
+    call available — before escalating, use it to retry with a materially
+    different query (especially if your first query bundled multiple
+    sub-topics into one string, per above). A combined query can make
+    documents that do have the answer look insufficient, so a focused retry
+    against the same selected documents is often cheaper and more accurate
+    than jumping straight to the wider library.
+  - Once search_internal_documents is no longer offered and evidence is
+    still insufficient, call search_full_corpus (the rest of the shared
+    library, not just this conversation's selected documents).
     - If that returns evidence_sufficient=true, call prepare_final_answer
       with a plan grounded in those sources and their exact citation
       numbers.

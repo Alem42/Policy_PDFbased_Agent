@@ -167,6 +167,12 @@ async def search_internal_documents(
     trace, not hidden reasoning. If this is not your first tool call this
     turn, also fill `reflection_on_previous_result` — see its own
     description for what goes there.
+
+    You may call this at most twice per turn. If the first call comes back
+    evidence_sufficient=false, the second call should materially reformulate
+    the query rather than repeating it — in particular, split a query that
+    bundled multiple sub-topics into one string, which dilutes the match and
+    can make documents that do have the answer look insufficient.
     """
     identifiers = document_ids or filenames or []
 
