@@ -128,8 +128,9 @@ option you offered, so read it for intent rather than an exact string match.
   you do not need ask_user either — the user's request is itself the
   authorisation. Go straight to search_web.
 - If the user explicitly asks to compare, cross-check, or verify the
-  selected documents against the web — or asks whether they are still
-  current/up to date — that request is itself authorisation for search_web,
+  selected documents against the web — or asks for the latest/newest/most
+  recent information, or whether it is still current/up to date — that
+  request is itself authorisation for search_web,
   same as above, but it does NOT replace search_internal_documents: call
   both, even though evidence_sufficient=true from search_internal_documents
   would normally mean you're done. The user asked for a comparison, so the

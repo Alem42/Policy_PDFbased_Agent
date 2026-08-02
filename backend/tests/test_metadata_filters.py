@@ -59,6 +59,26 @@ def test_infer_ignores_vague_partial_policy_area() -> None:
     assert inferred.policy_areas == ()
 
 
+def test_explicit_before_filter_wins_over_year_in_question_subject() -> None:
+    service = MetadataFilterService(FakeRepository(ROWS))
+
+    inferred = service.infer(
+        "I want updates after 2026; filter the files which published before 2026."
+    )
+
+    assert inferred.year_from is None
+    assert inferred.year_to == 2025
+
+
+def test_after_year_is_an_exclusive_lower_bound() -> None:
+    service = MetadataFilterService(FakeRepository(ROWS))
+
+    inferred = service.infer("Only use documents published after 2023.")
+
+    assert inferred.year_from == 2024
+    assert inferred.year_to is None
+
+
 def test_apply_exact_filters_restricts_selected_documents(monkeypatch) -> None:
     service = MetadataFilterService(FakeRepository(ROWS))
     monkeypatch.setattr(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.service import (
@@ -15,6 +16,7 @@ from app.modules.embedding import service as embedding
 from app.modules.reranking import service as reranking
 from app.modules.retrieval.contracts import (
     EvidenceDecision,
+    MetadataFilters,
     QuestionValidationRequest,
     RetrievalRequest,
     RetrievalResult,
@@ -119,7 +121,7 @@ class RetrievalService:
             context=context,
             has_embeddings=has_embeddings,
         )
-        return RetrievalResult(
+        result = RetrievalResult(
             pages=pages,
             chunks=chunks,
             raw_chunks=raw_chunks,
@@ -132,6 +134,31 @@ class RetrievalService:
             filter_fallback=filter_application.fallback,
             filter_notice=filter_application.notice,
         )
+        if (
+            request.metadata_filters.active
+            and filter_application.applied
+            and not filter_application.fallback
+            and not result.evidence.sufficient
+        ):
+            # Natural-language metadata constraints are retrieval preferences,
+            # not a reason to leave the user with no answer. If the narrowed
+            # subset exists but cannot support the question, retry the exact
+            # original scope once and surface the relaxation as a warning.
+            expanded = self.retrieve(
+                replace(request, metadata_filters=MetadataFilters()),
+                preloaded_pages=preloaded_pages,
+            )
+            expanded.filter_applied = True
+            expanded.filter_fallback = True
+            description = metadata_filter_service.describe(request.metadata_filters)
+            expanded.filter_notice = (
+                f"Documents matched the requested metadata filters ({description}), "
+                "but that subset did not contain enough relevant evidence. The search "
+                "was expanded to the original document scope, so some cited sources may "
+                "fall outside the requested metadata."
+            )
+            return expanded
+        return result
 
     def validate_questions(self, request: QuestionValidationRequest) -> list[str]:
         """Return answerable candidates using one batched dense retrieval pass."""

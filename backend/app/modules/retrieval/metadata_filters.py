@@ -14,6 +14,10 @@ from app.modules.documents.service import resolve_document_ids
 from app.modules.retrieval.contracts import MetadataFilters, RetrievalScope
 
 _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+_YEAR_BEFORE = re.compile(r"\b(?:before|earlier than|prior to)\s+((?:19|20)\d{2})\b", re.I)
+_YEAR_AFTER = re.compile(r"\b(?:after|later than)\s+((?:19|20)\d{2})\b", re.I)
+_YEAR_FROM = re.compile(r"\b(?:since|from)\s+((?:19|20)\d{2})\b", re.I)
+_YEAR_THROUGH = re.compile(r"\b(?:through|until|up to)\s+((?:19|20)\d{2})\b", re.I)
 _FRESHNESS_TERMS = (
     "latest",
     "most recent",
@@ -123,11 +127,36 @@ class MetadataFilterService:
             for match in re.findall(r"(?:\btag|标签)\s*[:：]\s*([\w -]+)", question, re.I)
         )
 
-        years = [int(value) for value in _YEAR.findall(question)]
         year_from = explicit.get("published_year_from")
         year_to = explicit.get("published_year_to")
-        if years and year_from is None and year_to is None:
-            year_from, year_to = min(years), max(years)
+        if year_from is None and year_to is None:
+            before = [int(value) for value in _YEAR_BEFORE.findall(question)]
+            after = [int(value) for value in _YEAR_AFTER.findall(question)]
+            since = [int(value) for value in _YEAR_FROM.findall(question)]
+            through = [int(value) for value in _YEAR_THROUGH.findall(question)]
+            # An explicit filtering clause is more actionable than a year in
+            # the subject of the question. In contradictory wording such as
+            # "especially after 2026; filter files before 2026", the latter
+            # controls retrieval while the former remains part of the query.
+            filter_before = re.findall(
+                r"(?:filter|exclude|only|files?|documents?).{0,60}?"
+                r"(?:before|earlier than|prior to)\s+((?:19|20)\d{2})",
+                question,
+                re.I,
+            )
+            if filter_before:
+                year_to = int(filter_before[-1]) - 1
+            elif before and not after:
+                year_to = min(before) - 1
+            elif after and not before:
+                year_from = max(after) + 1
+            elif since or through:
+                year_from = min(since) if since else None
+                year_to = max(through) if through else None
+            else:
+                years = [int(value) for value in _YEAR.findall(question)]
+                if years:
+                    year_from, year_to = min(years), max(years)
 
         freshness_requested = any(term in lowered for term in _FRESHNESS_TERMS)
         if freshness_requested and year_from is None:

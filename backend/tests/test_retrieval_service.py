@@ -102,6 +102,54 @@ def test_metadata_filter_fallback_uses_original_scope_and_exposes_notice(monkeyp
     assert result.filter_notice == notice
 
 
+def test_metadata_subset_with_weak_evidence_retries_original_scope(monkeypatch) -> None:
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service,
+        "apply",
+        lambda *args, **kwargs: FilterApplication(
+            ("doc-filtered",), applied=True, fallback=False, notice="Applied year<=2025."
+        ),
+    )
+    seen_identifiers = []
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: [])
+
+    def retrieve(_question, identifiers, **_kwargs):
+        seen_identifiers.append(list(identifiers))
+        if identifiers == ["doc-filtered"]:
+            return []
+        return [
+            {
+                "document_id": "doc-original",
+                "doc_title": "Original scope",
+                "file": "original.pdf",
+                "chunk_id": "chunk-1",
+                "page_start": 1,
+                "text": "Australia's AI safety standard contains voluntary guardrails. " * 10,
+                "distance": 0.1,
+                "reranker_score": 2.0,
+            }
+        ]
+
+    monkeypatch.setattr(retrieval_module, "retrieve_relevant_chunks", retrieve)
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="What is Australia's AI safety standard?",
+            identifiers=("doc-filtered", "doc-original"),
+            metadata_filters=MetadataFilters(year_to=2025),
+        )
+    )
+
+    assert seen_identifiers == [
+        ["doc-filtered"],
+        ["doc-filtered", "doc-original"],
+    ]
+    assert result.evidence.sufficient is True
+    assert result.filter_fallback is True
+    assert "expanded to the original document scope" in result.filter_notice
+
+
 def test_indexed_irrelevant_results_do_not_fall_back_to_misleading_page_citations(
     monkeypatch,
 ) -> None:
