@@ -22,6 +22,9 @@ from app.modules.documents.admin_schemas import (
     AdminWebImportResponse,
     DocumentProcessingStatus,
     ProcessingStatus,
+    WebGovernanceRead,
+    WebGovernanceUpdate,
+    WebLifecycleStatus,
 )
 from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.service import (
@@ -37,6 +40,7 @@ from app.modules.documents.service import (
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
 )
+from app.modules.documents.web_governance import web_governance_service
 from app.modules.documents.web_import import (
     WebImportRequest,
     web_import_service,
@@ -157,6 +161,45 @@ async def import_web_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except WebSearchProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/web-governance", response_model=list[WebGovernanceRead])
+async def list_web_governance(
+    _: AdminUser,
+    lifecycle_status: WebLifecycleStatus | None = None,
+    due_only: bool = False,
+) -> list[WebGovernanceRead]:
+    rows = await asyncio.to_thread(
+        web_governance_service.list,
+        lifecycle_status=lifecycle_status.value if lifecycle_status else None,
+        due_only=due_only,
+    )
+    return [WebGovernanceRead(**row) for row in rows]
+
+
+@router.patch("/{document_id}/web-governance", response_model=WebGovernanceRead)
+async def update_web_governance(
+    document_id: UUID,
+    payload: WebGovernanceUpdate,
+    _: AdminUser,
+) -> WebGovernanceRead:
+    try:
+        values = payload.model_dump(exclude_unset=True)
+        lifecycle = values.get("lifecycle_status")
+        if lifecycle is not None:
+            values["lifecycle_status"] = lifecycle.value
+        await asyncio.to_thread(
+            web_governance_service.update,
+            str(document_id),
+            **values,
+        )
+        rows = await asyncio.to_thread(web_governance_service.list)
+        row = next(item for item in rows if str(item["document_id"]) == str(document_id))
+        return WebGovernanceRead(**row)
+    except (FileNotFoundError, StopIteration) as exc:
+        raise HTTPException(status_code=404, detail="Web governance record not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/rescan")
