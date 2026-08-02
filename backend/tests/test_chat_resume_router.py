@@ -15,7 +15,7 @@ from app.modules.chat.schemas import ResumeChatRequest
 @pytest.mark.asyncio
 async def test_chat_resume_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        chat_router.chat_history_repository, "session_belongs_to_user", lambda *_: False
+        chat_router.chat_turn_service.repository, "session_belongs_to_user", lambda *_: False
     )
 
     payload = ResumeChatRequest(session_id=uuid4(), answer="Yes")
@@ -29,7 +29,7 @@ async def test_chat_resume_rejects_session_not_owned(monkeypatch: pytest.MonkeyP
 @pytest.mark.asyncio
 async def test_chat_resume_rejects_when_no_paused_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        chat_router.chat_history_repository, "session_belongs_to_user", lambda *_: True
+        chat_router.chat_turn_service.repository, "session_belongs_to_user", lambda *_: True
     )
 
     class FakeGraph:

@@ -160,12 +160,12 @@ async def test_chat_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -
         raise AssertionError("History should not be read for another user's session.")
 
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "session_belongs_to_user",
         fake_session_belongs_to_user,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "get_history_for_llm",
         fail_get_history_for_llm,
     )

@@ -1,7 +1,5 @@
 import asyncio
-import json as _json
 import logging
-import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Annotated, Any
@@ -12,17 +10,28 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
+from app.core.ai.token_usage import aggregate_turn_token_usage
 from app.modules.auth.dependencies import get_current_user
 from app.modules.catalog.service import get_catalog
-from app.modules.chat.history_repository import chat_history_repository
-from app.modules.chat.rag.agent.graph import get_agent_graph
+from app.modules.chat.api.sse import (
+    apply_tool_result,
+    encode_sse,
+    step_from_tool_call,
+    tool_result_event,
+)
+from app.modules.chat.application.models import StartTurnRequest
+from app.modules.chat.application.turn_service import (
+    SessionNotFoundError,
+    chat_turn_service,
+)
+from app.modules.chat.generation.citations import cited_evidence_sources
+from app.modules.chat.orchestration.direct import direct_orchestrator
+from app.modules.chat.orchestration.react import react_orchestrator
 from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
 from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.graph.state import normalize_answer_mode
-from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 from app.modules.chat.schemas import (
-    MAX_HISTORY_TURNS,
     ChatRequest,
     ChatResponse,
     Citation,
@@ -37,6 +46,18 @@ from app.modules.settings.service import get_provider_api_key
 router = APIRouter(tags=["rag"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 logger = logging.getLogger(__name__)
+
+# Backwards-compatible private aliases for tests/scripts that used the former
+# router-owned helpers. New code imports their owning modules directly.
+_sse = encode_sse
+_tool_result_event = tool_result_event
+_step_from_tool_call = step_from_tool_call
+_apply_tool_result = apply_tool_result
+_turn_token_usage = aggregate_turn_token_usage
+_cited_evidence_sources = cited_evidence_sources
+run_pdf_qa = direct_orchestrator.answer
+run_retrieval = direct_orchestrator.retrieve
+get_agent_graph = react_orchestrator.graph
 
 
 @router.get("/chat/models", response_model=list[ProviderModels])
@@ -87,42 +108,19 @@ async def chat(
     user_id = str(user["id"])
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
 
-    # ── Session management ──────────────────────────────────────────────
-    if payload.session_id is not None:
-        session_id = str(payload.session_id)
-        owns_session = await asyncio.to_thread(
-            chat_history_repository.session_belongs_to_user,
-            session_id,
-            user_id,
-        )
-        if not owns_session:
-            raise HTTPException(status_code=404, detail="Session not found.")
-
-        # Read history from DB (more reliable than relying on the client to resend it).
-        history = await asyncio.to_thread(
-            chat_history_repository.get_history_for_llm,
-            session_id,
-            MAX_HISTORY_TURNS,
-        )
-    else:
-        session_id = await asyncio.to_thread(
-            chat_history_repository.create_session,
-            user_id,
-            payload.question[:80],
-            identifiers,
-            payload.response_mode,
-        )
-        # New session — no prior history.
-        history = []
-
     try:
-        # ── Save the user question immediately ─────────────────────────
-        await asyncio.to_thread(
-            chat_history_repository.add_message,
-            session_id,
-            "user",
-            payload.question,
+        turn = await chat_turn_service.start(
+            StartTurnRequest(
+                user_id=user_id,
+                question=payload.question,
+                identifiers=tuple(identifiers),
+                response_mode=payload.response_mode,
+                agent_mode="direct",
+                session_id=str(payload.session_id) if payload.session_id else None,
+            )
         )
+        session_id = turn.session_id
+        history = turn.history
 
         # run_pdf_qa is synchronous (LangGraph + CPU-bound embedding/reranking).
         # Running it in a thread pool prevents blocking the async event loop.
@@ -174,8 +172,7 @@ async def chat(
                     suggestions = []
 
         # ── Save the assistant answer ───────────────────────────────────
-        await asyncio.to_thread(
-            chat_history_repository.add_message,
+        await chat_turn_service.add_message(
             session_id,
             "assistant",
             result["answer"],
@@ -188,7 +185,7 @@ async def chat(
             evidence_sources,
             suggestions,
         )
-        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+        await chat_turn_service.touch(session_id)
 
         return ChatResponse(
             answer=result["answer"],
@@ -204,6 +201,8 @@ async def chat(
             model=resolved_model,
             suggestions=suggestions,
         )
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Request timed out after 120 s.") from exc
     except FileNotFoundError as exc:
@@ -212,168 +211,6 @@ async def chat(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc
-
-
-def _sse(obj: dict) -> str:
-    return f"data: {_json.dumps(obj, default=str)}\n\n"
-
-
-_CITATION_MARKER = re.compile(r"\[(\d+)\]")
-
-
-def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answer: str) -> list:
-    """Narrow evidence_sources (see agent/state.py::EvidenceSource) down to
-    the tier(s) the final answer text actually draws from beyond the
-    selected documents.
-
-    evidence_sources, as built during the ReAct loop, records every tier
-    that returned evidence_sufficient=true with a new citation at some point
-    this turn (see agent/tools.py) — e.g. a search_full_corpus call made to
-    fill a gap left by the selected documents still marks "full_corpus" even
-    if the writer's final answer settles on citing only the
-    already-selected-document sources it found. That mismatch is what
-    produces the "From the wider library" / "From the web" banner
-    (ChatPage.jsx) on answers that don't actually draw from beyond the
-    selected documents.
-
-    Two corrections, both against the citation numbers that literally appear
-    as [N] markers in the answer text:
-    1. A tier only counts if the answer actually cites one of its numbers —
-       not merely because that tier returned something sufficient at some
-       point in the loop.
-    2. A cited search_full_corpus result whose document_id was already
-       visible to a search_internal_documents call this turn (regardless of
-       whether that call itself was sufficient — the unfiltered full-corpus
-       search can surface a chunk of an already-selected document that a
-       narrower, worse-matching query missed) is the same selected document,
-       not "wider library" content, so it doesn't count as full_corpus here
-       even though that's which tool mechanically found it.
-    """
-    cited_numbers = {int(match) for match in _CITATION_MARKER.findall(answer)}
-    if not cited_numbers:
-        return []
-
-    internal_document_ids = {
-        citation.get("document_id")
-        for citation in citations
-        if citation.get("tier") == "internal" and citation.get("document_id")
-    }
-
-    cited_tiers: set = set()
-    for citation in citations:
-        if citation.get("number") not in cited_numbers:
-            continue
-        tier = citation.get("tier")
-        if not tier:
-            continue
-        if tier == "full_corpus" and citation.get("document_id") in internal_document_ids:
-            continue
-        cited_tiers.add(tier)
-
-    return [source for source in evidence_sources if source in cited_tiers]
-
-
-def _turn_token_usage(messages: list) -> dict:
-    """Sum LLM token usage across every AIMessage produced THIS turn — each
-    ReAct agent_node decision step plus the final answer writer — from the
-    latest HumanMessage onward, same turn-boundary logic as
-    agent/graph.py::_messages_for_current_turn. Skips messages with no
-    usage_metadata (a synthetic step like auto_finalize_node's, or a
-    provider that never reported usage). Returns {} if nothing had usage —
-    stored as-is in the token_usage jsonb column, never null.
-    """
-    latest_human_index = next(
-        (
-            index
-            for index in range(len(messages) - 1, -1, -1)
-            if isinstance(messages[index], HumanMessage)
-        ),
-        0,
-    )
-    prompt_tokens = completion_tokens = total_tokens = 0
-    found = False
-    for message in messages[latest_human_index:]:
-        usage = getattr(message, "usage_metadata", None) if isinstance(message, AIMessage) else None
-        if not usage:
-            continue
-        found = True
-        prompt_tokens += usage.get("input_tokens") or 0
-        completion_tokens += usage.get("output_tokens") or 0
-        total_tokens += usage.get("total_tokens") or 0
-    if not found:
-        return {}
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
-    }
-
-
-def _tool_result_event(message: Any) -> dict:
-    """Return a compact, user-readable tool result summary for the trace UI."""
-    result: dict = {}
-    try:
-        parsed = _json.loads(message.content)
-        if isinstance(parsed, dict):
-            result = parsed
-    except (TypeError, ValueError):
-        pass
-
-    results = result.get("results")
-    result_count = len(results) if isinstance(results, list) else None
-    source_titles: list[str] = []
-    if isinstance(results, list):
-        for item in results:
-            title = item.get("title") if isinstance(item, dict) else None
-            if title and title not in source_titles:
-                source_titles.append(str(title))
-            if len(source_titles) == 5:
-                break
-
-    return {
-        "type": "tool_result",
-        "tool": getattr(message, "name", None),
-        "evidence_sufficient": result.get("evidence_sufficient"),
-        "evidence_reason": result.get("reason") or result.get("error"),
-        "result_count": result_count,
-        "source_titles": source_titles,
-        "answer_plan": result.get("answer_plan"),
-        "citation_numbers": result.get("citation_numbers"),
-    }
-
-
-def _step_from_tool_call(call: dict) -> dict:
-    """Persisted-trace shape for a tool_call event — mirrors the step object
-    ChatPage.jsx's consumeAgentStream builds client-side, minus `label`
-    (recomputed on load from the tool name, same as the live view)."""
-    return {
-        "tool": call.get("tool"),
-        "status": "running",
-        "query": call.get("query"),
-        "decisionReason": call.get("decision_reason"),
-        "question": call.get("question"),
-        "url": call.get("url"),
-        "title": call.get("title"),
-        # Tokens the agent_node LLM call that chose THIS action spent (see
-        # record_tool_call_node in agent/graph.py) — None if the provider
-        # didn't report usage.
-        "tokensUsed": call.get("tokens_used"),
-    }
-
-
-def _apply_tool_result(steps: list[dict], result_event: dict) -> None:
-    """Mutate the last matching "running" step in place to "done", mirroring
-    the tool_result merge ChatPage.jsx does on its in-memory steps array."""
-    for step in reversed(steps):
-        if step.get("tool") == result_event.get("tool") and step.get("status") == "running":
-            step["status"] = "done"
-            step["evidenceSufficient"] = result_event.get("evidence_sufficient")
-            step["evidenceReason"] = result_event.get("evidence_reason")
-            step["resultCount"] = result_event.get("result_count")
-            step["sourceTitles"] = result_event.get("source_titles") or []
-            step["answerPlan"] = result_event.get("answer_plan")
-            step["citationNumbers"] = result_event.get("citation_numbers") or []
-            break
 
 
 async def _stream_agent_events(
@@ -414,9 +251,7 @@ async def _stream_agent_events(
     # Seeded from the DB rather than starting empty: a resumed turn (after an
     # ask_user/confirm_import interrupt) is a fresh call to this generator,
     # so the steps recorded before the interrupt only live in the row.
-    steps: list[dict] = await asyncio.to_thread(
-        chat_history_repository.get_message_steps, assistant_message_id
-    )
+    steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
 
     interrupted = False
     try:
@@ -460,8 +295,7 @@ async def _stream_agent_events(
                         if reflection and steps:
                             steps[-1]["reflection"] = reflection
                         steps.append(_step_from_tool_call(call))
-                        await asyncio.to_thread(
-                            chat_history_repository.update_reasoning_steps,
+                        await chat_turn_service.update_steps(
                             assistant_message_id,
                             steps,
                         )
@@ -471,8 +305,7 @@ async def _stream_agent_events(
                     for message in chunk["tools"].get("messages", []):
                         result_event = _tool_result_event(message)
                         _apply_tool_result(steps, result_event)
-                        await asyncio.to_thread(
-                            chat_history_repository.update_reasoning_steps,
+                        await chat_turn_service.update_steps(
                             assistant_message_id,
                             steps,
                         )
@@ -521,8 +354,7 @@ async def _stream_agent_events(
         reported_evidence_sources = _cited_evidence_sources(evidence_sources, citations, answer)
         token_usage = _turn_token_usage(messages)
 
-        await asyncio.to_thread(
-            chat_history_repository.finalize_message,
+        await chat_turn_service.finalize_message(
             assistant_message_id,
             answer,
             citations,
@@ -533,7 +365,7 @@ async def _stream_agent_events(
             evidence_sources=reported_evidence_sources,
             token_usage=token_usage,
         )
-        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+        await chat_turn_service.touch(session_id)
 
         yield _sse(
             {
@@ -556,9 +388,7 @@ async def _stream_agent_events(
         # excerpts actually cited this turn, same text the model itself cited from.
         context = "\n\n".join(c.get("quote", "") for c in citations if c.get("quote"))
         question = next((m.content for m in reversed(messages) if isinstance(m, HumanMessage)), "")
-        suggestion_history = await asyncio.to_thread(
-            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
-        )
+        suggestion_history = await chat_turn_service.history(session_id)
         async for event in _stream_suggestion_events(
             question=question,
             answer=answer,
@@ -588,12 +418,7 @@ async def _stream_agent_events(
 async def _finalize_as_error(assistant_message_id: str, full_tokens: list[str]) -> None:
     """Close out a pending message row that failed mid-stream, keeping
     whatever partial answer text had already streamed rather than losing it."""
-    await asyncio.to_thread(
-        chat_history_repository.finalize_message,
-        assistant_message_id,
-        "".join(full_tokens),
-        status="error",
-    )
+    await chat_turn_service.fail(assistant_message_id, "".join(full_tokens))
 
 
 async def _stream_suggestion_events(
@@ -657,8 +482,7 @@ async def _stream_suggestion_events(
             logger.exception("Follow-up generation timed out or failed")
 
         try:
-            await asyncio.to_thread(
-                chat_history_repository.update_message_suggestions,
+            await chat_turn_service.update_suggestions(
                 assistant_message_id,
                 suggestions,
             )
@@ -746,8 +570,7 @@ async def _stream_direct_events(
         # agent/state.py for the richer ReAct-mode set.
         evidence_sources = ["internal"] if evidence_sufficient else []
 
-        await asyncio.to_thread(
-            chat_history_repository.finalize_message,
+        await chat_turn_service.finalize_message(
             assistant_message_id,
             answer,
             citations,
@@ -757,7 +580,7 @@ async def _stream_direct_events(
             resolved_model,
             evidence_sources=evidence_sources,
         )
-        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+        await chat_turn_service.touch(session_id)
 
         yield _sse(
             {
@@ -817,41 +640,26 @@ async def chat_stream(
     is_admin = user["role"] == "admin"
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
 
-    if payload.session_id is not None:
-        session_id = str(payload.session_id)
-        owns = await asyncio.to_thread(
-            chat_history_repository.session_belongs_to_user, session_id, user_id
+    try:
+        turn = await chat_turn_service.start(
+            StartTurnRequest(
+                user_id=user_id,
+                question=payload.question,
+                identifiers=tuple(doc_ids or filenames),
+                response_mode=payload.response_mode,
+                agent_mode=payload.agent_mode,
+                session_id=str(payload.session_id) if payload.session_id else None,
+                create_pending_assistant=True,
+            )
         )
-        if not owns:
-            raise HTTPException(status_code=404, detail="Session not found.")
-    else:
-        session_id = await asyncio.to_thread(
-            chat_history_repository.create_session,
-            user_id,
-            payload.question[:80],
-            doc_ids or filenames,
-            payload.response_mode,
-        )
-
-    await asyncio.to_thread(
-        chat_history_repository.add_message, session_id, "user", payload.question
-    )
-    # Created up front (not after the answer is ready) so tool-call trace
-    # steps can be written to this row as they happen — see
-    # _stream_agent_events and history_repository.create_pending_message.
-    assistant_message_id = await asyncio.to_thread(
-        chat_history_repository.create_pending_message,
-        session_id,
-        "assistant",
-        payload.agent_mode,
-    )
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    session_id = turn.session_id
+    assistant_message_id = turn.assistant_message_id
+    if assistant_message_id is None:  # defensive: requested above
+        raise HTTPException(status_code=500, detail="Could not create assistant message.")
 
     if payload.agent_mode == "direct":
-        # No LangGraph checkpointer involved in this mode — always read
-        # conversation context straight from the DB, same as /chat.
-        history = await asyncio.to_thread(
-            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
-        )
         return StreamingResponse(
             _stream_direct_events(
                 question=payload.question,
@@ -862,7 +670,7 @@ async def chat_stream(
                 answer_mode=effective_answer_mode,
                 top_k=payload.top_k,
                 include_restricted=is_admin,
-                history=history,
+                history=turn.history,
                 session_id=session_id,
                 assistant_message_id=assistant_message_id,
                 user_id=user_id,
@@ -882,14 +690,11 @@ async def chat_stream(
     if existing_state.values.get("messages"):
         input_messages = [HumanMessage(content=payload.question)]
     else:
-        history = await asyncio.to_thread(
-            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
-        )
         input_messages = [
             HumanMessage(content=h["content"])
             if h["role"] == "user"
             else AIMessage(content=h["content"])
-            for h in history
+            for h in turn.history
         ]
         input_messages.append(HumanMessage(content=payload.question))
 
@@ -949,11 +754,10 @@ async def chat_resume(
     """
     session_id = str(payload.session_id)
     user_id = str(user["id"])
-    owns = await asyncio.to_thread(
-        chat_history_repository.session_belongs_to_user, session_id, user_id
-    )
-    if not owns:
-        raise HTTPException(status_code=404, detail="Session not found.")
+    try:
+        await chat_turn_service.require_session(session_id, user_id)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     config = {"configurable": {"thread_id": session_id}}
     graph = get_agent_graph()
