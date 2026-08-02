@@ -82,13 +82,21 @@ def test_cited_evidence_sources_drops_full_corpus_hit_on_an_already_selected_doc
     # search, this isn't "wider library" content even though the tool that
     # mechanically found citation [1] was search_full_corpus.
     citations = [
-        {"number": 1, "tier": "full_corpus", "document_id": "doc-1", "title": "Selected doc, other chunk"},
-        {"number": 2, "tier": "internal", "document_id": "doc-1", "title": "Selected doc, first chunk"},
+        {
+            "number": 1,
+            "tier": "full_corpus",
+            "document_id": "doc-1",
+            "title": "Selected doc, other chunk",
+        },
+        {
+            "number": 2,
+            "tier": "internal",
+            "document_id": "doc-1",
+            "title": "Selected doc, first chunk",
+        },
         {"number": 3, "tier": "full_corpus", "document_id": "doc-2", "title": "Genuinely new doc"},
     ]
-    result = chat_router._cited_evidence_sources(
-        ["full_corpus"], citations, "The plan says X [1]."
-    )
+    result = chat_router._cited_evidence_sources(["full_corpus"], citations, "The plan says X [1].")
     assert result == []
 
 
@@ -97,24 +105,30 @@ def test_cited_evidence_sources_keeps_full_corpus_hit_on_a_genuinely_new_documen
         {"number": 1, "tier": "internal", "document_id": "doc-1"},
         {"number": 2, "tier": "full_corpus", "document_id": "doc-2"},
     ]
-    result = chat_router._cited_evidence_sources(
-        ["full_corpus"], citations, "The plan says X [2]."
-    )
+    result = chat_router._cited_evidence_sources(["full_corpus"], citations, "The plan says X [2].")
     assert result == ["full_corpus"]
 
 
 def test_turn_token_usage_sums_only_this_turns_ai_messages() -> None:
     messages = [
         HumanMessage(content="prior question"),
-        AIMessage(content="prior answer", usage_metadata={"input_tokens": 999, "output_tokens": 999, "total_tokens": 1998}),
+        AIMessage(
+            content="prior answer",
+            usage_metadata={"input_tokens": 999, "output_tokens": 999, "total_tokens": 1998},
+        ),
         HumanMessage(content="current question"),
         AIMessage(
             content="",
-            tool_calls=[{"name": "search_internal_documents", "args": {}, "id": "c1", "type": "tool_call"}],
+            tool_calls=[
+                {"name": "search_internal_documents", "args": {}, "id": "c1", "type": "tool_call"}
+            ],
             usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
         ),
         ToolMessage(content="{}", tool_call_id="c1", name="search_internal_documents"),
-        AIMessage(content="final answer", usage_metadata={"input_tokens": 150, "output_tokens": 40, "total_tokens": 190}),
+        AIMessage(
+            content="final answer",
+            usage_metadata={"input_tokens": 150, "output_tokens": 40, "total_tokens": 190},
+        ),
     ]
     result = chat_router._turn_token_usage(messages)
     assert result == {"prompt_tokens": 250, "completion_tokens": 60, "total_tokens": 310}
@@ -125,7 +139,9 @@ def test_turn_token_usage_skips_messages_without_usage_metadata() -> None:
     # called an LLM, so it carries no usage_metadata at all.
     messages = [
         HumanMessage(content="q"),
-        AIMessage(content="", tool_calls=[{"name": "x", "args": {}, "id": "c1", "type": "tool_call"}]),
+        AIMessage(
+            content="", tool_calls=[{"name": "x", "args": {}, "id": "c1", "type": "tool_call"}]
+        ),
         ToolMessage(content="{}", tool_call_id="c1", name="x"),
     ]
     assert chat_router._turn_token_usage(messages) == {}
@@ -144,12 +160,12 @@ async def test_chat_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -
         raise AssertionError("History should not be read for another user's session.")
 
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "session_belongs_to_user",
         fake_session_belongs_to_user,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "get_history_for_llm",
         fail_get_history_for_llm,
     )

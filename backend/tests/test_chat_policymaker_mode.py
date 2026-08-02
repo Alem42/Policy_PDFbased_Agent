@@ -84,17 +84,17 @@ async def test_policymaker_router_normalizes_chat_to_analysis(
     captured: dict[str, str] = {}
 
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "create_session",
         lambda *_args, **_kwargs: session_id,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "add_message",
         lambda *_args, **_kwargs: str(uuid4()),
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "touch_session",
         lambda *_args, **_kwargs: None,
     )

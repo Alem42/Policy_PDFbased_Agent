@@ -16,27 +16,18 @@ from app.modules.chat.rag.agent.state import (
     citation_key,
     merge_turn_citation_keys,
 )
-from app.modules.chat.rag.evidence import (
-    assess_evidence_sufficiency,
-    max_vector_distance,
-    min_reranker_score,
-)
-from app.modules.chat.rag.graph.nodes import (
-    check_evidence_node,
-    load_documents_node,
-    retrieve_context_node,
-)
-from app.modules.chat.rag.graph.state import PDFQAState
-from app.modules.chat.rag.web_search.contracts import WebSearchProviderError, WebSearchResult
-from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
-from app.modules.documents.chunker import TiktokenDocumentChunker
-from app.modules.documents.embeddings import embed_documents, embed_query
-from app.modules.documents.service import save_web_import
-from app.modules.documents.service import search_full_corpus as search_full_corpus_service
-from app.modules.reranking.service import enabled as reranker_enabled
-from app.modules.reranking.service import rerank as rerank_chunks
+from app.modules.chat.rag.agent_tools import web_evidence
+from app.modules.documents.web_import import WebImportRequest, web_import_service
+from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.service import retrieval_service
+from app.modules.web_search.contracts import WebSearchProviderError
+from app.modules.web_search.service import web_search_service
 
 logger = logging.getLogger(__name__)
+
+_cosine_distance = web_evidence.cosine_distance
+_chunk_web_result_text = web_evidence.chunk_web_result_text
+_score_web_results = web_evidence.score_web_results
 
 # Repeated on every sufficient result, not just stated once in the system
 # prompt: some models (verified with deepseek-chat) keep re-searching "for
@@ -48,21 +39,6 @@ SUFFICIENT_EVIDENCE_REMINDER = (
     "prepare_final_answer — do not search again just for more detail or "
     "corroboration."
 )
-
-
-def _document_citation(chunk: dict) -> dict:
-    return {
-        "document_id": chunk.get("document_id"),
-        "title": chunk.get("doc_title") or chunk.get("file"),
-        "chunk_id": chunk.get("chunk_id"),
-        "page": chunk.get("page_start") or chunk.get("page"),
-        "quote": (chunk.get("text") or "")[:500],
-        "source_type": "document",
-        # Which EvidenceSource tier found this (see agent/state.py) — router.py
-        # uses this to report only the tier(s) the final answer actually cites,
-        # not every tier that merely surfaced a candidate during the loop.
-        "tier": "full_corpus",
-    }
 
 
 def _tool_message(tool_call_id: str, payload: dict) -> ToolMessage:
@@ -104,6 +80,38 @@ def _number_citations(
     return numbered_results, new_citations
 
 
+def _results_with_evidence_text(
+    numbered_results: list[dict],
+    evidence_items: list[dict],
+) -> list[dict]:
+    """Give the Agent full evidence while keeping persisted quotes compact.
+
+    Citation objects intentionally store a 500-character quote for API/history
+    payloads. Tool results need the complete retrieved chunk, otherwise the
+    writer can falsely conclude that facts later in the same chunk are absent.
+    """
+
+    by_chunk = {
+        str(item.get("chunk_id")): item.get("text", "")
+        for item in evidence_items
+        if item.get("chunk_id")
+    }
+    by_url = {
+        item.get("url") or item.get("source_url"): item.get("text", "")
+        for item in evidence_items
+        if item.get("url") or item.get("source_url")
+    }
+    return [
+        {
+            **result,
+            "text": by_chunk.get(str(result.get("chunk_id")))
+            or by_url.get(result.get("source_url"))
+            or result.get("quote", ""),
+        }
+        for result in numbered_results
+    ]
+
+
 def _claims_new_ground(turn_citation_keys: list[list] | None, raw_citations: list[dict]) -> bool:
     """True if at least one of this call's citations is not already claimed
     by an earlier tier THIS turn (see AgentState.turn_citation_keys) — i.e.
@@ -122,24 +130,16 @@ def _run_retrieval_pipeline(
     top_k: int,
     include_restricted: bool,
 ) -> dict:
-    """Load pages + retrieve + evidence-check for a set of documents.
-
-    This is exactly what workflow.run_retrieval() does — reused directly so
-    the agent's evidence gate is the same deterministic code the classic RAG
-    answer path uses, not a re-implementation the LLM has to trust.
-    """
-    state: PDFQAState = {
-        "question": question,
-        "document_ids": identifiers,
-        "filenames": [],
-        "model": None,
-        "top_k": top_k,
-        "include_restricted": include_restricted,
-    }
-    state.update(load_documents_node(state))
-    state.update(retrieve_context_node(state))
-    state.update(check_evidence_node(state))
-    return dict(state)
+    """Compatibility adapter around the shared selected-document retriever."""
+    return retrieval_service.retrieve(
+        RetrievalRequest(
+            question=question,
+            scope="selected",
+            identifiers=tuple(identifiers),
+            top_k=top_k,
+            include_restricted=include_restricted,
+        )
+    ).as_state()
 
 
 @tool
@@ -168,11 +168,11 @@ async def search_internal_documents(
     turn, also fill `reflection_on_previous_result` — see its own
     description for what goes there.
 
-    You may call this at most twice per turn. If the first call comes back
-    evidence_sufficient=false, the second call should materially reformulate
-    the query rather than repeating it — in particular, split a query that
-    bundled multiple sub-topics into one string, which dilutes the match and
-    can make documents that do have the answer look insufficient.
+    You may call this at most five times per turn for distinct sub-topics or
+    materially different query reformulations. Stop as soon as a call is
+    sufficient. In particular, split a query that bundled multiple
+    sub-topics into one string, which dilutes the match and can make
+    documents that do have the answer look insufficient.
     """
     identifiers = document_ids or filenames or []
 
@@ -187,10 +187,14 @@ async def search_internal_documents(
         dict(c, source_type="document", tier="internal") for c in result.get("citations", [])
     ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
+    tool_results = _results_with_evidence_text(
+        numbered_results,
+        result.get("chunks", []),
+    )
     payload = {
         "evidence_sufficient": sufficient,
         "reason": result.get("evidence_reason"),
-        "results": numbered_results,
+        "results": tool_results,
     }
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
@@ -227,33 +231,34 @@ async def search_full_corpus(
     this conversation.
 
     Each result has a `number`: cite it with exactly that [N], never a
-    guessed or recomputed one. The ReAct loop enforces a small per-turn call
-    budget, so materially reformulate any second query. Briefly state why
-    you chose this action in `decision_reason`. If this is not your first
-    tool call this turn, also fill `reflection_on_previous_result` — see its
-    own description for what goes there.
+    guessed or recomputed one. The ReAct loop allows at most five calls per
+    turn for distinct sub-topics or materially different reformulations;
+    stop as soon as a call is sufficient. Briefly state why you chose this
+    action in `decision_reason`. If this is not your first tool call this
+    turn, also fill `reflection_on_previous_result` — see its own description
+    for what goes there.
     """
 
-    def _run() -> tuple[bool, str | None, list[dict]]:
-        chunks = search_full_corpus_service(
-            query, limit=top_k or 8, include_restricted=include_restricted
+    def _run():
+        return retrieval_service.retrieve(
+            RetrievalRequest(
+                question=query,
+                scope="full_corpus",
+                top_k=top_k or 8,
+                include_restricted=include_restricted,
+            )
         )
-        threshold = max_vector_distance()
-        relevant = [c for c in chunks if float(c.get("distance", 1.0)) <= threshold]
-        context = "\n\n".join(c.get("text", "") for c in relevant)
-        sufficient, reason = assess_evidence_sufficiency(
-            question=query,
-            raw_chunks=chunks,
-            pages=[],
-            context=context,
-            has_embeddings=True,
-        )
-        return sufficient, reason, relevant
 
-    sufficient, reason, relevant = await asyncio.to_thread(_run)
-    raw_citations = [_document_citation(c) for c in relevant]
+    result = await asyncio.to_thread(_run)
+    sufficient = result.evidence.sufficient
+    reason = result.evidence.reason
+    raw_citations = [
+        dict(citation, source_type="document", tier="full_corpus")
+        for citation in result.citations
+    ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
-    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
+    tool_results = _results_with_evidence_text(numbered_results, result.chunks)
+    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": tool_results}
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
@@ -349,98 +354,6 @@ def prepare_final_answer(
     )
 
 
-def _cosine_distance(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
-    if norm_a == 0 or norm_b == 0:
-        return 1.0
-    return 1 - dot / (norm_a * norm_b)
-
-
-# Tiktoken-based (no live embedding-config/DB lookup), unlike the
-# EmbeddingModelDocumentChunker document ingestion uses — splitting a web
-# result into retrieval-sized pieces doesn't need to match the admin-tunable
-# ingestion budget exactly, and staying DB-free keeps this a pure, fast helper.
-_web_result_chunker = TiktokenDocumentChunker()
-
-
-def _chunk_web_result_text(text: str) -> list[str]:
-    """Split one page's content into retrieval-sized pieces before embedding.
-
-    Firecrawl's search() requests full-page markdown per hit, not a short
-    excerpt (see web_search/providers/firecrawl.py), so embedding a whole
-    page as one vector blurs together everything on it and risks silently
-    exceeding the reranker's own max input length. Reuse the same chunker
-    document ingestion uses instead of a page-sized vector.
-    """
-    clean = text.strip()
-    if not clean:
-        return []
-    chunks = _web_result_chunker.chunk([{"page": 1, "text": clean}])
-    return [c["text"] for c in chunks] or [clean]
-
-
-def _score_web_results(
-    query: str, results: list[WebSearchResult]
-) -> tuple[bool, str | None, list[dict]]:
-    """Apply the SAME evidence gate as document chunks: cosine distance, then
-    reranker score. Each result is chunked first so a long page is judged by
-    its single best-matching chunk, not one oversized whole-page vector.
-    Only results that pass both are usable citations."""
-    if not results:
-        return False, "The web search returned no results.", []
-
-    owners: list[int] = []
-    texts: list[str] = []
-    for index, result in enumerate(results):
-        for chunk_text in _chunk_web_result_text(result.content or result.title):
-            owners.append(index)
-            texts.append(chunk_text)
-
-    if not texts:
-        return False, "The web search returned no usable content.", []
-
-    query_vector = embed_query(query)
-    chunk_vectors = embed_documents(texts)
-
-    # Collapse per-chunk scores back to one candidate per URL: the chunk
-    # closest to the query represents that page as a citation.
-    best_per_result: dict[int, dict] = {}
-    for owner, text, vector in zip(owners, texts, chunk_vectors, strict=True):
-        distance = _cosine_distance(query_vector, vector)
-        current = best_per_result.get(owner)
-        if current is None or distance < current["distance"]:
-            best_per_result[owner] = {
-                "title": results[owner].title,
-                "url": results[owner].url,
-                "text": text,
-                "distance": distance,
-                "passed": False,
-            }
-    candidates = [best_per_result[i] for i in range(len(results)) if i in best_per_result]
-
-    threshold = max_vector_distance()
-    relevant = [c for c in candidates if c["distance"] <= threshold]
-    if not relevant:
-        return False, "No web result was close enough to the question.", candidates
-
-    if reranker_enabled():
-        try:
-            reranked = rerank_chunks(query, relevant, limit=len(relevant))
-            best_score = max((c.get("reranker_score", min_reranker_score())) for c in reranked)
-            if best_score < min_reranker_score():
-                return False, "No web result passed the relevance reranker.", candidates
-            relevant = reranked
-        except Exception:
-            logger.exception("Reranking web search results failed; using cosine ranking only.")
-
-    passed_urls = {c["url"] for c in relevant}
-    for candidate in candidates:
-        candidate["passed"] = candidate["url"] in passed_urls
-    return True, None, candidates
-
-
 @tool
 async def search_web(
     query: str,
@@ -461,9 +374,8 @@ async def search_web(
     turn, also fill `reflection_on_previous_result` — see its own
     description for what goes there.
     """
-    provider = get_active_web_search_provider()
     try:
-        results = await provider.search(query, limit=5)
+        results = await web_search_service.search(query, limit=5)
     except WebSearchProviderError as exc:
         payload = {"evidence_sufficient": False, "reason": str(exc), "results": []}
         return Command(
@@ -486,7 +398,8 @@ async def search_web(
         if c["passed"]
     ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
-    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": numbered_results}
+    tool_results = _results_with_evidence_text(numbered_results, candidates)
+    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": tool_results}
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
@@ -541,31 +454,30 @@ async def import_web_page(
         payload = {"imported": False, "reason": "The user declined the import."}
         return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
 
-    provider = get_active_web_search_provider()
     try:
-        page = await provider.fetch_page(url)
-    except WebSearchProviderError as exc:
+        result = await web_import_service.import_page(
+            WebImportRequest(
+                url=url,
+                title=title,
+                imported_by=user_id,
+                imported_via="web_search",
+            )
+        )
+    except (ValueError, WebSearchProviderError) as exc:
         payload = {"imported": False, "error": str(exc)}
         return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
-
-    document, was_duplicate = await save_web_import(
-        url=page.url or url,
-        title=page.title or title,
-        markdown=page.content,
-        imported_by=user_id,
-        imported_via="web_search",
-    )
+    document = result.document
     raw_citation = {
         "document_id": document["id"],
-        "title": document.get("title") or document.get("name"),
-        "source_url": document.get("source_url") or page.url or url,
+        "title": result.title,
+        "source_url": result.source_url,
         "source_type": "document",
         "tier": "full_corpus",
     }
     numbered_results, new_citations = _number_citations(citations, [raw_citation])
     payload = {
         "imported": True,
-        "was_duplicate": was_duplicate,
+        "was_duplicate": result.was_duplicate,
         "document_id": document["id"],
         "title": raw_citation["title"],
         "number": numbered_results[0]["number"],

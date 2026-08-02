@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.modules.chat.rag.generation import (
+from app.core.ai.chat_models import (
     create_chat_client,
     resolve_generation_target,
 )

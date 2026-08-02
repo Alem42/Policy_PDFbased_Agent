@@ -14,12 +14,12 @@ def configure_retrieval_dependencies(monkeypatch) -> dict:
         },
     )
     monkeypatch.setattr(
-        service,
+        service.embedding,
         "embed_query",
         lambda question: [0.1] * 384,
     )
     monkeypatch.setattr(
-        service,
+        service.embedding,
         "vector_literal",
         lambda vector: "[query-vector]",
     )

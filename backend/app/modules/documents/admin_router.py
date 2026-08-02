@@ -18,6 +18,8 @@ from app.modules.auth.dependencies import require_admin
 from app.modules.documents.admin_schemas import (
     AdminDocumentCreateResponse,
     AdminDocumentMetadataUpdate,
+    AdminWebImportRequest,
+    AdminWebImportResponse,
     DocumentProcessingStatus,
     ProcessingStatus,
 )
@@ -35,6 +37,11 @@ from app.modules.documents.service import (
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
 )
+from app.modules.documents.web_import import (
+    WebImportRequest,
+    web_import_service,
+)
+from app.modules.web_search.contracts import WebSearchProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +124,39 @@ def _run_process_document(document_id: str) -> None:
         process_document(document_id)
     except Exception as exc:
         logger.error("Background processing failed for %s: %s", document_id, exc)
+
+
+@router.post(
+    "/import-url",
+    response_model=AdminWebImportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_web_document(
+    payload: AdminWebImportRequest,
+    admin: AdminUser,
+) -> AdminWebImportResponse:
+    """Fetch one public web page and add it to the shared document library."""
+    url = payload.url.strip()
+    title = payload.title.strip() if payload.title else None
+    try:
+        result = await web_import_service.import_page(
+            WebImportRequest(
+                url=url,
+                title=title,
+                imported_by=str(admin["id"]),
+                imported_via="web_import_admin",
+            )
+        )
+        return AdminWebImportResponse(
+            id=result.document["id"],
+            title=result.title,
+            source_url=result.source_url,
+            was_duplicate=result.was_duplicate,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except WebSearchProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/rescan")

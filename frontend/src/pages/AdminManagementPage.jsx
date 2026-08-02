@@ -40,7 +40,7 @@ const SECTIONS = [
   {
     id: "web-search",
     label: "Web search",
-    desc: "Choose the web search provider and its API key, used by the chat agent's search_web and import_web_page tools.",
+    desc: "Add trusted web pages to the shared library and manage the service used to find current information online.",
     Component: WebSearchSection,
   },
   {

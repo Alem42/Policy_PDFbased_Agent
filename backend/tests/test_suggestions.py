@@ -268,7 +268,7 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
     persisted = {}
 
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "create_session",
         lambda *_args, **_kwargs: session_id,
     )
@@ -277,32 +277,32 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
     # via finalize_message once the answer is ready -- unlike the classic
     # /chat endpoint, it never calls add_message for the assistant turn.
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "add_message",
         lambda *_args, **_kwargs: str(uuid4()),
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "create_pending_message",
         lambda *_args, **_kwargs: message_id,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "get_history_for_llm",
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "finalize_message",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "touch_session",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        chat_router.chat_history_repository,
+        chat_router.chat_turn_service.repository,
         "update_message_suggestions",
         lambda mid, items: persisted.update(message_id=mid, items=items) or True,
     )

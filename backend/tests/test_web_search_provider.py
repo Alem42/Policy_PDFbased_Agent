@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.chat.rag.web_search import registry as web_search_registry
-from app.modules.chat.rag.web_search.contracts import WebSearchProviderError
-from app.modules.chat.rag.web_search.providers.firecrawl import FirecrawlSearchProvider
-from app.modules.chat.rag.web_search.providers.tavily import TavilySearchProvider
-from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
 from app.modules.settings import service as settings_service
+from app.modules.web_search import registry as web_search_registry
+from app.modules.web_search.contracts import WebSearchProviderError
+from app.modules.web_search.providers.firecrawl import FirecrawlSearchProvider
+from app.modules.web_search.providers.tavily import TavilySearchProvider
+from app.modules.web_search.registry import get_active_web_search_provider
 
 
 def test_registry_defaults_to_firecrawl(monkeypatch: pytest.MonkeyPatch) -> None:

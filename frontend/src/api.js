@@ -209,6 +209,14 @@ export async function uploadDocuments(files) {
   return uploaded;
 }
 
+export function importWebDocument(url, title = "") {
+  return request("/admin/documents/import-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, ...(title.trim() ? { title: title.trim() } : {}) }),
+  });
+}
+
 export function deleteDocument(documentId) {
   return request(`/admin/documents/${encodeURIComponent(documentId)}`, {
     method: "DELETE",

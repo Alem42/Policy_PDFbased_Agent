@@ -3,10 +3,10 @@ dedup, and admin-only tool filtering. These don't hit the database."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
-import json
 
 from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
@@ -21,8 +21,13 @@ from app.modules.chat.rag.agent.graph import (
     route_after_tools,
 )
 from app.modules.chat.rag.agent.state import add_citations
-from app.modules.chat.rag.agent.tools import _cosine_distance, _number_citations, _score_web_results
-from app.modules.chat.rag.web_search.contracts import WebSearchResult
+from app.modules.chat.rag.agent.tools import (
+    _cosine_distance,
+    _number_citations,
+    _results_with_evidence_text,
+    _score_web_results,
+)
+from app.modules.web_search.contracts import WebSearchResult
 
 
 def test_cosine_distance_identical_vectors_is_zero() -> None:
@@ -37,6 +42,17 @@ def test_cosine_distance_zero_vector_is_max_distance() -> None:
     assert _cosine_distance([0.0, 0.0], [1.0, 0.0]) == 1.0
 
 
+def test_agent_tool_results_keep_full_text_without_expanding_citation_quote() -> None:
+    numbered = [{"number": 1, "chunk_id": "chunk-1", "quote": "short quote"}]
+    full_text = "start " + ("middle " * 100) + "deadline 15 March 2027"
+    results = _results_with_evidence_text(
+        numbered,
+        [{"chunk_id": "chunk-1", "text": full_text}],
+    )
+    assert results[0]["text"] == full_text
+    assert numbered[0]["quote"] == "short quote"
+
+
 def test_score_web_results_empty_is_insufficient() -> None:
     sufficient, reason, candidates = _score_web_results("query", [])
     assert sufficient is False
@@ -48,10 +64,14 @@ def test_score_web_results_close_result_passes_gate(monkeypatch: pytest.MonkeyPa
     import app.modules.chat.rag.agent.tools as tools_module
 
     # Same vector for query and the one result -> distance 0, well under threshold.
-    monkeypatch.setattr(tools_module, "embed_query", lambda text: [1.0, 0.0])
-    monkeypatch.setattr(tools_module, "embed_documents", lambda texts: [[1.0, 0.0] for _ in texts])
-    monkeypatch.setattr(tools_module, "max_vector_distance", lambda: 0.45)
-    monkeypatch.setattr(tools_module, "reranker_enabled", lambda: False)
+    monkeypatch.setattr(tools_module.web_evidence.embedding, "embed_query", lambda text: [1.0, 0.0])
+    monkeypatch.setattr(
+        tools_module.web_evidence.embedding,
+        "embed_documents",
+        lambda texts: [[1.0, 0.0] for _ in texts],
+    )
+    monkeypatch.setattr(tools_module.web_evidence, "max_vector_distance", lambda: 0.45)
+    monkeypatch.setattr(tools_module.web_evidence, "reranker_enabled", lambda: False)
 
     results = [WebSearchResult(url="https://example.com", title="Example", content="relevant text")]
     sufficient, reason, candidates = _score_web_results("query", results)
@@ -65,10 +85,14 @@ def test_score_web_results_far_result_fails_gate(monkeypatch: pytest.MonkeyPatch
     import app.modules.chat.rag.agent.tools as tools_module
 
     # Orthogonal vectors -> distance 1.0, well over any sane threshold.
-    monkeypatch.setattr(tools_module, "embed_query", lambda text: [1.0, 0.0])
-    monkeypatch.setattr(tools_module, "embed_documents", lambda texts: [[0.0, 1.0] for _ in texts])
-    monkeypatch.setattr(tools_module, "max_vector_distance", lambda: 0.45)
-    monkeypatch.setattr(tools_module, "reranker_enabled", lambda: False)
+    monkeypatch.setattr(tools_module.web_evidence.embedding, "embed_query", lambda text: [1.0, 0.0])
+    monkeypatch.setattr(
+        tools_module.web_evidence.embedding,
+        "embed_documents",
+        lambda texts: [[0.0, 1.0] for _ in texts],
+    )
+    monkeypatch.setattr(tools_module.web_evidence, "max_vector_distance", lambda: 0.45)
+    monkeypatch.setattr(tools_module.web_evidence, "reranker_enabled", lambda: False)
 
     results = [
         WebSearchResult(url="https://example.com", title="Example", content="unrelated text")
@@ -340,7 +364,7 @@ def test_prepare_final_answer_routes_to_streaming_generation() -> None:
                 tool_call_id="call-1",
                 name="prepare_final_answer",
             )
-        ]
+        ],
     }
     assert route_after_tools(state) == "final_generation"
 
@@ -418,7 +442,10 @@ def test_should_auto_finalize_false_for_comparison_request() -> None:
     # exception in AGENT_STRATEGY_PROMPT — the backstop must not pre-empt it.
     state = _auto_finalize_state(
         "这份文件的说法现在还准确吗，能否上网核实一下？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert _should_auto_finalize(state) is False
 
@@ -426,7 +453,10 @@ def test_should_auto_finalize_false_for_comparison_request() -> None:
 def test_should_auto_finalize_false_when_not_first_search_this_turn() -> None:
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
         search_calls_this_turn=2,
     )
     assert _should_auto_finalize(state) is False
@@ -446,7 +476,10 @@ def test_should_auto_finalize_false_in_document_analysis_mode() -> None:
     # backstop is scoped to Open Discussion mode only.
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
         answer_mode="analysis",
     )
     assert _should_auto_finalize(state) is False
@@ -464,7 +497,10 @@ def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
     monkeypatch.setattr(graph_module, "AUTO_FINALIZE_ENABLED", True)
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert route_after_tools(state) == "auto_finalize"
 
@@ -472,7 +508,10 @@ def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
 def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled() -> None:
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert route_after_tools(state) == "agent"
 
@@ -480,7 +519,10 @@ def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled() -> None
 def test_auto_finalize_node_synthesizes_prepare_final_answer_pair() -> None:
     state = {
         "citations": [{"number": 1, "title": "Doc"}, {"number": 2, "title": "Doc 2"}],
-        "messages": [HumanMessage(content="q"), ToolMessage(content="{}", tool_call_id="c1", name="x")],
+        "messages": [
+            HumanMessage(content="q"),
+            ToolMessage(content="{}", tool_call_id="c1", name="x"),
+        ],
     }
     update = auto_finalize_node(state)
     ai_message, tool_message = update["messages"]
