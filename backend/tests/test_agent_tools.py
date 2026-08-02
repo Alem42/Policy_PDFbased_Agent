@@ -21,8 +21,13 @@ from app.modules.chat.rag.agent.graph import (
     route_after_tools,
 )
 from app.modules.chat.rag.agent.state import add_citations
-from app.modules.chat.rag.agent.tools import _cosine_distance, _number_citations, _score_web_results
-from app.modules.chat.rag.web_search.contracts import WebSearchResult
+from app.modules.chat.rag.agent.tools import (
+    _cosine_distance,
+    _number_citations,
+    _results_with_evidence_text,
+    _score_web_results,
+)
+from app.modules.web_search.contracts import WebSearchResult
 
 
 def test_cosine_distance_identical_vectors_is_zero() -> None:
@@ -37,6 +42,17 @@ def test_cosine_distance_zero_vector_is_max_distance() -> None:
     assert _cosine_distance([0.0, 0.0], [1.0, 0.0]) == 1.0
 
 
+def test_agent_tool_results_keep_full_text_without_expanding_citation_quote() -> None:
+    numbered = [{"number": 1, "chunk_id": "chunk-1", "quote": "short quote"}]
+    full_text = "start " + ("middle " * 100) + "deadline 15 March 2027"
+    results = _results_with_evidence_text(
+        numbered,
+        [{"chunk_id": "chunk-1", "text": full_text}],
+    )
+    assert results[0]["text"] == full_text
+    assert numbered[0]["quote"] == "short quote"
+
+
 def test_score_web_results_empty_is_insufficient() -> None:
     sufficient, reason, candidates = _score_web_results("query", [])
     assert sufficient is False
@@ -48,10 +64,14 @@ def test_score_web_results_close_result_passes_gate(monkeypatch: pytest.MonkeyPa
     import app.modules.chat.rag.agent.tools as tools_module
 
     # Same vector for query and the one result -> distance 0, well under threshold.
-    monkeypatch.setattr(tools_module, "embed_query", lambda text: [1.0, 0.0])
-    monkeypatch.setattr(tools_module, "embed_documents", lambda texts: [[1.0, 0.0] for _ in texts])
-    monkeypatch.setattr(tools_module, "max_vector_distance", lambda: 0.45)
-    monkeypatch.setattr(tools_module, "reranker_enabled", lambda: False)
+    monkeypatch.setattr(tools_module.web_evidence.embedding, "embed_query", lambda text: [1.0, 0.0])
+    monkeypatch.setattr(
+        tools_module.web_evidence.embedding,
+        "embed_documents",
+        lambda texts: [[1.0, 0.0] for _ in texts],
+    )
+    monkeypatch.setattr(tools_module.web_evidence, "max_vector_distance", lambda: 0.45)
+    monkeypatch.setattr(tools_module.web_evidence, "reranker_enabled", lambda: False)
 
     results = [WebSearchResult(url="https://example.com", title="Example", content="relevant text")]
     sufficient, reason, candidates = _score_web_results("query", results)
@@ -65,10 +85,14 @@ def test_score_web_results_far_result_fails_gate(monkeypatch: pytest.MonkeyPatch
     import app.modules.chat.rag.agent.tools as tools_module
 
     # Orthogonal vectors -> distance 1.0, well over any sane threshold.
-    monkeypatch.setattr(tools_module, "embed_query", lambda text: [1.0, 0.0])
-    monkeypatch.setattr(tools_module, "embed_documents", lambda texts: [[0.0, 1.0] for _ in texts])
-    monkeypatch.setattr(tools_module, "max_vector_distance", lambda: 0.45)
-    monkeypatch.setattr(tools_module, "reranker_enabled", lambda: False)
+    monkeypatch.setattr(tools_module.web_evidence.embedding, "embed_query", lambda text: [1.0, 0.0])
+    monkeypatch.setattr(
+        tools_module.web_evidence.embedding,
+        "embed_documents",
+        lambda texts: [[0.0, 1.0] for _ in texts],
+    )
+    monkeypatch.setattr(tools_module.web_evidence, "max_vector_distance", lambda: 0.45)
+    monkeypatch.setattr(tools_module.web_evidence, "reranker_enabled", lambda: False)
 
     results = [
         WebSearchResult(url="https://example.com", title="Example", content="unrelated text")

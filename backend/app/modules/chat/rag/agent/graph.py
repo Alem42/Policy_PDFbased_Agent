@@ -7,6 +7,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from app.modules.chat.rag.agent.policy import (
+    EVIDENCE_TIER_TOOLS,
+    NON_ADMIN_TOOLS,
+    TOOL_CALL_LIMITS,
+    tools_for,
+)
 from app.modules.chat.rag.agent.prompts import (
     get_agent_system_prompt,
     get_final_answer_system_prompt,
@@ -14,9 +20,6 @@ from app.modules.chat.rag.agent.prompts import (
 from app.modules.chat.rag.agent.state import AgentState
 from app.modules.chat.rag.agent.tools import (
     ALL_TOOLS,
-    import_web_page,
-    prepare_final_answer,
-    search_internal_documents,
 )
 from app.modules.chat.rag.checkpointer import get_checkpointer
 from app.modules.chat.rag.generation import create_chat_client, resolve_generation_target
@@ -24,49 +27,9 @@ from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 
 logger = logging.getLogger(__name__)
 
-# import_web_page is bound to the LLM only for admins — filtered at graph
-# build/bind time, not just checked inside the tool, so a non-admin session
-# never even sees it in the tool schema offered to the model.
-NON_ADMIN_TOOLS = [t for t in ALL_TOOLS if t is not import_web_page]
+__all__ = ["NON_ADMIN_TOOLS", "TOOL_CALL_LIMITS"]
 
-# Document Analysis mode (answer_mode != "chat", including policymaker, which
-# is always forced to "analysis") stays strictly document-grounded: only
-# search_internal_documents is offered, so the model can only answer from the
-# selected documents or say it can't — no full-corpus/web escalation, no
-# import. That escalation belongs to Open Discussion mode, which already
-# permits going beyond the selected documents (see agent/prompts.py).
-ANALYSIS_MODE_TOOLS = [search_internal_documents, prepare_final_answer]
-
-# Per user turn. Exhausted tools are removed from the next agent call's tool
-# schema, so the model cannot keep selecting the same action indefinitely.
-TOOL_CALL_LIMITS = {
-    "search_internal_documents": 5,
-    "search_full_corpus": 5,
-    "ask_user": 20,
-    "search_web": 4,
-    "import_web_page": 1,
-    "prepare_final_answer": 1,
-}
-
-
-def _tools_for(
-    is_admin: bool,
-    answer_mode: str,
-    tool_call_counts: dict[str, int] | None = None,
-) -> list:
-    if answer_mode != "chat":
-        available = ANALYSIS_MODE_TOOLS
-    else:
-        available = ALL_TOOLS if is_admin else NON_ADMIN_TOOLS
-    counts = tool_call_counts or {}
-    return [
-        tool
-        for tool in available
-        if counts.get(tool.name, 0) < TOOL_CALL_LIMITS.get(tool.name, 1)
-    ]
-
-
-EVIDENCE_TIER_TOOLS = {"search_internal_documents", "search_full_corpus", "search_web"}
+_tools_for = tools_for
 
 # DISABLED (2026-08-01) at the user's request while testing: skipping the
 # model's own turn also skips the visible "Preparing the final answer…" trace
