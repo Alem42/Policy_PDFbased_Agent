@@ -18,6 +18,19 @@ class RetrievalRequest:
 
 
 @dataclass(frozen=True)
+class QuestionValidationRequest:
+    """Batch-check candidate questions against selected documents."""
+
+    questions: tuple[str, ...]
+    identifiers: tuple[str, ...]
+    top_k: int = 5
+    max_results: int = 3
+    include_restricted: bool = False
+    max_distance: float | None = None
+    use_reranker: bool = True
+
+
+@dataclass(frozen=True)
 class EvidenceDecision:
     sufficient: bool
     reason: str | None = None
