@@ -22,7 +22,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.modules.chat.rag.evidence import max_vector_distance, min_reranker_score
 from app.modules.chat.rag.generation import create_chat_client, resolve_generation_target
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.config import SuggestionConfig
@@ -31,6 +30,7 @@ from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.service import resolve_document_ids
 from app.modules.embedding import service as embedding
 from app.modules.reranking import service as reranking
+from app.modules.retrieval.evidence import max_vector_distance, min_reranker_score
 
 logger = logging.getLogger(__name__)
 

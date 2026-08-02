@@ -14,6 +14,8 @@ from app.modules.chat.rag.graph.state import (
     ResponseMode,
     normalize_answer_mode,
 )
+from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.service import retrieval_service
 
 
 def build_pdf_qa_graph():
@@ -83,9 +85,16 @@ def run_retrieval(
         "evidence_reason": None,
         "answer": "",
     }
-    state.update(load_documents_node(state))
-    state.update(retrieve_context_node(state))
-    state.update(check_evidence_node(state))
+    result = retrieval_service.retrieve(
+        RetrievalRequest(
+            question=question,
+            scope="selected",
+            identifiers=tuple(document_ids or filenames or []),
+            top_k=top_k,
+            include_restricted=include_restricted,
+        )
+    )
+    state.update(result.as_state())
     return dict(state)
 
 

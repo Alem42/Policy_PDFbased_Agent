@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import pytest
+
+from app.modules.retrieval import service as retrieval_module
+from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.service import RetrievalService
+
+
+def test_selected_retrieval_returns_context_citations_and_evidence(monkeypatch) -> None:
+    pages = [{"file": "policy.md", "page": 1, "text": "fallback " * 40}]
+    chunks = [
+        {
+            "document_id": "doc-1",
+            "doc_title": "Policy",
+            "file": "policy.md",
+            "chunk_id": "chunk-1",
+            "page_start": 1,
+            "text": "The implementation deadline is 1 July 2027. " * 8,
+            "distance": 0.1,
+            "reranker_score": 2.0,
+        },
+        {
+            "document_id": "doc-1",
+            "doc_title": "Policy",
+            "file": "policy.md",
+            "chunk_id": "chunk-2",
+            "page_start": 2,
+            "text": "Unrelated appendix " * 20,
+            "distance": 0.9,
+        },
+    ]
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: pages)
+    monkeypatch.setattr(
+        retrieval_module,
+        "retrieve_relevant_chunks",
+        lambda *args, **kwargs: chunks,
+    )
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="When is the implementation deadline?",
+            identifiers=("doc-1",),
+        )
+    )
+
+    assert [chunk["chunk_id"] for chunk in result.chunks] == ["chunk-1"]
+    assert result.citations[0]["title"] == "Policy"
+    assert result.citations[0]["chunk_id"] == "chunk-1"
+    assert "1 July 2027" in result.context
+    assert result.evidence.sufficient is True
+
+
+def test_full_corpus_retrieval_uses_same_evidence_result(monkeypatch) -> None:
+    monkeypatch.setattr(
+        retrieval_module,
+        "search_full_corpus",
+        lambda *args, **kwargs: [],
+    )
+    result = RetrievalService().retrieve(
+        RetrievalRequest(question="Unknown topic", scope="full_corpus")
+    )
+    assert result.pages == []
+    assert result.chunks == []
+    assert result.evidence.sufficient is False
+
+
+def test_indexed_irrelevant_results_do_not_fall_back_to_misleading_page_citations(
+    monkeypatch,
+) -> None:
+    pages = [{"file": "policy.md", "page": 1, "text": "Council heat policy " * 30}]
+    chunks = [
+        {
+            "document_id": "doc-1",
+            "file": "policy.md",
+            "chunk_id": "chunk-1",
+            "page_start": 1,
+            "text": pages[0]["text"],
+            "distance": 0.9,
+            "reranker_score": 1.0,
+        }
+    ]
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: pages)
+    monkeypatch.setattr(
+        retrieval_module,
+        "retrieve_relevant_chunks",
+        lambda *args, **kwargs: chunks,
+    )
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="commercial lunar mining licence fee",
+            identifiers=("doc-1",),
+        )
+    )
+    assert result.evidence.sufficient is False
+    assert result.context == ""
+    assert result.citations == []
+
+
+@pytest.mark.parametrize(
+    "retrieval_request, message",
+    [
+        (RetrievalRequest(question=" ", identifiers=("doc",)), "must not be blank"),
+        (RetrievalRequest(question="q", identifiers=("doc",), top_k=0), "greater than zero"),
+        (RetrievalRequest(question="q"), "at least one document"),
+    ],
+)
+def test_retrieval_rejects_invalid_requests(
+    retrieval_request: RetrievalRequest,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        RetrievalService().retrieve(retrieval_request)

@@ -4,46 +4,17 @@ from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
 
-from app.core.config import get_settings
-from app.core.llm_providers import get_provider_config, resolve_provider_and_model
+from app.core.ai.chat_models import create_chat_client, resolve_generation_target
 from app.modules.chat.rag.prompts import (
     CITATION_INSTRUCTION,
     AnswerMode,
     ResponseMode,
     get_system_prompt,
 )
-from app.modules.settings.service import (
-    get_llm_chat_model,
-    get_llm_provider,
-    get_provider_api_key,
-)
+from app.modules.retrieval.formatting import format_context
 
-
-def format_context(pages: list[dict]) -> tuple[str, bool]:
-    sections: list[str] = []
-    used_characters = 0
-    truncated = False
-
-    for index, page in enumerate(pages):
-        text = page["text"]
-        if not text:
-            continue
-        page_num = page.get("page") or page.get("page_start") or "?"
-        section = f"[{index + 1}] {page['file']}, page {page_num}\n{text}"
-        remaining = get_settings().max_context_characters - used_characters
-        if remaining <= 0:
-            truncated = True
-            break
-        if len(section) > remaining:
-            sections.append(section[:remaining])
-            truncated = True
-            break
-        sections.append(section)
-        used_characters += len(section)
-
-    return "\n\n---\n\n".join(sections), truncated
+__all__ = ["create_chat_client", "format_context", "resolve_generation_target"]
 
 
 def _build_citation_instruction(citations: list[dict]) -> str:
@@ -71,42 +42,6 @@ def _build_messages(
             messages.append(AIMessage(content=message["content"]))
     messages.append(HumanMessage(content=question))
     return messages
-
-
-def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
-    default_provider = get_llm_provider()
-    provider, requested_model = resolve_provider_and_model(model, default_provider)
-    config = get_provider_config(provider)
-    selected_model = (
-        requested_model
-        or (get_llm_chat_model() if provider == default_provider else None)
-        or config["default_model"]
-    )
-    return provider, selected_model, config
-
-
-def create_chat_client(
-    provider: str,
-    model: str,
-    temperature: float = 0,
-    max_tokens: int | None = None,
-) -> ChatOpenAI:
-    api_key = get_provider_api_key(provider)
-    if not api_key:
-        raise ValueError(f"No API key is configured for provider '{provider}'.")
-    config = get_provider_config(provider)
-    client_options = {
-        "api_key": api_key,
-        "base_url": config["base_url"],
-        "model": model,
-        "temperature": temperature,
-        "extra_body": config["extra_body"],
-    }
-    if max_tokens is not None:
-        client_options["max_tokens"] = max_tokens
-    return ChatOpenAI(
-        **client_options,
-    )
 
 
 def _generation_messages(

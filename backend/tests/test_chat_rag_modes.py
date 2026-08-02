@@ -114,6 +114,42 @@ def test_assess_evidence_accepts_strong_chunks() -> None:
     assert reason is None
 
 
+def test_assess_evidence_accepts_lexical_and_reranker_agreement_when_dense_scale_differs() -> None:
+    sufficient, reason = assess_evidence_sufficiency(
+        question="What is the maximum amount a council may request?",
+        raw_chunks=[
+            {
+                "distance": 0.7,
+                "reranker_score": 1.0,
+                "text": "An eligible council may request up to AUD 2 million.",
+            }
+        ],
+        pages=[],
+        context="An eligible council may request up to AUD 2 million. " * 5,
+        has_embeddings=True,
+    )
+    assert sufficient is True
+    assert reason is None
+
+
+def test_assess_evidence_rejects_high_reranker_without_query_term_support() -> None:
+    sufficient, reason = assess_evidence_sufficiency(
+        question="commercial lunar mining licence fee",
+        raw_chunks=[
+            {
+                "distance": 0.7,
+                "reranker_score": 1.0,
+                "text": "Local councils may request funding for urban tree canopy projects.",
+            }
+        ],
+        pages=[],
+        context="Local councils may request funding for urban tree canopy projects. " * 5,
+        has_embeddings=True,
+    )
+    assert sufficient is False
+    assert reason == REASON_LOW_RELEVANCE
+
+
 def test_route_after_evidence_check_analysis_blocks_weak_evidence() -> None:
     assert (
         route_after_evidence_check({"evidence_sufficient": True, "answer_mode": "analysis"})
