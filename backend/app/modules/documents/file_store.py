@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -37,6 +38,16 @@ class DocumentFileStore:
     @staticmethod
     def checksum(content: bytes) -> str:
         return hashlib.sha256(content).hexdigest()
+
+    @staticmethod
+    def normalized_content_hash(text: str) -> str:
+        """Hash of whitespace-collapsed, lower-cased extracted text (L2 dedup).
+
+        Unlike `checksum()` (exact bytes), this catches re-saved/reformatted
+        copies of the same content — different file bytes, same words.
+        """
+        normalized = re.sub(r"\s+", " ", text).strip().lower()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     @staticmethod
     def relative_path(path: Path) -> str:

@@ -25,6 +25,8 @@ async def update_settings(
             llm_chat_model=payload.llm_chat_model,
             llm_provider=payload.llm_provider,
             provider_api_keys=payload.provider_api_keys,
+            web_search_provider=payload.web_search_provider,
+            web_search_provider_api_keys=payload.web_search_provider_api_keys,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

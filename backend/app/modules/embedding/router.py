@@ -28,7 +28,9 @@ async def get_embedding_settings(_: AdminUser) -> dict:
 
 
 @router.put("")
-async def update_embedding_settings(_: AdminUser, payload: dict = Body(...)) -> dict:
+async def update_embedding_settings(
+    _: AdminUser, payload: Annotated[dict, Body()]
+) -> dict:
     try:
         await asyncio.to_thread(embedding.update_config, payload)
     except Exception as exc:
@@ -37,7 +39,9 @@ async def update_embedding_settings(_: AdminUser, payload: dict = Body(...)) -> 
 
 
 @router.post("/test")
-async def test_embedding_connection(_: AdminUser, payload: dict = Body(...)) -> dict:
+async def test_embedding_connection(
+    _: AdminUser, payload: Annotated[dict, Body()]
+) -> dict:
     try:
         return await asyncio.to_thread(embedding.test_connection, payload)
     except Exception as exc:

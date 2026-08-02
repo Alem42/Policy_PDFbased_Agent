@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import asyncio
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
-from uuid import UUID
 
 from app.modules.auth.dependencies import get_current_user, require_admin
 from app.modules.chat.suggestions import profile
@@ -34,7 +34,9 @@ async def get_suggestion_settings(_: AdminUser) -> dict:
 
 
 @admin_router.put("")
-async def update_suggestion_settings(_: AdminUser, payload: dict = Body(...)) -> dict:
+async def update_suggestion_settings(
+    _: AdminUser, payload: Annotated[dict, Body()]
+) -> dict:
     try:
         await asyncio.to_thread(suggestions.update_config, payload)
     except Exception as exc:

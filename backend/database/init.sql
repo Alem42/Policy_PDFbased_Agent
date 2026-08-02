@@ -842,6 +842,10 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "response_mode"       text        COLLATE "pg_catalog"."default",
   "answer_mode"         text        COLLATE "pg_catalog"."default" DEFAULT 'analysis',
   "model"               text        COLLATE "pg_catalog"."default",
+  "reasoning_steps"     jsonb       NOT NULL DEFAULT '[]',
+  "status"              text        COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'complete',
+  "agent_mode"          text        COLLATE "pg_catalog"."default" DEFAULT 'react',
+  "evidence_sources"    jsonb       NOT NULL DEFAULT '[]',
   "suggestions_json"    jsonb       NOT NULL DEFAULT '[]',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
@@ -858,3 +862,35 @@ ALTER TABLE "public"."chat_messages"
 ALTER TABLE "public"."chat_messages"
   ADD CONSTRAINT "chat_messages_role_check"
   CHECK (role IN ('user', 'assistant'));
+
+-- ----------------------------
+-- Migration 011: web-import tracking + content-hash dedup on documents
+-- ----------------------------
+ALTER TABLE "public"."documents"
+  ADD COLUMN IF NOT EXISTS "source_url" text,
+  ADD COLUMN IF NOT EXISTS "imported_by" uuid REFERENCES "public"."app_users"("id") ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS "imported_via" text,
+  ADD COLUMN IF NOT EXISTS "content_hash" text;
+
+CREATE INDEX IF NOT EXISTS "idx_documents_source_url"
+  ON "public"."documents" ("source_url")
+  WHERE "source_url" IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS "idx_documents_content_hash"
+  ON "public"."documents" ("content_hash")
+  WHERE "content_hash" IS NOT NULL;
+
+-- ----------------------------
+-- Migration 012: persist the agent's reasoning trace as part of each message
+-- ----------------------------
+ALTER TABLE public.chat_messages
+    ADD COLUMN IF NOT EXISTS reasoning_steps jsonb NOT NULL DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'complete';
+
+-- ----------------------------
+-- Migration 013: per-turn ReAct vs direct agent mode
+-- (nullable — see migration 014: agent_mode is assistant-only, like
+-- response_mode/answer_mode/model, and is null on role='user' rows)
+-- ----------------------------
+ALTER TABLE public.chat_messages
+    ADD COLUMN IF NOT EXISTS agent_mode text DEFAULT 'react';

@@ -58,4 +58,7 @@ def row_to_metadata(row: dict) -> dict:
         "year": row.get("year"),
         "page_count": row.get("page_count") or 0,
         "chunk_count": row.get("chunk_count") or 0,
+        "source_url": row.get("source_url"),
+        "imported_by": row.get("imported_by") and str(row["imported_by"]),
+        "imported_via": row.get("imported_via"),
     }

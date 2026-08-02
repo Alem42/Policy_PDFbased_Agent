@@ -87,7 +87,13 @@ def test_assess_evidence_rejects_low_reranker_score() -> None:
     below_floor = min_reranker_score() - 1.0
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        raw_chunks=[{"distance": 0.2, "reranker_score": below_floor, "text": "housing reform details"}],
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": below_floor,
+                "text": "housing reform details",
+            }
+        ],
         pages=[],
         context="x" * 300,
         has_embeddings=True,

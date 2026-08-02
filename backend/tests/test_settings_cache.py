@@ -72,6 +72,8 @@ def test_legacy_runtime_fields_are_removed_on_save(tmp_path, monkeypatch):
         "llm_provider": "deepseek",
         "llm_chat_model": None,
         "provider_api_keys": {"deepseek": "current-key"},
+        "web_search_provider": None,
+        "web_search_provider_api_keys": {},
     }
 
     repository.save(loaded)
@@ -79,6 +81,7 @@ def test_legacy_runtime_fields_are_removed_on_save(tmp_path, monkeypatch):
     assert json.loads(settings_path.read_text(encoding="utf-8")) == {
         "llm_provider": "deepseek",
         "provider_api_keys": {"deepseek": "current-key"},
+        "web_search_provider_api_keys": {},
     }
 
 

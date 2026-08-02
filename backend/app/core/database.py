@@ -71,7 +71,7 @@ def _init_db_sync(schema_path: Path) -> None:
         connection.commit()
 
 
-def _normalise_database_url(database_url: str) -> str:
+def normalise_database_url(database_url: str) -> str:
     return database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
@@ -82,7 +82,7 @@ def get_connection() -> Iterator[Any]:
 
     settings = get_settings()
     with psycopg.connect(
-        _normalise_database_url(settings.database_url),
+        normalise_database_url(settings.database_url),
         row_factory=dict_row,
     ) as connection:
         yield connection

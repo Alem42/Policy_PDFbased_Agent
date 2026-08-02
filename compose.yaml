@@ -19,11 +19,17 @@ services:
       - ./backend/database/migrations/004_add_policy_taxonomy.sql:/docker-entrypoint-initdb.d/05_migration_004.sql:ro
       - ./backend/database/migrations/005_documents_sha256_unique.sql:/docker-entrypoint-initdb.d/06_migration_005.sql:ro
       - ./backend/database/migrations/006_add_embedding_settings.sql:/docker-entrypoint-initdb.d/07a_migration_006_embedding_settings.sql:ro
-      - ./backend/database/migrations/006_add_suggestions.sql:/docker-entrypoint-initdb.d/07b_migration_006_suggestions.sql:ro
       - ./backend/database/migrations/007_add_reranking_settings.sql:/docker-entrypoint-initdb.d/08_migration_007.sql:ro
       - ./backend/database/migrations/008_add_model_catalog.sql:/docker-entrypoint-initdb.d/09_migration_008.sql:ro
       - ./backend/database/migrations/009_add_model_providers.sql:/docker-entrypoint-initdb.d/10_migration_009.sql:ro
       - ./backend/database/migrations/010_update_deepseek_v4_catalog.sql:/docker-entrypoint-initdb.d/11_migration_010.sql:ro
+      - ./backend/database/migrations/011_add_document_import_tracking.sql:/docker-entrypoint-initdb.d/12_migration_011.sql:ro
+      - ./backend/database/migrations/012_add_reasoning_trace_to_chat_messages.sql:/docker-entrypoint-initdb.d/13_migration_012.sql:ro
+      - ./backend/database/migrations/013_add_agent_mode_to_chat_messages.sql:/docker-entrypoint-initdb.d/14_migration_013.sql:ro
+      - ./backend/database/migrations/014_fix_agent_mode_nullable.sql:/docker-entrypoint-initdb.d/15_migration_014.sql:ro
+      - ./backend/database/migrations/015_add_evidence_source_to_chat_messages.sql:/docker-entrypoint-initdb.d/16_migration_015.sql:ro
+      - ./backend/database/migrations/016_evidence_source_to_list.sql:/docker-entrypoint-initdb.d/17_migration_016.sql:ro
+      - ./backend/database/migrations/017_add_suggestions.sql:/docker-entrypoint-initdb.d/18_migration_017.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

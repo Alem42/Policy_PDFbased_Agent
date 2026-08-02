@@ -1,10 +1,19 @@
+import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+if sys.platform == "win32":
+    # psycopg's async mode (used by the LangGraph Postgres checkpointer) can't
+    # run under ProactorEventLoop, which is asyncio's default on Windows.
+    # Must be set before uvicorn creates its event loop, i.e. at import time.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import database
+from app.modules.chat.rag.checkpointer import close_checkpointer, init_checkpointer
 from app.modules.crawling.repositories.job import crawl_job_repository
 
 
@@ -12,7 +21,9 @@ from app.modules.crawling.repositories.job import crawl_job_repository
 async def lifespan(_: FastAPI):
     await database.connect()
     await crawl_job_repository.fail_interrupted_running_jobs()
+    await init_checkpointer()
     yield
+    await close_checkpointer()
     await database.disconnect()
 
 

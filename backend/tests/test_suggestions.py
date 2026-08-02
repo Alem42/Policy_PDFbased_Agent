@@ -272,11 +272,30 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         "create_session",
         lambda *_args, **_kwargs: session_id,
     )
-
-    def fake_add_message(_session_id, role, *_args, **_kwargs):
-        return message_id if role == "assistant" else str(uuid4())
-
-    monkeypatch.setattr(chat_router.chat_history_repository, "add_message", fake_add_message)
+    # HEAD's /chat/stream creates the assistant's row up front (so tool-call
+    # trace steps have somewhere to be written incrementally) and fills it in
+    # via finalize_message once the answer is ready -- unlike the classic
+    # /chat endpoint, it never calls add_message for the assistant turn.
+    monkeypatch.setattr(
+        chat_router.chat_history_repository,
+        "add_message",
+        lambda *_args, **_kwargs: str(uuid4()),
+    )
+    monkeypatch.setattr(
+        chat_router.chat_history_repository,
+        "create_pending_message",
+        lambda *_args, **_kwargs: message_id,
+    )
+    monkeypatch.setattr(
+        chat_router.chat_history_repository,
+        "get_history_for_llm",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        chat_router.chat_history_repository,
+        "finalize_message",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(
         chat_router.chat_history_repository,
         "touch_session",
@@ -324,6 +343,11 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         ChatRequest(
             question="What does the document say?",
             document_ids=[uuid4()],
+            # Exercises _stream_direct_events, the equivalent of the old
+            # linear implementation this test was originally written
+            # against -- run_retrieval/generate_answer_streaming above are
+            # only wired into that path, not the default ReAct agent one.
+            agent_mode="direct",
         ),
         {"id": str(uuid4()), "role": "user"},
     )

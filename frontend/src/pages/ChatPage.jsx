@@ -8,6 +8,7 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,12 +27,17 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/Delete";
 import EditOutlinedIcon from "@mui/icons-material/Edit";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SendIcon from "@mui/icons-material/Send";
+import StopIcon from "@mui/icons-material/Stop";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import PublicIcon from "@mui/icons-material/Public";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -45,6 +51,7 @@ import {
   logSuggestionClick,
   openDocumentFile,
   renameChatSession,
+  resumeChatStream,
 } from "../api";
 import CitationList from "../components/CitationList";
 import DocumentDrawer from "../components/DocumentDrawer";
@@ -128,6 +135,19 @@ const ANSWER_MODE_OPTIONS = [
   },
 ];
 
+const AGENT_MODE_OPTIONS = [
+  {
+    value: "react",
+    label: "Agent (ReAct)",
+    description: "Multi-step reasoning with web search and a visible trace",
+  },
+  {
+    value: "direct",
+    label: "Direct",
+    description: "One retrieval pass, fastest answer, no reasoning trace",
+  },
+];
+
 function getOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
 }
@@ -151,6 +171,341 @@ function flattenModelLabels(providerGroups) {
 function getModelLabel(modelLookup, modelId) {
   if (!modelId) return null;
   return modelLookup[modelId] || modelId;
+}
+
+// Collapsible tool-call trace for one assistant turn, GPT-style: expanded
+// while the agent is still deciding what to do, collapses to a one-line
+// summary the moment the real answer starts streaming (still expandable to
+// review afterward).
+function ReasoningSteps({ steps, expanded, onToggle, active }) {
+  if (!steps?.length) return null;
+  const summary = active
+    ? steps[steps.length - 1]?.label || "Working…"
+    : `Reasoning · ${steps.length} step${steps.length !== 1 ? "s" : ""}`;
+
+  return (
+    <Box sx={{ mb: 1 }}>
+      <Button
+        size="small"
+        variant="text"
+        onClick={onToggle}
+        startIcon={
+          active ? (
+            <CircularProgress size={12} thickness={6} sx={{ color: "#63706a" }} />
+          ) : expanded ? (
+            <ExpandLessIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <ExpandMoreIcon sx={{ fontSize: 16 }} />
+          )
+        }
+        sx={{
+          textTransform: "none",
+          color: "#63706a",
+          fontSize: 12,
+          fontStyle: active ? "italic" : "normal",
+          py: 0.25,
+          px: 0.5,
+          minWidth: 0,
+          "&:hover": { bgcolor: "transparent", color: "#214f42" },
+        }}
+      >
+        {summary}
+      </Button>
+      <Collapse in={expanded || active}>
+        <Box sx={{ pl: 1.75, ml: 0.75, mt: 0.5, borderLeft: "2px solid #e2e5df" }}>
+          {steps.map((step, i) => (
+            <Box
+              key={`${step.tool}-${i}`}
+              sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 0.55 }}
+            >
+              {step.status === "running" && active ? (
+                <CircularProgress
+                  size={12}
+                  thickness={6}
+                  sx={{ color: "#214f42", flexShrink: 0, mt: 0.3 }}
+                />
+              ) : step.status === "running" ? (
+                // Stream stopped mid-call: this step never got a tool_result,
+                // so show a static "stopped" mark instead of spinning forever.
+                <StopIcon sx={{ fontSize: 12, flexShrink: 0, mt: 0.3, color: "#98a29c" }} />
+              ) : (
+                <CheckCircleOutlineIcon
+                  sx={{
+                    fontSize: 14,
+                    flexShrink: 0,
+                    mt: 0.2,
+                    color: step.evidenceSufficient === false ? "#bf360c" : "#214f42",
+                  }}
+                />
+              )}
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography variant="caption" sx={{ color: "#4a5a54", fontSize: 12 }}>
+                  {step.label}
+                  {step.status === "done" && step.evidenceSufficient === true && " — found relevant sources"}
+                  {step.status === "done" && step.evidenceSufficient === false && " — not enough evidence"}
+                  {step.status === "running" && !active && " — stopped"}
+                </Typography>
+                {(step.query || step.question || step.url) && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5, overflowWrap: "anywhere" }}
+                  >
+                    <Box component="span" sx={{ fontWeight: 600 }}>Query: </Box>
+                    {step.query || step.question || step.url}
+                  </Typography>
+                )}
+                {step.decisionReason && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Why: </Box>
+                    {step.decisionReason}
+                  </Typography>
+                )}
+                {step.status === "done" && Number.isInteger(step.resultCount) && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Result: </Box>
+                    {step.resultCount} candidate source{step.resultCount === 1 ? "" : "s"}
+                  </Typography>
+                )}
+                {Number.isInteger(step.tokensUsed) && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#98a29c", fontSize: 11 }}>
+                    {step.tokensUsed.toLocaleString()} tokens
+                  </Typography>
+                )}
+                {step.evidenceReason && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Evidence: </Box>
+                    {step.evidenceReason}
+                  </Typography>
+                )}
+                {step.sourceTitles?.length > 0 && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Sources: </Box>
+                    {step.sourceTitles.join(" · ")}
+                  </Typography>
+                )}
+                {step.answerPlan && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Answer plan: </Box>
+                    {step.answerPlan}
+                  </Typography>
+                )}
+                {step.citationNumbers?.length > 0 && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Planned citations: </Box>
+                    {step.citationNumbers.map((number) => `[${number}]`).join(", ")}
+                  </Typography>
+                )}
+                {/* Filled in retroactively once the NEXT tool call happens --
+                    the model's own read on this step's result, distinct from
+                    the deterministic evidenceReason above. */}
+                {step.reflection && (
+                  <Typography variant="caption" sx={{ display: "block", pl: 0.75, color: "#6a7772", fontSize: 11.5, fontStyle: "italic" }}>
+                    <Box component="span" sx={{ fontWeight: 600, fontStyle: "normal" }}>Reflection: </Box>
+                    {step.reflection}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+// Claude-Code-style inline permission prompt: a bordered card with a
+// numbered, keyboard-selectable list of options, rendered directly in the
+// chat flow instead of a modal dialog. ask_user covers three modes
+// ("confirm" a yes/no gate, "choice" 2+ model-suggested candidates,
+// "freeform" an open question with no options); confirm_import is a
+// separate, visually flagged permanent/shared-library-changing action.
+// Every mode except "freeform" also offers an "Other" row so the user isn't
+// stuck picking from options they don't actually want.
+function ConfirmPrompt({ confirm, busy, onAnswer }) {
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherText, setOtherText] = useState("");
+
+  // Reset the "Other" input whenever a new prompt comes in (new confirm
+  // object reference each time, since it's rebuilt from a fresh SSE event).
+  useEffect(() => {
+    setOtherOpen(false);
+    setOtherText("");
+  }, [confirm]);
+
+  if (!confirm) return null;
+  const isImport = confirm.type === "confirm_import";
+  const mode = isImport ? "confirm" : confirm.mode || "confirm";
+  const isFreeform = mode === "freeform";
+  const options = isImport
+    ? [
+        { value: true, label: "Yes, import this page into the knowledge base" },
+        { value: false, label: "No, just answer without importing" },
+      ]
+    : (confirm.options || (mode === "confirm" ? ["Yes", "No"] : [])).map((option) => ({
+        value: option,
+        label: option,
+      }));
+  const accent = isImport ? "#b45309" : "#214f42";
+  const accentBg = isImport ? "#fff8f0" : "#fafaf8";
+  const accentBorder = isImport ? "#fcd9a8" : "#d9d8d0";
+  const accentHoverBg = isImport ? "#ffedd5" : "#eef2ec";
+  const header = isImport
+    ? "⚠ Import into the knowledge base?"
+    : mode === "choice"
+      ? "Choose an option"
+      : mode === "freeform"
+        ? "A question for you"
+        : "Search the web?";
+
+  function submitOther() {
+    const text = otherText.trim();
+    if (!text || busy) return;
+    onAnswer(text);
+  }
+
+  return (
+    <Box
+      sx={{
+        border: "1px solid",
+        borderColor: accentBorder,
+        borderRadius: 2,
+        bgcolor: accentBg,
+        p: 2,
+        mb: 2,
+      }}
+    >
+      <Typography variant="body2" sx={{ fontWeight: 800, color: isImport ? accent : "inherit" }}>
+        {header}
+      </Typography>
+      {isImport && (
+        <Box sx={{ mt: 0.5, mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{confirm.title}</Typography>
+          <Typography variant="caption" sx={{ color: "#63706a", wordBreak: "break-all" }}>
+            {confirm.url}
+          </Typography>
+        </Box>
+      )}
+      <Typography variant="body2" sx={{ color: "#4a5a54", mt: isImport ? 0 : 0.5, mb: 1.5 }}>
+        {confirm.question ||
+          (isImport
+            ? "This permanently adds the page to the shared knowledge base — every user will be able to find it."
+            : "The selected documents don't have enough information. Search the web for this answer?")}
+      </Typography>
+
+      {isFreeform ? (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <TextField
+            size="small"
+            fullWidth
+            autoFocus
+            placeholder="Type your answer..."
+            value={otherText}
+            onChange={(event) => setOtherText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitOther();
+              }
+            }}
+            disabled={busy}
+          />
+          <Button variant="contained" disabled={busy || !otherText.trim()} onClick={submitOther}>
+            Send
+          </Button>
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+            {options.map((option, i) => (
+              <Box
+                key={String(option.value)}
+                onClick={() => !busy && onAnswer(option.value)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.25,
+                  px: 1.25,
+                  py: 0.85,
+                  borderRadius: 1.5,
+                  cursor: busy ? "default" : "pointer",
+                  border: "1px solid transparent",
+                  opacity: busy ? 0.6 : 1,
+                  "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "5px",
+                    border: "1.5px solid",
+                    borderColor: accent,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: accent,
+                    flexShrink: 0,
+                  }}
+                >
+                  {i + 1}
+                </Box>
+                <Typography variant="body2">{option.label}</Typography>
+              </Box>
+            ))}
+            {otherOpen ? (
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center", px: 1.25, py: 0.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  placeholder="Type your own answer..."
+                  value={otherText}
+                  onChange={(event) => setOtherText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      submitOther();
+                    }
+                  }}
+                  disabled={busy}
+                />
+                <Button size="small" variant="contained" disabled={busy || !otherText.trim()} onClick={submitOther}>
+                  Send
+                </Button>
+              </Box>
+            ) : (
+              <Box
+                onClick={() => !busy && setOtherOpen(true)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.25,
+                  px: 1.25,
+                  py: 0.85,
+                  borderRadius: 1.5,
+                  cursor: busy ? "default" : "pointer",
+                  border: "1px dashed",
+                  borderColor: "#c7cbc2",
+                  opacity: busy ? 0.6 : 1,
+                  "&:hover": busy ? {} : { bgcolor: accentHoverBg, borderColor: accent },
+                }}
+              >
+                <EditOutlinedIcon sx={{ fontSize: 16, color: "#98a29c", flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ color: "#6a7772" }}>
+                  Other — type your own answer
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#98a29c" }}>
+            Press a number key to choose.
+          </Typography>
+        </>
+      )}
+    </Box>
+  );
 }
 
 function formatSessionDate(dateStr) {
@@ -181,8 +536,10 @@ export default function ChatPage({
   const [question, setQuestion] = useState("");
   const [responseMode, setResponseMode] = useState("researcher");
   const [answerMode, setAnswerMode] = useState("analysis");
+  const [agentMode, setAgentMode] = useState("react");
   const [responseModeAnchor, setResponseModeAnchor] = useState(null);
   const [answerModeAnchor, setAnswerModeAnchor] = useState(null);
+  const [agentModeAnchor, setAgentModeAnchor] = useState(null);
 
   // Per-message model selection: null means "use the workspace default model".
   const [modelGroups, setModelGroups] = useState([]);
@@ -192,6 +549,11 @@ export default function ChatPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState(resumeSessionId);
+  // Set when the agent pauses on ask_user or import_web_page (confirm_import)
+  // — {type, session_id, mode, question, options} or
+  // {type, session_id, url, title, question}. Cleared once the user answers.
+  const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // History state
   const [historySessions, setHistorySessions] = useState([]);
@@ -221,6 +583,16 @@ export default function ChatPage({
   const sidebarRef = useRef(null);
   const dragCleanupRef = useRef(null);
   const messagesEndRef = useRef(null);
+  // Holds the AbortController for the in-flight /chat/stream or /chat/resume
+  // fetch, so the Stop button can cancel it. Aborting closes the SSE
+  // connection; the backend's `aclosing(...)` around the LangGraph stream
+  // (chat/router.py::_stream_agent_events) flushes the last checkpoint on
+  // that disconnect, so the partial turn doesn't corrupt resumed state.
+  const streamControllerRef = useRef(null);
+  // Set right before a messages update that shouldn't jump the view to the
+  // bottom (e.g. toggling a reasoning trace open/closed) -- consumed once by
+  // the auto-scroll effect below, then reset.
+  const skipAutoScrollRef = useRef(false);
   const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
 
   useEffect(() => {
@@ -305,6 +677,10 @@ export default function ChatPage({
   }, [contextSourceIds]);
 
   useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
@@ -315,6 +691,37 @@ export default function ChatPage({
       document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }, [citationDrawer.open, citationDrawer.focusIndex]);
+
+  // Claude-Code-style quick select: press a number key to pick that option of
+  // the pending ask_user/confirm_import prompt. Escape only declines in
+  // "confirm" mode (a clear yes/no gate) -- "choice"/"freeform" have no
+  // universal "No" to fall back to. Ignored while typing in the prompt's own
+  // text input (freeform question or the "Other" answer box).
+  useEffect(() => {
+    if (!pendingConfirm || confirmBusy) return undefined;
+    const isImport = pendingConfirm.type === "confirm_import";
+    const mode = isImport ? "confirm" : pendingConfirm.mode || "confirm";
+    const options = isImport
+      ? [true, false]
+      : mode === "confirm"
+        ? pendingConfirm.options || ["Yes", "No"]
+        : pendingConfirm.options || [];
+
+    function onKeyDown(event) {
+      const tag = event.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (event.key === "Escape") {
+        if (mode === "confirm") handleConfirmResponse(isImport ? false : "No");
+        return;
+      }
+      const index = Number(event.key) - 1;
+      if (Number.isInteger(index) && index >= 0 && index < options.length) {
+        handleConfirmResponse(options[index]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingConfirm, confirmBusy]);
 
   if (!user) {
     return (
@@ -351,9 +758,18 @@ export default function ChatPage({
         citations: Array.isArray(m.citations) ? m.citations : [],
         evidenceSufficient: m.evidence_sufficient,
         evidenceReason: null,
+        evidenceSources: Array.isArray(m.evidence_sources) ? m.evidence_sources : [],
+        tokenUsage: m.token_usage && Number.isInteger(m.token_usage.total_tokens) ? m.token_usage : null,
         responseMode: m.response_mode,
         answerMode: m.answer_mode,
+        agentMode: m.agent_mode,
         model: m.model,
+        // Historical trace steps carry the same shape consumeAgentStream
+        // builds live, minus `label` (recomputed here since it's derived
+        // purely from the tool name).
+        steps: Array.isArray(m.steps)
+          ? m.steps.map((s) => ({ ...s, label: TOOL_STATUS_LABEL[s.tool] || s.tool }))
+          : [],
         suggestions: Array.isArray(m.suggestions) ? m.suggestions : [],
       })),
     );
@@ -530,6 +946,172 @@ export default function ChatPage({
     setOpenChunkId(null);
   }
 
+  // Status text shown in the streaming placeholder while a tool runs, keyed
+  // by tool name -- purely cosmetic, doesn't affect the answer.
+  const TOOL_STATUS_LABEL = {
+    search_internal_documents: "Searching the selected documents…",
+    search_full_corpus: "Searching the full document library…",
+    search_web: "Searching the web…",
+    import_web_page: "Importing the page…",
+    prepare_final_answer: "Preparing the final answer…",
+  };
+
+  function ensureStreamingPlaceholder(current) {
+    const last = current[current.length - 1];
+    if (last?.role === "assistant" && last.streaming) return [...current];
+    return [
+      ...current,
+      { role: "assistant", content: "", streaming: true, responseMode, answerMode, agentMode, steps: [], showSteps: true },
+    ];
+  }
+
+  // Shared by handleSubmit (new turn) and handleConfirmResponse (resumed
+  // turn) -- both drive the same agent SSE event shapes onto the same
+  // streaming assistant message. Returns true if the stream paused on a
+  // confirm_* interrupt event, false if it ran to completion ("done").
+  async function consumeAgentStream(streamGenerator) {
+    for await (const evt of streamGenerator) {
+      if (evt.type === "tool_call") {
+        setMessages((current) => {
+          const next = ensureStreamingPlaceholder(current);
+          const last = next[next.length - 1];
+          // reflection_on_previous_result belongs to the step already in the
+          // list (the last completed tool call), not the new one about to be
+          // pushed -- mirrors router.py's _stream_agent_events.
+          const priorSteps = last.steps || [];
+          const reflection = evt.reflection_on_previous_result || null;
+          const updatedPriorSteps =
+            reflection && priorSteps.length
+              ? priorSteps.map((s, i) => (i === priorSteps.length - 1 ? { ...s, reflection } : s))
+              : priorSteps;
+          const steps = [
+            ...updatedPriorSteps,
+            {
+              tool: evt.tool,
+              label: TOOL_STATUS_LABEL[evt.tool] || evt.tool,
+              status: "running",
+              query: evt.query || null,
+              decisionReason: evt.decision_reason || null,
+              question: evt.question || null,
+              url: evt.url || null,
+              title: evt.title || null,
+              tokensUsed: Number.isInteger(evt.tokens_used) ? evt.tokens_used : null,
+            },
+          ];
+          next[next.length - 1] = { ...last, steps, showSteps: true };
+          return next;
+        });
+      } else if (evt.type === "tool_result") {
+        setMessages((current) => {
+          const last = current[current.length - 1];
+          if (!last?.steps?.length) return current;
+          const steps = [...last.steps];
+          for (let i = steps.length - 1; i >= 0; i -= 1) {
+            if (steps[i].tool === evt.tool && steps[i].status === "running") {
+              steps[i] = {
+                ...steps[i],
+                status: "done",
+                evidenceSufficient: evt.evidence_sufficient,
+                evidenceReason: evt.evidence_reason || null,
+                resultCount: Number.isInteger(evt.result_count) ? evt.result_count : null,
+                sourceTitles: Array.isArray(evt.source_titles) ? evt.source_titles : [],
+                answerPlan: evt.answer_plan || null,
+                citationNumbers: Array.isArray(evt.citation_numbers) ? evt.citation_numbers : [],
+              };
+              break;
+            }
+          }
+          const next = [...current];
+          next[next.length - 1] = { ...last, steps };
+          return next;
+        });
+      } else if (evt.type === "token") {
+        setMessages((current) => {
+          const next = ensureStreamingPlaceholder(current);
+          const last = next[next.length - 1];
+          const isFirstToken = !last.content;
+          next[next.length - 1] = {
+            ...last,
+            content: last.content + evt.value,
+            // Auto-collapse the reasoning trace the moment the real answer
+            // starts arriving (GPT-style) -- but only once, so a user who
+            // re-expands it while more tokens stream in isn't fought.
+            showSteps: isFirstToken ? false : last.showSteps,
+          };
+          return next;
+        });
+      } else if (evt.type === "ask_user" || evt.type === "confirm_import") {
+        setPendingConfirm(evt);
+        return true;
+      } else if (evt.type === "citations") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          next[next.length - 1] = {
+            ...last,
+            citations: Array.isArray(evt.data) ? evt.data : [],
+            evidenceSufficient: evt.evidence_sufficient,
+            evidenceReason: evt.evidence_reason || null,
+            evidenceSources: Array.isArray(evt.evidence_sources) ? evt.evidence_sources : [],
+            tokenUsage: evt.token_usage && Number.isInteger(evt.token_usage.total_tokens) ? evt.token_usage : null,
+            responseMode: evt.response_mode || responseMode,
+            answerMode: evt.answer_mode || answerMode,
+            agentMode: evt.agent_mode || last.agentMode || agentMode,
+            model: evt.model || null,
+          };
+          return next;
+        });
+        if (evt.session_id && !sessionId) {
+          setSessionId(String(evt.session_id));
+          loadSessions();
+        }
+      } else if (evt.type === "answer_done") {
+        // The answer text itself is complete -- stop the streaming cursor
+        // here rather than waiting for "done", since a suggestions_pending
+        // answer keeps the stream open a while longer just to generate
+        // follow-ups (see _stream_suggestion_events in router.py).
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role !== "assistant") return current;
+          next[next.length - 1] = {
+            ...last,
+            streaming: false,
+            suggestionsLoading: evt.suggestions_pending === true,
+          };
+          return next;
+        });
+      } else if (evt.type === "suggestions") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role !== "assistant") return current;
+          next[next.length - 1] = {
+            ...last,
+            suggestions: Array.isArray(evt.items) ? evt.items : [],
+            suggestionsLoading: false,
+          };
+          return next;
+        });
+      } else if (evt.type === "error") {
+        throw new Error(evt.message);
+      } else if (evt.type === "done") {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (!last?.streaming && !last?.suggestionsLoading) return current;
+          next[next.length - 1] = { ...last, streaming: false, suggestionsLoading: false };
+          return next;
+        });
+      }
+    }
+    return false;
+  }
+
+  function handleStop() {
+    streamControllerRef.current?.abort();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     await submitQuestion(question);
@@ -551,113 +1133,79 @@ export default function ChatPage({
     setBusy(true);
     setError("");
 
-    let assistantAdded = false;
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
 
+    let paused = false;
     try {
-      for await (const evt of askQuestionStream(
-        cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
-      )) {
-        if (evt.type === "thinking") {
-          assistantAdded = true;
-          setMessages((current) => [
-            ...current,
-            { role: "assistant", content: "", streaming: true, responseMode, answerMode },
-          ]);
-        } else if (evt.type === "token") {
-          assistantAdded = true;
-          setMessages((current) => {
-            const last = current[current.length - 1];
-            // Normal generation path already added a streaming placeholder on
-            // "thinking" -- append to it. The insufficient-evidence refusal
-            // path skips "thinking" and sends its message as token events
-            // directly, so this first token needs to create the placeholder.
-            if (last?.role === "assistant" && last.streaming) {
-              const next = [...current];
-              next[next.length - 1] = { ...last, content: last.content + evt.value };
-              return next;
-            }
-            return [
-              ...current,
-              { role: "assistant", content: evt.value, streaming: true, responseMode, answerMode },
-            ];
-          });
-        } else if (evt.type === "citations") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            next[next.length - 1] = {
-              ...last,
-              citations: Array.isArray(evt.data) ? evt.data : [],
-              evidenceSufficient: evt.evidence_sufficient,
-              evidenceReason: evt.evidence_reason || null,
-              responseMode: evt.response_mode || responseMode,
-              answerMode: evt.answer_mode || answerMode,
-              model: evt.model || null,
-            };
-            return next;
-          });
-          if (evt.session_id && !sessionId) {
-            setSessionId(String(evt.session_id));
-            loadSessions();
-          }
-        } else if (evt.type === "answer_done") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            if (last?.role === "assistant") {
-              next[next.length - 1] = {
-                ...last,
-                streaming: false,
-                suggestionsLoading: evt.suggestions_pending === true,
-              };
-            }
-            return next;
-          });
-        } else if (evt.type === "suggestions") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            if (last?.role === "assistant") {
-              next[next.length - 1] = {
-                ...last,
-                suggestions: Array.isArray(evt.items) ? evt.items : [],
-                suggestionsLoading: false,
-              };
-            }
-            return next;
-          });
-        } else if (evt.type === "error") {
-          throw new Error(evt.message);
-        } else if (evt.type === "done") {
-          setMessages((current) => {
-            const next = [...current];
-            const last = next[next.length - 1];
-            if (!last?.streaming) return current;
-            next[next.length - 1] = {
-              ...last,
-              streaming: false,
-              suggestionsLoading: false,
-            };
-            return next;
-          });
-        }
-      }
+      paused = await consumeAgentStream(
+        askQuestionStream(
+          cleanQuestion, selected, responseMode, answerMode, messages, sessionId, selectedModel,
+          controller.signal, agentMode,
+        ),
+      );
     } catch (chatError) {
-      setError(chatError.message);
-      if (assistantAdded) {
+      if (chatError.name !== "AbortError") {
+        setError(chatError.message);
         setMessages((current) => current.filter((m) => !m.streaming));
       }
     } finally {
+      streamControllerRef.current = null;
       setBusy(false);
-      // Clear streaming flag if the connection closed before a "done" event arrived
+      // Clear streaming flag if the connection closed before a "done" event
+      // arrived (including a user-initiated stop) and we're not waiting on
+      // a confirm_* dialog. Keeps whatever partial content already streamed.
       setMessages((current) => {
         const last = current[current.length - 1];
-        if (!last?.streaming) return current;
+        if (!last?.streaming || paused) return current;
         const next = [...current];
         next[next.length - 1] = { ...last, streaming: false };
         return next;
       });
     }
+  }
+
+  async function handleConfirmResponse(answer) {
+    if (!pendingConfirm) return;
+    const { session_id: confirmSessionId } = pendingConfirm;
+    setPendingConfirm(null);
+    setConfirmBusy(true);
+    setBusy(true);
+
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+
+    let paused = false;
+    try {
+      paused = await consumeAgentStream(resumeChatStream(confirmSessionId, answer, controller.signal));
+    } catch (chatError) {
+      if (chatError.name !== "AbortError") {
+        setError(chatError.message);
+        setMessages((current) => current.filter((m) => !m.streaming));
+      }
+    } finally {
+      streamControllerRef.current = null;
+      setConfirmBusy(false);
+      setBusy(false);
+      setMessages((current) => {
+        const last = current[current.length - 1];
+        if (!last?.streaming || paused) return current;
+        const next = [...current];
+        next[next.length - 1] = { ...last, streaming: false };
+        return next;
+      });
+    }
+  }
+
+  function toggleSteps(messageIndex) {
+    skipAutoScrollRef.current = true;
+    setMessages((current) => {
+      const target = current[messageIndex];
+      if (!target) return current;
+      const next = [...current];
+      next[messageIndex] = { ...target, showSteps: !target.showSteps };
+      return next;
+    });
   }
 
   function handleQuestionKeyDown(event) {
@@ -950,7 +1498,9 @@ export default function ChatPage({
                         {[
                           getResponseModeLabel(message.responseMode || "researcher"),
                           message.answerMode === "chat" ? "Open Discussion" : "Document Analysis",
+                          message.agentMode === "direct" ? "Direct" : null,
                           message.model ? `Answered by ${getModelLabel(modelLabels, message.model)}` : null,
+                          message.tokenUsage ? `${message.tokenUsage.total_tokens.toLocaleString()} tokens` : null,
                         ].filter(Boolean).join(" · ")}
                       </Typography>
                     )}
@@ -1014,6 +1564,26 @@ export default function ChatPage({
                     </Alert>
                   )}
 
+                  {/* Evidence includes the wider library, beyond just the selected documents.
+                      Wording adapts to whether the selected documents also contributed
+                      (a deliberate comparison) or not (an escalation because they came up empty). */}
+                  {message.role === "assistant" && message.evidenceSources?.includes("full_corpus") && (
+                    <Alert severity="info" sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>From the wider library</strong> — {message.evidenceSources.includes("internal")
+                        ? "This answer compares your selected documents against the full document library."
+                        : "Your selected documents did not have enough relevant material, so this answer draws on the full document library instead."}
+                    </Alert>
+                  )}
+
+                  {/* Same, for web search — wording adapts the same way. */}
+                  {message.role === "assistant" && message.evidenceSources?.includes("web") && (
+                    <Alert severity="info" icon={<PublicIcon fontSize="inherit" />} sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}>
+                      <strong>From the web</strong> — {message.evidenceSources.includes("internal") || message.evidenceSources.includes("full_corpus")
+                        ? "This answer compares your documents against live web search results."
+                        : "Neither your selected documents nor the wider library had enough relevant material, so this answer draws on live web search results."}
+                    </Alert>
+                  )}
+
                   {message.role === "assistant" ? (
                     <Box
                       sx={{
@@ -1041,6 +1611,14 @@ export default function ChatPage({
                         "& a": { color: "#214f42" },
                       }}
                     >
+                      {message.role === "assistant" && (
+                        <ReasoningSteps
+                          steps={message.steps}
+                          expanded={Boolean(message.showSteps)}
+                          onToggle={() => toggleSteps(index)}
+                          active={Boolean(message.streaming) && !message.content}
+                        />
+                      )}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={makeMarkdownComponents(
@@ -1148,6 +1726,7 @@ export default function ChatPage({
                 </Box>
               );
             })}
+            <ConfirmPrompt confirm={pendingConfirm} busy={confirmBusy} onAnswer={handleConfirmResponse} />
             {busy
               && !messages[messages.length - 1]?.streaming
               && !messages[messages.length - 1]?.suggestionsLoading && (
@@ -1281,6 +1860,52 @@ export default function ChatPage({
               </Menu>
             </Box>
 
+            <Box>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={busy}
+                onClick={(event) => setAgentModeAnchor(event.currentTarget)}
+                aria-haspopup="menu"
+                sx={{
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  py: 0.75,
+                  px: 1.25,
+                  gap: 0,
+                  minWidth: 0,
+                  textTransform: "none",
+                }}
+              >
+                <Typography component="span" sx={{ fontSize: "0.68rem", color: "text.secondary", lineHeight: 1, display: "block" }}>
+                  Reasoning mode
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                  <Typography component="span" sx={{ fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1 }}>
+                    {getOptionLabel(AGENT_MODE_OPTIONS, agentMode)}
+                  </Typography>
+                  <ArrowDropDownIcon sx={{ fontSize: 16, color: "text.secondary", ml: 0.25 }} />
+                </Box>
+              </Button>
+              <Menu
+                anchorEl={agentModeAnchor}
+                open={Boolean(agentModeAnchor)}
+                onClose={() => setAgentModeAnchor(null)}
+                anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                {AGENT_MODE_OPTIONS.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    selected={option.value === agentMode}
+                    onClick={() => { setAgentMode(option.value); setAgentModeAnchor(null); }}
+                  >
+                    <ListItemText primary={option.label} secondary={option.description} />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
+
             {modelGroups.length > 0 && (
               <Box>
                 <Button
@@ -1358,15 +1983,27 @@ export default function ChatPage({
               fullWidth
               size="small"
             />
-            <Button
-              variant="contained"
-              disabled={!question.trim() || !selected.length || busy}
-              type="submit"
-              sx={{ alignSelf: "flex-end", minWidth: 80 }}
-              endIcon={<SendIcon />}
-            >
-              Send
-            </Button>
+            {busy ? (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={handleStop}
+                sx={{ alignSelf: "flex-end", minWidth: 80 }}
+                endIcon={<StopIcon />}
+              >
+                Stop
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                disabled={!question.trim() || !selected.length}
+                type="submit"
+                sx={{ alignSelf: "flex-end", minWidth: 80 }}
+                endIcon={<SendIcon />}
+              >
+                Send
+              </Button>
+            )}
           </Box>
         </Card>
       </Box>
@@ -1591,6 +2228,26 @@ export default function ChatPage({
                       </Button>
                     </Box>
                   )}
+                  {!c.document_id && c.source_url && (
+                    <Box sx={{ px: 2, pb: 1.5 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => window.open(c.source_url, "_blank", "noopener,noreferrer")}
+                        sx={{
+                          fontSize: 11,
+                          textTransform: "none",
+                          borderColor: isLow ? "#ffab91" : "#c8d9d4",
+                          color: accentColor,
+                          py: 0.4,
+                          px: 1.25,
+                          "&:hover": { borderColor: accentColor, bgcolor: accentLight },
+                        }}
+                      >
+                        Open web page
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               );
             })
@@ -1663,6 +2320,7 @@ export default function ChatPage({
           <Button variant="contained" color="error" onClick={handleDeleteSession}>Delete</Button>
         </DialogActions>
       </Dialog>
+
     </Box>
   );
 }

@@ -211,6 +211,51 @@ class EmbeddingRepository:
             ).fetchone()
         return bool(row["exists"]) if row else False
 
+    def retrieve_all(
+        self, query_vector: str, *, limit: int, include_restricted: bool = False
+    ) -> list[dict]:
+        """Corpus-wide nearest-neighbour search, not scoped to a document_ids set.
+
+        Used by the agent's search_full_corpus tool. Restricted documents are
+        excluded unless include_restricted (mirrors the visibility rule in
+        documents.repositories.documents._filters).
+        """
+        table, dim = _active_table_dim()
+        cast = _vector_type(dim)
+        visibility_sql = (
+            "" if include_restricted else "WHERE d.approved = true AND d.access_level = 'public'"
+        )
+        with get_connection() as connection:
+            if not _table_exists(connection, table):
+                return []
+            rows = connection.execute(
+                f"""
+                SELECT c.id AS chunk_id, c.document_id,
+                    d.original_filename AS file,
+                    COALESCE(dm.title, d.original_filename) AS doc_title,
+                    c.page_start, c.page_end,
+                    c.text, c.token_count, c.language,
+                    e.embedding <=> %s::{cast} AS distance
+                FROM "{table}" e
+                JOIN document_chunks c ON c.id = e.chunk_id
+                JOIN documents d ON d.id = c.document_id
+                LEFT JOIN document_metadata dm ON dm.document_id = d.id
+                {visibility_sql}
+                ORDER BY e.embedding <=> %s::{cast} LIMIT %s
+                """,
+                (query_vector, query_vector, limit),
+            ).fetchall()
+        return [
+            {
+                **dict(row),
+                "chunk_id": str(row["chunk_id"]),
+                "document_id": str(row["document_id"]),
+                "page": row["page_start"],
+                "distance": float(row["distance"]),
+            }
+            for row in rows
+        ]
+
     def retrieve(self, query_vector: str, document_ids: list[str], *, limit: int) -> list[dict]:
         if not document_ids:
             return []

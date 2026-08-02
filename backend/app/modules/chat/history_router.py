@@ -57,10 +57,15 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             content=m["content"],
             citations=_parse_citations(m.get("citations_json")),
             evidence_sufficient=m.get("evidence_sufficient"),
+            evidence_sources=_parse_json_list(m.get("evidence_sources")),
             response_mode=m.get("response_mode"),
             answer_mode=m.get("answer_mode"),
+            agent_mode=m.get("agent_mode"),
             model=m.get("model"),
+            steps=_parse_steps(m.get("reasoning_steps")),
+            status=m.get("status") or "complete",
             suggestions=_parse_suggestions(m.get("suggestions_json")),
+            token_usage=_parse_token_usage(m.get("token_usage")),
             created_at=m["created_at"],
         )
         for m in msgs
@@ -116,6 +121,22 @@ def _parse_citations(raw) -> list[Citation]:
         return []
 
 
+def _parse_steps(raw) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        data = raw if isinstance(raw, list) else json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+# Same defensive jsonb-or-string-or-missing handling as _parse_steps, under a
+# name that fits a flat list of strings (evidence_sources) rather than a
+# trace of step dicts.
+_parse_json_list = _parse_steps
+
+
 def _parse_suggestions(raw) -> list[str]:
     if not raw:
         return []
@@ -124,3 +145,13 @@ def _parse_suggestions(raw) -> list[str]:
         return [str(item) for item in data if str(item).strip()]
     except Exception:
         return []
+
+
+def _parse_token_usage(raw) -> dict | None:
+    if not raw:
+        return None
+    try:
+        data = raw if isinstance(raw, dict) else json.loads(raw)
+        return data if isinstance(data, dict) and data else None
+    except Exception:
+        return None

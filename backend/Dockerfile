@@ -14,7 +14,7 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 COPY database ./database
 
-RUN pip install --no-cache-dir ".[database]"
+RUN pip install --no-cache-dir ".[database,crawlers]"
 
 EXPOSE 8000
 

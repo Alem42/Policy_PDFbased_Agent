@@ -1,4 +1,4 @@
--- Migration 006: follow-up question suggestions.
+-- Migration 017: follow-up question suggestions.
 -- Run once against the live database before deploying the new backend code.
 
 -- 1) Admin-tunable suggestion config (one JSON row) — same shape as the other services.

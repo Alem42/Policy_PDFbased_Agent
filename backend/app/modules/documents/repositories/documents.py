@@ -17,6 +17,40 @@ class DocumentRepository:
             ).fetchone()
         return dict(row) if row else None
 
+    def find_by_content_hash(
+        self, content_hash: str, *, exclude_id: str | None = None
+    ) -> dict | None:
+        """Return an existing document with this normalised-text hash (L2 dedup)."""
+        exclude_sql = "AND id != %s" if exclude_id else ""
+        values = (content_hash, exclude_id) if exclude_id else (content_hash,)
+        with get_connection() as connection:
+            row = connection.execute(
+                f"""
+                SELECT id, original_filename FROM documents
+                WHERE content_hash = %s {exclude_sql}
+                LIMIT 1
+                """,
+                values,
+            ).fetchone()
+        return dict(row) if row else None
+
+    def find_by_source_url(self, source_url: str) -> dict | None:
+        """Return the existing document imported from this URL, or None."""
+        with get_connection() as connection:
+            row = connection.execute(
+                "SELECT id, original_filename FROM documents WHERE source_url = %s LIMIT 1",
+                (source_url,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def set_content_hash(self, document_id: str, content_hash: str) -> None:
+        with get_connection() as connection:
+            connection.execute(
+                "UPDATE documents SET content_hash = %s WHERE id = %s",
+                (content_hash, document_id),
+            )
+            connection.commit()
+
     def create(
         self,
         *,
@@ -28,6 +62,9 @@ class DocumentRepository:
         checksum: str,
         mime_type: str = "application/pdf",
         upsert: bool = False,
+        source_url: str | None = None,
+        imported_by: str | None = None,
+        imported_via: str | None = None,
     ) -> str:
         conflict_sql = (
             """
@@ -47,9 +84,10 @@ class DocumentRepository:
                     f"""
                     INSERT INTO documents (
                         id, original_filename, stored_filename, file_path,
-                        file_size, sha256, mime_type, status
+                        file_size, sha256, mime_type, status,
+                        source_url, imported_by, imported_via
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded')
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s, %s, %s)
                     {conflict_sql}
                     RETURNING id
                     """,
@@ -61,6 +99,9 @@ class DocumentRepository:
                         len(content),
                         checksum,
                         mime_type,
+                        source_url,
+                        imported_by,
+                        imported_via,
                     ),
                 ).fetchone()
                 connection.commit()

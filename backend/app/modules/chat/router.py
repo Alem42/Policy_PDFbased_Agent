@@ -1,22 +1,26 @@
 import asyncio
 import json as _json
 import logging
+import re
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from contextlib import aclosing
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.catalog.service import get_catalog
 from app.modules.chat.history_repository import chat_history_repository
+from app.modules.chat.rag.agent.graph import get_agent_graph
 from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
+from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.graph.state import normalize_answer_mode
 from app.modules.chat.rag.graph.workflow import run_pdf_qa, run_retrieval
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
-from app.modules.chat.suggestions import service as suggestions_service
-from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.chat.schemas import (
     MAX_HISTORY_TURNS,
     ChatRequest,
@@ -24,7 +28,10 @@ from app.modules.chat.schemas import (
     Citation,
     ModelOption,
     ProviderModels,
+    ResumeChatRequest,
 )
+from app.modules.chat.suggestions import service as suggestions_service
+from app.modules.chat.suggestions.generator import generate_followup_suggestions
 from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
@@ -139,6 +146,7 @@ async def chat(
 
         citations = [Citation(**c) for c in result.get("citations", [])]
         evidence_sufficient = result.get("evidence_sufficient", True)
+        evidence_sources = ["internal"] if evidence_sufficient else []
 
         resolved_model = result.get("resolved_model")
 
@@ -178,6 +186,8 @@ async def chat(
             payload.response_mode,
             payload.answer_mode,
             resolved_model,
+            "direct",
+            evidence_sources,
             suggestions,
         )
         await asyncio.to_thread(chat_history_repository.touch_session, session_id)
@@ -188,8 +198,10 @@ async def chat(
             truncated=result.get("truncated", False),
             evidence_sufficient=evidence_sufficient,
             evidence_reason=result.get("evidence_reason"),
+            evidence_sources=evidence_sources,
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
+            agent_mode="direct",
             session_id=UUID(session_id),
             model=resolved_model,
             suggestions=suggestions,
@@ -204,22 +216,598 @@ async def chat(
         raise HTTPException(status_code=502, detail=f"Model request failed: {exc}") from exc
 
 
+def _sse(obj: dict) -> str:
+    return f"data: {_json.dumps(obj, default=str)}\n\n"
+
+
+_CITATION_MARKER = re.compile(r"\[(\d+)\]")
+
+
+def _cited_evidence_sources(evidence_sources: list, citations: list[dict], answer: str) -> list:
+    """Narrow evidence_sources (see agent/state.py::EvidenceSource) down to
+    the tier(s) the final answer text actually draws from beyond the
+    selected documents.
+
+    evidence_sources, as built during the ReAct loop, records every tier
+    that returned evidence_sufficient=true with a new citation at some point
+    this turn (see agent/tools.py) — e.g. a search_full_corpus call made to
+    fill a gap left by the selected documents still marks "full_corpus" even
+    if the writer's final answer settles on citing only the
+    already-selected-document sources it found. That mismatch is what
+    produces the "From the wider library" / "From the web" banner
+    (ChatPage.jsx) on answers that don't actually draw from beyond the
+    selected documents.
+
+    Two corrections, both against the citation numbers that literally appear
+    as [N] markers in the answer text:
+    1. A tier only counts if the answer actually cites one of its numbers —
+       not merely because that tier returned something sufficient at some
+       point in the loop.
+    2. A cited search_full_corpus result whose document_id was already
+       visible to a search_internal_documents call this turn (regardless of
+       whether that call itself was sufficient — the unfiltered full-corpus
+       search can surface a chunk of an already-selected document that a
+       narrower, worse-matching query missed) is the same selected document,
+       not "wider library" content, so it doesn't count as full_corpus here
+       even though that's which tool mechanically found it.
+    """
+    cited_numbers = {int(match) for match in _CITATION_MARKER.findall(answer)}
+    if not cited_numbers:
+        return []
+
+    internal_document_ids = {
+        citation.get("document_id")
+        for citation in citations
+        if citation.get("tier") == "internal" and citation.get("document_id")
+    }
+
+    cited_tiers: set = set()
+    for citation in citations:
+        if citation.get("number") not in cited_numbers:
+            continue
+        tier = citation.get("tier")
+        if not tier:
+            continue
+        if tier == "full_corpus" and citation.get("document_id") in internal_document_ids:
+            continue
+        cited_tiers.add(tier)
+
+    return [source for source in evidence_sources if source in cited_tiers]
+
+
+def _turn_token_usage(messages: list) -> dict:
+    """Sum LLM token usage across every AIMessage produced THIS turn — each
+    ReAct agent_node decision step plus the final answer writer — from the
+    latest HumanMessage onward, same turn-boundary logic as
+    agent/graph.py::_messages_for_current_turn. Skips messages with no
+    usage_metadata (a synthetic step like auto_finalize_node's, or a
+    provider that never reported usage). Returns {} if nothing had usage —
+    stored as-is in the token_usage jsonb column, never null.
+    """
+    latest_human_index = next(
+        (index for index in range(len(messages) - 1, -1, -1) if isinstance(messages[index], HumanMessage)),
+        0,
+    )
+    prompt_tokens = completion_tokens = total_tokens = 0
+    found = False
+    for message in messages[latest_human_index:]:
+        usage = getattr(message, "usage_metadata", None) if isinstance(message, AIMessage) else None
+        if not usage:
+            continue
+        found = True
+        prompt_tokens += usage.get("input_tokens") or 0
+        completion_tokens += usage.get("output_tokens") or 0
+        total_tokens += usage.get("total_tokens") or 0
+    if not found:
+        return {}
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _tool_result_event(message: Any) -> dict:
+    """Return a compact, user-readable tool result summary for the trace UI."""
+    result: dict = {}
+    try:
+        parsed = _json.loads(message.content)
+        if isinstance(parsed, dict):
+            result = parsed
+    except (TypeError, ValueError):
+        pass
+
+    results = result.get("results")
+    result_count = len(results) if isinstance(results, list) else None
+    source_titles: list[str] = []
+    if isinstance(results, list):
+        for item in results:
+            title = item.get("title") if isinstance(item, dict) else None
+            if title and title not in source_titles:
+                source_titles.append(str(title))
+            if len(source_titles) == 5:
+                break
+
+    return {
+        "type": "tool_result",
+        "tool": getattr(message, "name", None),
+        "evidence_sufficient": result.get("evidence_sufficient"),
+        "evidence_reason": result.get("reason") or result.get("error"),
+        "result_count": result_count,
+        "source_titles": source_titles,
+        "answer_plan": result.get("answer_plan"),
+        "citation_numbers": result.get("citation_numbers"),
+    }
+
+
+def _step_from_tool_call(call: dict) -> dict:
+    """Persisted-trace shape for a tool_call event — mirrors the step object
+    ChatPage.jsx's consumeAgentStream builds client-side, minus `label`
+    (recomputed on load from the tool name, same as the live view)."""
+    return {
+        "tool": call.get("tool"),
+        "status": "running",
+        "query": call.get("query"),
+        "decisionReason": call.get("decision_reason"),
+        "question": call.get("question"),
+        "url": call.get("url"),
+        "title": call.get("title"),
+        # Tokens the agent_node LLM call that chose THIS action spent (see
+        # record_tool_call_node in agent/graph.py) — None if the provider
+        # didn't report usage.
+        "tokensUsed": call.get("tokens_used"),
+    }
+
+
+def _apply_tool_result(steps: list[dict], result_event: dict) -> None:
+    """Mutate the last matching "running" step in place to "done", mirroring
+    the tool_result merge ChatPage.jsx does on its in-memory steps array."""
+    for step in reversed(steps):
+        if step.get("tool") == result_event.get("tool") and step.get("status") == "running":
+            step["status"] = "done"
+            step["evidenceSufficient"] = result_event.get("evidence_sufficient")
+            step["evidenceReason"] = result_event.get("evidence_reason")
+            step["resultCount"] = result_event.get("result_count")
+            step["sourceTitles"] = result_event.get("source_titles") or []
+            step["answerPlan"] = result_event.get("answer_plan")
+            step["citationNumbers"] = result_event.get("citation_numbers") or []
+            break
+
+
+async def _stream_agent_events(
+    graph_input: dict | Command,
+    *,
+    config: dict,
+    session_id: str,
+    response_mode: str,
+    answer_mode: str,
+    assistant_message_id: str,
+) -> AsyncGenerator[str, None]:
+    """Drive the agent graph (chat/rag/agent/graph.py) and translate its
+    stream into the SSE event types the frontend understands.
+
+    The assistant's chat_messages row (assistant_message_id) was already
+    created by the caller before this generator starts — its reasoning_steps
+    are updated once per tool call (not only once at the end), so a turn
+    that's interrupted or crashes mid-stream still leaves a readable partial
+    trace in history instead of losing it entirely.
+
+    Event types:
+      {"type": "tool_call", "tool": "..."}          — the agent is calling a tool
+      {"type": "tool_result", "tool": "...", ...}    — that tool's result summary
+      {"type": "token", "value": "..."}              — one text chunk of the final answer
+      {"type": "ask_user", "mode": "confirm"|"choice"|"freeform", "question": ...,
+       "options": [...] | null} — paused, call POST /chat/resume with
+          {"session_id", "answer": "<one of options, or any free-typed text>"}
+      {"type": "confirm_import", "url": ..., "title": ..., "question": ...} — paused,
+          call POST /chat/resume with {"session_id", "answer": true|false}
+      {"type": "citations", "data": [...], ...}      — final metadata (sent once)
+      {"type": "answer_done", "suggestions_pending": bool} — answer complete; follow-ups may follow
+      {"type": "suggestions", "items": [...]}         — validated follow-up questions
+      {"type": "done"}                                — stream complete
+      {"type": "error", "message": "..."}             — terminal error
+    """
+    graph = get_agent_graph()
+    full_tokens: list[str] = []
+    # Seeded from the DB rather than starting empty: a resumed turn (after an
+    # ask_user/confirm_import interrupt) is a fresh call to this generator,
+    # so the steps recorded before the interrupt only live in the row.
+    steps: list[dict] = await asyncio.to_thread(
+        chat_history_repository.get_message_steps, assistant_message_id
+    )
+
+    interrupted = False
+    try:
+        # aclosing guarantees the inner astream generator's own cleanup runs
+        # (flushing its last checkpoint write) even when we exit the loop
+        # early on interrupt — a bare early `return` out of an `async for`
+        # only abandons the generator, with no guaranteed timing on when (or
+        # whether) it's finalized, which risks a client calling /chat/resume
+        # before the paused checkpoint has actually been persisted.
+        async with aclosing(
+            graph.astream(graph_input, config=config, stream_mode=["updates", "messages"])
+        ) as stream:
+            async for mode, chunk in stream:
+                if mode == "messages":
+                    message, meta = chunk
+                    if (
+                        meta.get("langgraph_node") == "final_generation"
+                        and getattr(message, "content", None)
+                    ):
+                        full_tokens.append(message.content)
+                        yield _sse({"type": "token", "value": message.content})
+                    continue
+
+                # mode == "updates"
+                if "__interrupt__" in chunk:
+                    interrupts = chunk["__interrupt__"]
+                    value: dict[str, Any] = dict(interrupts[0].value) if interrupts else {}
+                    event_type = value.pop("type", "ask_user")
+                    yield _sse({"type": event_type, "session_id": session_id, **value})
+                    interrupted = True
+                    break  # paused — client must call /chat/resume to continue
+
+                if "record_tool_call" in chunk:
+                    call = chunk["record_tool_call"].get("last_tool_call")
+                    if call:
+                        # Belongs to the step already in `steps` (the last
+                        # completed tool call), not the new one about to be
+                        # appended — attach it there before pushing the new
+                        # step, so persisted history and this SSE event both
+                        # carry it as a revision of the earlier step.
+                        reflection = call.get("reflection_on_previous_result")
+                        if reflection and steps:
+                            steps[-1]["reflection"] = reflection
+                        steps.append(_step_from_tool_call(call))
+                        await asyncio.to_thread(
+                            chat_history_repository.update_reasoning_steps,
+                            assistant_message_id,
+                            steps,
+                        )
+                        yield _sse({"type": "tool_call", **call})
+
+                if "tools" in chunk:
+                    for message in chunk["tools"].get("messages", []):
+                        result_event = _tool_result_event(message)
+                        _apply_tool_result(steps, result_event)
+                        await asyncio.to_thread(
+                            chat_history_repository.update_reasoning_steps,
+                            assistant_message_id,
+                            steps,
+                        )
+                        yield _sse(result_event)
+
+                if "insufficient_evidence" in chunk:
+                    # Document Analysis mode, no evidence tier ever became
+                    # sufficient: this node's answer is a deterministic
+                    # template (see graph.py::insufficient_evidence_node),
+                    # not an LLM stream, so it never appears in "messages"
+                    # mode — simulate one token event so the frontend renders
+                    # it the same way as a normally-streamed answer.
+                    for message in chunk["insufficient_evidence"].get("messages", []):
+                        content = getattr(message, "content", "") or ""
+                        full_tokens.append(content)
+                        yield _sse({"type": "token", "value": content})
+
+        if interrupted:
+            return
+
+        # Stream finished without interrupting: the graph reached END.
+        final_state = await graph.aget_state(config)
+        values = final_state.values
+        citations = values.get("citations", [])
+        resolved_model = values.get("resolved_model")
+        messages = values.get("messages", [])
+        answer = "".join(full_tokens) or (
+            messages[-1].content if messages and isinstance(messages[-1], AIMessage) else ""
+        )
+
+        # Every retrieval tier that returned evidence_sufficient=True this
+        # turn, usually just one (see agent/state.py::EvidenceSource) but
+        # possibly several for a deliberate documents-vs-web comparison
+        # question. Empty covers both an Open Discussion general-knowledge
+        # fallback and a Document Analysis refusal (insufficient_evidence_node),
+        # which are told apart by answer_mode on the frontend.
+        evidence_sources = values.get("evidence_sources") or []
+        evidence_sufficient = bool(evidence_sources)
+        evidence_reason = None if evidence_sufficient else values.get("last_evidence_reason")
+        # What actually gets reported/shown, though: only the tier(s) whose
+        # citations the answer literally cites — see _cited_evidence_sources.
+        # evidence_sufficient/evidence_reason above stay based on the
+        # unfiltered set (did some tier find enough evidence this turn at
+        # all), unrelated to the "From the wider library"/"From the web"
+        # banner this narrows.
+        reported_evidence_sources = _cited_evidence_sources(evidence_sources, citations, answer)
+        token_usage = _turn_token_usage(messages)
+
+        await asyncio.to_thread(
+            chat_history_repository.finalize_message,
+            assistant_message_id,
+            answer,
+            citations,
+            evidence_sufficient,
+            response_mode,
+            answer_mode,
+            resolved_model,
+            evidence_sources=reported_evidence_sources,
+            token_usage=token_usage,
+        )
+        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+
+        yield _sse(
+            {
+                "type": "citations",
+                "data": citations,
+                "evidence_sufficient": evidence_sufficient,
+                "evidence_reason": evidence_reason,
+                "evidence_sources": reported_evidence_sources,
+                "token_usage": token_usage,
+                "response_mode": response_mode,
+                "answer_mode": answer_mode,
+                "agent_mode": "react",
+                "session_id": session_id,
+                "model": resolved_model,
+            }
+        )
+
+        # The ReAct graph state has no single "context" string (unlike direct
+        # mode's run_retrieval output) — approximate it from the retrieved
+        # excerpts actually cited this turn, same text the model itself cited from.
+        context = "\n\n".join(c.get("quote", "") for c in citations if c.get("quote"))
+        question = next(
+            (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
+        )
+        suggestion_history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+        async for event in _stream_suggestion_events(
+            question=question,
+            answer=answer,
+            context=context,
+            identifiers=values.get("document_ids") or values.get("filenames") or [],
+            response_mode=response_mode,
+            history=suggestion_history,
+            include_restricted=bool(values.get("include_restricted", False)),
+            model=values.get("model"),
+            user_id=values.get("user_id"),
+            evidence_sufficient=evidence_sufficient,
+            assistant_message_id=assistant_message_id,
+        ):
+            yield event
+
+    except TimeoutError:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": "Request timed out."})
+    except (FileNotFoundError, ValueError) as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": str(exc)})
+    except Exception as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
+
+
+async def _finalize_as_error(assistant_message_id: str, full_tokens: list[str]) -> None:
+    """Close out a pending message row that failed mid-stream, keeping
+    whatever partial answer text had already streamed rather than losing it."""
+    await asyncio.to_thread(
+        chat_history_repository.finalize_message,
+        assistant_message_id,
+        "".join(full_tokens),
+        status="error",
+    )
+
+
+async def _stream_suggestion_events(
+    *,
+    question: str,
+    answer: str,
+    context: str,
+    identifiers: list[str],
+    response_mode: str,
+    history: list[dict],
+    include_restricted: bool,
+    model: str | None,
+    user_id: str | None,
+    evidence_sufficient: bool,
+    assistant_message_id: str,
+) -> AsyncGenerator[str, None]:
+    """Shared tail for both streaming modes (_stream_agent_events and
+    _stream_direct_events): generate and persist follow-up suggestions after
+    the answer is finalized, then close the stream with "done".
+
+    Same suggestion gate as the non-streaming /chat endpoint — only bother
+    once there's an actual evidence-backed answer to suggest follow-ups for —
+    and the same answer_done/suggestions event pair the frontend already
+    expects (ported from the pre-ReAct streaming implementation).
+    """
+    if not (evidence_sufficient and answer.strip()):
+        yield _sse({"type": "answer_done", "suggestions_pending": False})
+        yield _sse({"type": "done"})
+        return
+
+    sug_cfg = None
+    suggestions_pending = False
+    try:
+        sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
+        suggestions_pending = bool(sug_cfg.enabled)
+    except Exception:
+        logger.exception("Suggestion settings unavailable; skipping follow-ups")
+
+    yield _sse({"type": "answer_done", "suggestions_pending": suggestions_pending})
+
+    if suggestions_pending and sug_cfg is not None:
+        suggestions: list[str] = []
+        try:
+            suggestions = await asyncio.wait_for(
+                asyncio.to_thread(
+                    generate_followup_suggestions,
+                    question=question,
+                    answer=answer,
+                    context=context,
+                    identifiers=identifiers,
+                    response_mode=response_mode,
+                    history=history,
+                    include_restricted=include_restricted,
+                    model=model,
+                    user_id=user_id,
+                    config=sug_cfg,
+                ),
+                timeout=45.0,
+            )
+        except Exception:
+            logger.exception("Follow-up generation timed out or failed")
+
+        try:
+            await asyncio.to_thread(
+                chat_history_repository.update_message_suggestions,
+                assistant_message_id,
+                suggestions,
+            )
+        except Exception:
+            logger.exception("Generated suggestions could not be persisted")
+        # Always emit the completion event, including an empty list, so the
+        # frontend can clear its suggestion-specific loading state.
+        yield _sse({"type": "suggestions", "items": suggestions})
+
+    yield _sse({"type": "done"})
+
+
+async def _stream_direct_events(
+    *,
+    question: str,
+    document_ids: list[str] | None,
+    filenames: list[str] | None,
+    model: str | None,
+    response_mode: str,
+    answer_mode: str,
+    top_k: int,
+    include_restricted: bool,
+    history: list[dict],
+    session_id: str,
+    assistant_message_id: str,
+    user_id: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """Direct (non-ReAct) mode: one retrieval pass + a single streamed
+    answer, with no tool-calling loop — so unlike _stream_agent_events, no
+    tool_call/tool_result events are emitted and the message's
+    reasoning_steps stays empty, correctly showing "no reasoning trace" for
+    this mode. Reuses the same building blocks as the classic /chat endpoint
+    (run_retrieval, generate_answer_streaming) and emits the same
+    token/citations/answer_done/suggestions/done/error SSE shapes as
+    _stream_agent_events so the frontend's stream consumer needs no
+    branching by mode.
+    """
+    full_tokens: list[str] = []
+    try:
+        state = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_retrieval,
+                question=question,
+                document_ids=document_ids,
+                filenames=filenames,
+                model=model,
+                response_mode=response_mode,
+                answer_mode=answer_mode,
+                top_k=top_k,
+                include_restricted=include_restricted,
+                history=history,
+            ),
+            timeout=120.0,
+        )
+
+        citations = state.get("citations", [])
+        provider, selected_model, _config = resolve_generation_target(model)
+        resolved_model = f"{provider}/{selected_model}"
+
+        if route_after_evidence_check(state) == "insufficient_evidence":
+            answer = get_insufficient_evidence_message(
+                question=question,
+                reason=state.get("evidence_reason") or "The retrieved excerpts are too weak.",
+                mode=response_mode,
+            )
+            full_tokens.append(answer)
+            yield _sse({"type": "token", "value": answer})
+        else:
+            async for chunk in generate_answer_streaming(
+                question=question,
+                context=state.get("context", ""),
+                model=model,
+                response_mode=response_mode,
+                history=history,
+                citations=citations,
+                answer_mode=answer_mode,
+            ):
+                full_tokens.append(chunk)
+                yield _sse({"type": "token", "value": chunk})
+
+        answer = "".join(full_tokens)
+        evidence_sufficient = state.get("evidence_sufficient", False)
+        # Direct mode has only one evidence tier (the selected documents), so
+        # this is trivially ["internal"] or empty — see EvidenceSource in
+        # agent/state.py for the richer ReAct-mode set.
+        evidence_sources = ["internal"] if evidence_sufficient else []
+
+        await asyncio.to_thread(
+            chat_history_repository.finalize_message,
+            assistant_message_id,
+            answer,
+            citations,
+            evidence_sufficient,
+            response_mode,
+            answer_mode,
+            resolved_model,
+            evidence_sources=evidence_sources,
+        )
+        await asyncio.to_thread(chat_history_repository.touch_session, session_id)
+
+        yield _sse(
+            {
+                "type": "citations",
+                "data": citations,
+                "evidence_sufficient": evidence_sufficient,
+                "evidence_reason": state.get("evidence_reason"),
+                "evidence_sources": evidence_sources,
+                "response_mode": response_mode,
+                "answer_mode": answer_mode,
+                "agent_mode": "direct",
+                "session_id": session_id,
+                "model": resolved_model,
+            }
+        )
+
+        async for event in _stream_suggestion_events(
+            question=question,
+            answer=answer,
+            context=state.get("context", ""),
+            identifiers=document_ids or filenames or [],
+            response_mode=response_mode,
+            history=history,
+            include_restricted=include_restricted,
+            model=model,
+            user_id=user_id,
+            evidence_sufficient=evidence_sufficient,
+            assistant_message_id=assistant_message_id,
+        ):
+            yield event
+
+    except TimeoutError:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": "Request timed out."})
+    except (FileNotFoundError, ValueError) as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": str(exc)})
+    except Exception as exc:
+        await _finalize_as_error(assistant_message_id, full_tokens)
+        yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
+
+
 @router.post("/chat/stream")
 async def chat_stream(
     payload: ChatRequest,
     user: CurrentUser,
 ) -> StreamingResponse:
-    """SSE streaming endpoint — yields tokens as they arrive from the LLM.
-
-    Event types:
-      {"type": "retrieving"}                    — retrieval phase started
-      {"type": "thinking"}                      — LLM generation about to start
-      {"type": "token", "value": "..."}         — one text chunk from the LLM
-      {"type": "citations", "data": [...], ...} — final metadata (sent once)
-      {"type": "answer_done", ...}              — answer is complete; suggestions may follow
-      {"type": "suggestions", "items": [...]}   — validated follow-ups
-      {"type": "done"}                          — stream connection complete
-      {"type": "error", "message": "..."}       — terminal error
+    """SSE streaming endpoint, driven by the tool-calling web-search agent
+    (chat/rag/agent/graph.py). See _stream_agent_events for event types.
     """
     doc_ids = [str(d) for d in payload.document_ids]
     filenames = list(payload.filenames or [])
@@ -227,6 +815,8 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
     user_id = str(user["id"])
+    is_admin = user["role"] == "admin"
+    effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
 
     if payload.session_id is not None:
         session_id = str(payload.session_id)
@@ -235,9 +825,6 @@ async def chat_stream(
         )
         if not owns:
             raise HTTPException(status_code=404, detail="Session not found.")
-        history = await asyncio.to_thread(
-            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
-        )
     else:
         session_id = await asyncio.to_thread(
             chat_history_repository.create_session,
@@ -246,170 +833,148 @@ async def chat_stream(
             doc_ids or filenames,
             payload.response_mode,
         )
-        history = []
 
-    async def event_generator() -> AsyncGenerator[str, None]:
-        def _sse(obj: dict) -> str:
-            return f"data: {_json.dumps(obj)}\n\n"
+    await asyncio.to_thread(
+        chat_history_repository.add_message, session_id, "user", payload.question
+    )
+    # Created up front (not after the answer is ready) so tool-call trace
+    # steps can be written to this row as they happen — see
+    # _stream_agent_events and history_repository.create_pending_message.
+    assistant_message_id = await asyncio.to_thread(
+        chat_history_repository.create_pending_message,
+        session_id,
+        "assistant",
+        payload.agent_mode,
+    )
 
-        full_tokens: list[str] = []
-        citations: list[dict] = []
-        evidence_sufficient = True
-        evidence_reason: str | None = None
-        resolved_model: str | None = None
+    if payload.agent_mode == "direct":
+        # No LangGraph checkpointer involved in this mode — always read
+        # conversation context straight from the DB, same as /chat.
+        history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+        return StreamingResponse(
+            _stream_direct_events(
+                question=payload.question,
+                document_ids=doc_ids or None,
+                filenames=filenames or None,
+                model=payload.model,
+                response_mode=payload.response_mode,
+                answer_mode=effective_answer_mode,
+                top_k=payload.top_k,
+                include_restricted=is_admin,
+                history=history,
+                session_id=session_id,
+                assistant_message_id=assistant_message_id,
+                user_id=user_id,
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
-        try:
-            await asyncio.to_thread(
-                chat_history_repository.add_message, session_id, "user", payload.question
-            )
+    config = {"configurable": {"thread_id": session_id}}
+    graph = get_agent_graph()
+    # A brand-new thread has no prior checkpoint state — seed it with this
+    # session's DB history so the agent has context. An existing thread
+    # (continuing conversation, or a resumed interrupt) already carries its
+    # own message history via the checkpointer, so only the new question is
+    # appended — the DB history is not-reloaded there to avoid duplicating it.
+    existing_state = await graph.aget_state(config)
+    if existing_state.values.get("messages"):
+        input_messages = [HumanMessage(content=payload.question)]
+    else:
+        history = await asyncio.to_thread(
+            chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
+        )
+        input_messages = [
+            HumanMessage(content=h["content"])
+            if h["role"] == "user"
+            else AIMessage(content=h["content"])
+            for h in history
+        ]
+        input_messages.append(HumanMessage(content=payload.question))
 
-            yield _sse({"type": "retrieving"})
-
-            state = await asyncio.wait_for(
-                asyncio.to_thread(
-                    run_retrieval,
-                    question=payload.question,
-                    document_ids=doc_ids or None,
-                    filenames=filenames or None,
-                    model=payload.model,
-                    response_mode=payload.response_mode,
-                    answer_mode=payload.answer_mode,
-                    top_k=payload.top_k,
-                    include_restricted=user["role"] == "admin",
-                    history=history,
-                ),
-                timeout=60.0,
-            )
-
-            evidence_sufficient = bool(state.get("evidence_sufficient", False))
-            evidence_reason = state.get("evidence_reason")
-            citations = state.get("citations", [])
-            effective_answer_mode = str(state.get("answer_mode", "analysis"))
-
-            # Mirror route_after_evidence_check logic
-            should_generate = evidence_sufficient or (
-                effective_answer_mode == "chat" and payload.response_mode != "policymaker"
-            )
-
-            if should_generate:
-                yield _sse({"type": "thinking"})
-                # Resolved once up front (cheap, deterministic) so we know what
-                # to persist/report even though generate_answer_streaming
-                # resolves the same target again internally to build its client.
-                provider, selected_model, _config = resolve_generation_target(payload.model)
-                resolved_model = f"{provider}/{selected_model}"
-                async for token in generate_answer_streaming(
-                    question=payload.question,
-                    context=state.get("context", ""),
-                    model=payload.model,
-                    response_mode=payload.response_mode,
-                    answer_mode=effective_answer_mode,
-                    history=history,
-                    citations=citations,
-                ):
-                    full_tokens.append(token)
-                    yield _sse({"type": "token", "value": token})
-            else:
-                refusal = get_insufficient_evidence_message(
-                    question=payload.question,
-                    reason=evidence_reason or "Too little relevant text was retrieved.",
-                    mode=payload.response_mode,
-                )
-                full_tokens.append(refusal)
-                citations = []
-                yield _sse({"type": "token", "value": refusal})
-
-            complete_answer = "".join(full_tokens)
-
-            # Persist and publish the completed answer before starting the slower
-            # suggestion pipeline. The frontend can stop rendering the answer as a
-            # token stream and show a suggestion-specific progress indicator.
-            sug_cfg = None
-            suggestions_pending = False
-            if evidence_sufficient and complete_answer.strip():
-                try:
-                    sug_cfg = await asyncio.to_thread(suggestions_service.active_config)
-                    suggestions_pending = bool(sug_cfg.enabled)
-                except Exception:
-                    logger.exception("Suggestion settings unavailable; skipping follow-ups")
-
-            assistant_message_id = await asyncio.to_thread(
-                chat_history_repository.add_message,
-                session_id,
-                "assistant",
-                complete_answer,
-                citations,
-                evidence_sufficient,
-                payload.response_mode,
-                payload.answer_mode,
-                resolved_model,
-                [],
-            )
-            await asyncio.to_thread(chat_history_repository.touch_session, session_id)
-
-            yield _sse(
-                {
-                    "type": "citations",
-                    "data": citations,
-                    "evidence_sufficient": evidence_sufficient,
-                    "evidence_reason": evidence_reason,
-                    "response_mode": payload.response_mode,
-                    "answer_mode": effective_answer_mode,
-                    "session_id": session_id,
-                    "model": resolved_model,
-                }
-            )
-            yield _sse(
-                {
-                    "type": "answer_done",
-                    "suggestions_pending": suggestions_pending,
-                }
-            )
-
-            if suggestions_pending and sug_cfg is not None:
-                suggestions: list[str] = []
-                try:
-                    suggestions = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            generate_followup_suggestions,
-                            question=payload.question,
-                            answer=complete_answer,
-                            context=state.get("context", ""),
-                            identifiers=doc_ids or filenames,
-                            response_mode=payload.response_mode,
-                            history=history,
-                            include_restricted=user["role"] == "admin",
-                            model=payload.model,
-                            user_id=user_id,
-                            config=sug_cfg,
-                        ),
-                        timeout=45.0,
-                    )
-                except Exception:
-                    logger.exception("Follow-up generation timed out or failed")
-
-                try:
-                    await asyncio.to_thread(
-                        chat_history_repository.update_message_suggestions,
-                        assistant_message_id,
-                        suggestions,
-                    )
-                except Exception:
-                    logger.exception("Generated suggestions could not be persisted")
-                # Always emit the completion event, including an empty list, so
-                # the frontend can clear its suggestion-specific loading state.
-                yield _sse({"type": "suggestions", "items": suggestions})
-            yield _sse({"type": "done"})
-
-        except TimeoutError:
-            yield _sse({"type": "error", "message": "Request timed out after 60 s."})
-        except (FileNotFoundError, ValueError) as exc:
-            yield _sse({"type": "error", "message": str(exc)})
-        except Exception as exc:
-            yield _sse({"type": "error", "message": f"Model request failed: {exc}"})
+    graph_input = {
+        "messages": input_messages,
+        "document_ids": doc_ids,
+        "filenames": filenames,
+        "model": payload.model,
+        "response_mode": payload.response_mode,
+        "answer_mode": effective_answer_mode,
+        "top_k": payload.top_k,
+        "include_restricted": is_admin,
+        "is_admin": is_admin,
+        "user_id": user_id,
+        # Non-empty reset marker guarantees the persisted LastValue channel is
+        # overwritten for every new user question. Resume requests do not pass
+        # graph_input, so the same question keeps its counts across interrupt().
+        "tool_call_counts": {"__current_turn__": 1},
+        # evidence_sources/last_evidence_reason are also plain LastValue
+        # fields (see agent/state.py) — explicitly reset them here for the
+        # same reason as tool_call_counts above. Without this, a prior
+        # question's successful search leaves evidence_sources set in the
+        # thread's persisted checkpoint, so a later question with genuinely
+        # no evidence inherits the stale value: route_after_tools skips the
+        # insufficient_evidence node and the SSE/DB metadata falsely reports
+        # evidence_sufficient=true for an answer that was actually a refusal.
+        "evidence_sources": [],
+        "last_evidence_reason": None,
+        # Same reset reasoning as evidence_sources above — see
+        # agent/state.py::AgentState.turn_citation_keys.
+        "turn_citation_keys": [],
+        "assistant_message_id": assistant_message_id,
+    }
 
     return StreamingResponse(
-        event_generator(),
+        _stream_agent_events(
+            graph_input,
+            config=config,
+            session_id=session_id,
+            response_mode=payload.response_mode,
+            answer_mode=effective_answer_mode,
+            assistant_message_id=assistant_message_id,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/chat/resume")
+async def chat_resume(
+    payload: ResumeChatRequest,
+    user: CurrentUser,
+) -> StreamingResponse:
+    """Resume a chat turn paused by interrupt() (an ask_user or
+    confirm_import event from /chat/stream). Streams the same SSE event
+    types as /chat/stream, continuing exactly where the agent left off.
+    """
+    session_id = str(payload.session_id)
+    user_id = str(user["id"])
+    owns = await asyncio.to_thread(
+        chat_history_repository.session_belongs_to_user, session_id, user_id
+    )
+    if not owns:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    config = {"configurable": {"thread_id": session_id}}
+    graph = get_agent_graph()
+    state = await graph.aget_state(config)
+    if not state.next:
+        raise HTTPException(status_code=409, detail="This session has no paused turn to resume.")
+
+    response_mode = state.values.get("response_mode", "researcher")
+    answer_mode = state.values.get("answer_mode", "analysis")
+    assistant_message_id = state.values.get("assistant_message_id")
+
+    return StreamingResponse(
+        _stream_agent_events(
+            Command(resume=payload.answer),
+            config=config,
+            session_id=session_id,
+            response_mode=response_mode,
+            answer_mode=answer_mode,
+            assistant_message_id=assistant_message_id,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
