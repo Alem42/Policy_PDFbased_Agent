@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from app.modules.chat import router as chat_router
+from app.modules.chat.application import streaming as chat_streaming
 from app.modules.chat.schemas import ChatRequest
 from app.modules.chat.suggestions import generator
 from app.modules.chat.suggestions.config import SuggestionConfig
@@ -307,8 +308,8 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         lambda mid, items: persisted.update(message_id=mid, items=items) or True,
     )
     monkeypatch.setattr(
-        chat_router,
-        "run_retrieval",
+        chat_streaming.direct_orchestrator,
+        "retrieve",
         lambda **_kwargs: {
             "context": "Grounded document context",
             "citations": [{"title": "Policy", "quote": "Evidence"}],
@@ -318,7 +319,7 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         },
     )
     monkeypatch.setattr(
-        chat_router,
+        chat_streaming,
         "resolve_generation_target",
         lambda _model: ("openai", "fast-model", {}),
     )
@@ -327,14 +328,14 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         yield "Grounded "
         yield "answer"
 
-    monkeypatch.setattr(chat_router, "generate_answer_streaming", fake_answer_stream)
+    monkeypatch.setattr(chat_streaming, "generate_answer_streaming", fake_answer_stream)
     monkeypatch.setattr(
-        chat_router.suggestions_service,
+        chat_streaming.suggestions_service,
         "active_config",
         lambda: _cfg(),
     )
     monkeypatch.setattr(
-        chat_router,
+        chat_streaming,
         "generate_followup_suggestions",
         lambda **_kwargs: ["Next grounded question?"],
     )
