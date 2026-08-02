@@ -15,9 +15,14 @@ from fastapi import (
 )
 
 from app.modules.auth.dependencies import require_admin
+from app.modules.chat.rag.web_search.contracts import WebSearchProviderError
+from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
+from app.modules.crawling.security.urls import validate_public_url
 from app.modules.documents.admin_schemas import (
     AdminDocumentCreateResponse,
     AdminDocumentMetadataUpdate,
+    AdminWebImportRequest,
+    AdminWebImportResponse,
     DocumentProcessingStatus,
     ProcessingStatus,
 )
@@ -31,6 +36,7 @@ from app.modules.documents.service import (
     reembed_library,
     rescan_library,
     save_upload,
+    save_web_import,
 )
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
@@ -117,6 +123,42 @@ def _run_process_document(document_id: str) -> None:
         process_document(document_id)
     except Exception as exc:
         logger.error("Background processing failed for %s: %s", document_id, exc)
+
+
+@router.post(
+    "/import-url",
+    response_model=AdminWebImportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_web_document(
+    payload: AdminWebImportRequest,
+    admin: AdminUser,
+) -> AdminWebImportResponse:
+    """Fetch one public web page and add it to the shared document library."""
+    url = payload.url.strip()
+    title = payload.title.strip() if payload.title else None
+    try:
+        await validate_public_url(url)
+        page = await get_active_web_search_provider().fetch_page(url)
+        if not page.content.strip():
+            raise ValueError("The page did not contain readable text to import.")
+        document, was_duplicate = await save_web_import(
+            url=page.url or url,
+            title=title or page.title or url,
+            markdown=page.content,
+            imported_by=str(admin["id"]),
+            imported_via="web_import_admin",
+        )
+        return AdminWebImportResponse(
+            id=document["id"],
+            title=document.get("title") or document.get("name") or title or page.title or url,
+            source_url=document.get("source_url") or page.url or url,
+            was_duplicate=was_duplicate,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except WebSearchProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/rescan")

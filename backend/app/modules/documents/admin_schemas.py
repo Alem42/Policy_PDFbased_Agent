@@ -27,6 +27,19 @@ class AdminDocumentCreateResponse(BaseModel):
     processing_status: ProcessingStatus = ProcessingStatus.QUEUED
 
 
+class AdminWebImportRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    title: str | None = Field(default=None, max_length=200)
+
+
+class AdminWebImportResponse(BaseModel):
+    id: UUID
+    title: str
+    source_url: str
+    was_duplicate: bool = False
+    processing_status: ProcessingStatus = ProcessingStatus.INDEXED
+
+
 class AdminDocumentMetadataUpdate(BaseModel):
     title: str | None = None
     summary: str | None = None
