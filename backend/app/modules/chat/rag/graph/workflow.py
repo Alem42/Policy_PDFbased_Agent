@@ -14,7 +14,7 @@ from app.modules.chat.rag.graph.state import (
     ResponseMode,
     normalize_answer_mode,
 )
-from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.contracts import MetadataFilters, RetrievalRequest
 from app.modules.retrieval.service import retrieval_service
 
 
@@ -58,6 +58,7 @@ def run_retrieval(
     top_k: int = 8,
     include_restricted: bool = False,
     history: list[dict] | None = None,
+    metadata_filters: dict | None = None,
 ) -> dict:
     """Run load → retrieve → evidence-check and return the raw graph state.
 
@@ -73,6 +74,7 @@ def run_retrieval(
         "answer_mode": effective_answer_mode,
         "top_k": top_k,
         "include_restricted": include_restricted,
+        "metadata_filters": metadata_filters or {},
         "history": history or [],
         "context": "",
         "truncated": False,
@@ -92,6 +94,7 @@ def run_retrieval(
             identifiers=tuple(document_ids or filenames or []),
             top_k=top_k,
             include_restricted=include_restricted,
+            metadata_filters=MetadataFilters.from_mapping(metadata_filters),
         )
     )
     state.update(result.as_state())
@@ -108,6 +111,7 @@ def run_pdf_qa(
     top_k: int = 8,
     include_restricted: bool = False,
     history: list[dict] | None = None,
+    metadata_filters: dict | None = None,
 ) -> dict:
     """Invoke the compiled graph and return its final state."""
     effective_answer_mode = normalize_answer_mode(response_mode, answer_mode)
@@ -121,6 +125,7 @@ def run_pdf_qa(
             "answer_mode": effective_answer_mode,
             "top_k": top_k,
             "include_restricted": include_restricted,
+            "metadata_filters": metadata_filters or {},
             "history": history or [],
         }
     )

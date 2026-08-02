@@ -18,7 +18,7 @@ from app.modules.chat.rag.agent.state import (
 )
 from app.modules.chat.rag.agent_tools import web_evidence
 from app.modules.documents.web_import import WebImportRequest, web_import_service
-from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.contracts import MetadataFilters, RetrievalRequest
 from app.modules.retrieval.service import retrieval_service
 from app.modules.web_search.contracts import WebSearchProviderError
 from app.modules.web_search.service import web_search_service
@@ -129,6 +129,7 @@ def _run_retrieval_pipeline(
     *,
     top_k: int,
     include_restricted: bool,
+    metadata_filters: dict | None = None,
 ) -> dict:
     """Compatibility adapter around the shared selected-document retriever."""
     return retrieval_service.retrieve(
@@ -138,6 +139,7 @@ def _run_retrieval_pipeline(
             identifiers=tuple(identifiers),
             top_k=top_k,
             include_restricted=include_restricted,
+            metadata_filters=MetadataFilters.from_mapping(metadata_filters),
         )
     ).as_state()
 
@@ -154,6 +156,7 @@ async def search_internal_documents(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    metadata_filters: Annotated[dict, InjectedState("metadata_filters")],
     reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search only the documents selected for this conversation.
@@ -178,7 +181,11 @@ async def search_internal_documents(
 
     def _run() -> dict:
         return _run_retrieval_pipeline(
-            query, identifiers, top_k=top_k or 8, include_restricted=include_restricted
+            query,
+            identifiers,
+            top_k=top_k or 8,
+            include_restricted=include_restricted,
+            metadata_filters=metadata_filters,
         )
 
     result = await asyncio.to_thread(_run)
@@ -195,6 +202,9 @@ async def search_internal_documents(
         "evidence_sufficient": sufficient,
         "reason": result.get("evidence_reason"),
         "results": tool_results,
+        "filter_applied": result.get("filter_applied", False),
+        "filter_fallback": result.get("filter_fallback", False),
+        "filter_notice": result.get("filter_notice"),
     }
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
@@ -202,6 +212,8 @@ async def search_internal_documents(
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
         "last_evidence_reason": result.get("evidence_reason"),
+        "filter_fallback": result.get("filter_fallback", False),
+        "filter_notice": result.get("filter_notice"),
     }
     # Only credit this tier if it actually surfaced evidence no other tier
     # already claimed THIS turn — a full_corpus/web call that just re-finds a
@@ -225,6 +237,7 @@ async def search_full_corpus(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    metadata_filters: Annotated[dict, InjectedState("metadata_filters")],
     reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search the ENTIRE document library, not just documents selected for
@@ -246,6 +259,7 @@ async def search_full_corpus(
                 scope="full_corpus",
                 top_k=top_k or 8,
                 include_restricted=include_restricted,
+                metadata_filters=MetadataFilters.from_mapping(metadata_filters),
             )
         )
 
@@ -258,13 +272,22 @@ async def search_full_corpus(
     ]
     numbered_results, new_citations = _number_citations(citations, raw_citations)
     tool_results = _results_with_evidence_text(numbered_results, result.chunks)
-    payload = {"evidence_sufficient": sufficient, "reason": reason, "results": tool_results}
+    payload = {
+        "evidence_sufficient": sufficient,
+        "reason": reason,
+        "results": tool_results,
+        "filter_applied": result.filter_applied,
+        "filter_fallback": result.filter_fallback,
+        "filter_notice": result.filter_notice,
+    }
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
         "last_evidence_reason": reason,
+        "filter_fallback": result.filter_fallback,
+        "filter_notice": result.filter_notice,
     }
     # See search_internal_documents above: only credit this tier when it
     # contributed a citation no other tier already claimed this turn.

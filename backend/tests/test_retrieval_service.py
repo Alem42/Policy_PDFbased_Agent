@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 
 from app.modules.retrieval import service as retrieval_module
-from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.contracts import MetadataFilters, RetrievalRequest
+from app.modules.retrieval.metadata_filters import FilterApplication
 from app.modules.retrieval.service import RetrievalService
 
 
@@ -63,6 +64,42 @@ def test_full_corpus_retrieval_uses_same_evidence_result(monkeypatch) -> None:
     assert result.pages == []
     assert result.chunks == []
     assert result.evidence.sufficient is False
+
+
+def test_metadata_filter_fallback_uses_original_scope_and_exposes_notice(monkeypatch) -> None:
+    captured = {}
+    notice = "No current documents matched; older sources may be outdated."
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service,
+        "apply",
+        lambda *args, **kwargs: FilterApplication(
+            ("doc-old",), applied=True, fallback=True, notice=notice
+        ),
+    )
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: [])
+
+    def retrieve(_question, identifiers, **_kwargs):
+        captured["identifiers"] = identifiers
+        return []
+
+    monkeypatch.setattr(retrieval_module, "retrieve_relevant_chunks", retrieve)
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="What is the latest policy?",
+            identifiers=("doc-old",),
+            metadata_filters=MetadataFilters(
+                year_from=2022,
+                freshness_requested=True,
+            ),
+        )
+    )
+
+    assert captured["identifiers"] == ["doc-old"]
+    assert result.filter_applied is True
+    assert result.filter_fallback is True
+    assert result.filter_notice == notice
 
 
 def test_indexed_irrelevant_results_do_not_fall_back_to_misleading_page_citations(

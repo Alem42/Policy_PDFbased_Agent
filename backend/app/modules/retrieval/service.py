@@ -26,6 +26,7 @@ from app.modules.retrieval.evidence import (
     min_reranker_score,
 )
 from app.modules.retrieval.formatting import format_context
+from app.modules.retrieval.metadata_filters import FilterApplication, metadata_filter_service
 
 logger = logging.getLogger(__name__)
 
@@ -55,29 +56,48 @@ class RetrievalService:
             raise ValueError("Selected-document retrieval requires at least one document.")
 
         identifiers = list(request.identifiers)
+        filter_application = (
+            metadata_filter_service.apply(
+                request.metadata_filters,
+                scope=request.scope,
+                identifiers=identifiers,
+                include_restricted=request.include_restricted,
+            )
+            if request.metadata_filters.active
+            else FilterApplication(tuple(identifiers))
+        )
+        effective_identifiers = list(filter_application.document_ids)
         if request.scope == "selected":
             pages = (
                 preloaded_pages
-                if preloaded_pages is not None
+                if preloaded_pages is not None and not request.metadata_filters.active
                 else self.load_pages(
-                    identifiers,
+                    effective_identifiers,
                     include_restricted=request.include_restricted,
                 )
             )
             raw_chunks = retrieve_relevant_chunks(
                 request.question,
-                identifiers,
+                effective_identifiers,
                 limit=request.top_k,
                 include_restricted=request.include_restricted,
             )
-            has_embeddings = documents_have_embeddings(identifiers)
+            has_embeddings = documents_have_embeddings(effective_identifiers)
         elif request.scope == "full_corpus":
             pages = []
-            raw_chunks = search_full_corpus(
-                request.question,
-                limit=request.top_k,
-                include_restricted=request.include_restricted,
-            )
+            if request.metadata_filters.active:
+                raw_chunks = retrieve_relevant_chunks(
+                    request.question,
+                    effective_identifiers,
+                    limit=request.top_k,
+                    include_restricted=request.include_restricted,
+                )
+            else:
+                raw_chunks = search_full_corpus(
+                    request.question,
+                    limit=request.top_k,
+                    include_restricted=request.include_restricted,
+                )
             # Full-corpus search is exclusively vector-backed. Empty results
             # therefore mean no vector evidence, not a page fallback.
             has_embeddings = True
@@ -108,6 +128,9 @@ class RetrievalService:
             truncated=truncated,
             used_vector_retrieval=has_embeddings,
             evidence=EvidenceDecision(sufficient, reason),
+            filter_applied=filter_application.applied,
+            filter_fallback=filter_application.fallback,
+            filter_notice=filter_application.notice,
         )
 
     def validate_questions(self, request: QuestionValidationRequest) -> list[str]:

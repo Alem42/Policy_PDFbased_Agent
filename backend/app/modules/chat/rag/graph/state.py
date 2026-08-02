@@ -25,6 +25,7 @@ class PDFQAState(TypedDict):
     answer_mode: NotRequired[AnswerMode]
     top_k: NotRequired[int]
     include_restricted: NotRequired[bool]
+    metadata_filters: NotRequired[dict]
     history: NotRequired[list[dict]]  # [{"role": "user"|"assistant", "content": str}, ...]
     pages: NotRequired[list[dict]]
     chunks: NotRequired[list[dict]]  # filtered (distance ≤ threshold) — used for context
@@ -35,5 +36,8 @@ class PDFQAState(TypedDict):
     used_vector_retrieval: NotRequired[bool]
     evidence_sufficient: NotRequired[bool]
     evidence_reason: NotRequired[str | None]
+    filter_applied: NotRequired[bool]
+    filter_fallback: NotRequired[bool]
+    filter_notice: NotRequired[str | None]
     answer: NotRequired[str]
     resolved_model: NotRequired[str | None]

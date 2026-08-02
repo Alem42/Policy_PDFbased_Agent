@@ -40,6 +40,9 @@ def tool_result_event(message: Any) -> dict:
         "source_titles": source_titles,
         "answer_plan": result.get("answer_plan"),
         "citation_numbers": result.get("citation_numbers"),
+        "filter_applied": result.get("filter_applied", False),
+        "filter_fallback": result.get("filter_fallback", False),
+        "filter_notice": result.get("filter_notice"),
     }
 
 
@@ -70,4 +73,7 @@ def apply_tool_result(steps: list[dict], result_event: dict) -> None:
             step["sourceTitles"] = result_event.get("source_titles") or []
             step["answerPlan"] = result_event.get("answer_plan")
             step["citationNumbers"] = result_event.get("citation_numbers") or []
+            step["filterApplied"] = result_event.get("filter_applied", False)
+            step["filterFallback"] = result_event.get("filter_fallback", False)
+            step["filterNotice"] = result_event.get("filter_notice")
             break

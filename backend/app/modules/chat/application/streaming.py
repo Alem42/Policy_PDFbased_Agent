@@ -121,6 +121,8 @@ async def stream_agent_events(
     full_tokens: list[str] = []
     steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
     interrupted = False
+    fallback_notice: str | None = None
+    fallback_notice_emitted = False
 
     try:
         async with aclosing(
@@ -132,6 +134,11 @@ async def stream_agent_events(
                     if meta.get("langgraph_node") == "final_generation" and getattr(
                         message, "content", None
                     ):
+                        if fallback_notice and not fallback_notice_emitted:
+                            prefix = f"Note: {fallback_notice}\n\n"
+                            full_tokens.append(prefix)
+                            yield encode_sse({"type": "token", "value": prefix})
+                            fallback_notice_emitted = True
                         full_tokens.append(message.content)
                         yield encode_sse({"type": "token", "value": message.content})
                     continue
@@ -157,11 +164,20 @@ async def stream_agent_events(
                 if "tools" in chunk:
                     for message in chunk["tools"].get("messages", []):
                         result_event = tool_result_event(message)
+                        if result_event.get("filter_fallback") and result_event.get(
+                            "filter_notice"
+                        ):
+                            fallback_notice = result_event["filter_notice"]
                         apply_tool_result(steps, result_event)
                         await chat_turn_service.update_steps(assistant_message_id, steps)
                         yield encode_sse(result_event)
 
                 if "insufficient_evidence" in chunk:
+                    if fallback_notice and not fallback_notice_emitted:
+                        prefix = f"Note: {fallback_notice}\n\n"
+                        full_tokens.append(prefix)
+                        yield encode_sse({"type": "token", "value": prefix})
+                        fallback_notice_emitted = True
                     for message in chunk["insufficient_evidence"].get("messages", []):
                         content = getattr(message, "content", "") or ""
                         full_tokens.append(content)
@@ -211,6 +227,8 @@ async def stream_agent_events(
                 "agent_mode": "react",
                 "session_id": session_id,
                 "model": resolved_model,
+                "filter_fallback": bool(values.get("filter_fallback", False)),
+                "filter_notice": values.get("filter_notice"),
             }
         )
 
@@ -259,6 +277,7 @@ async def stream_direct_events(
     session_id: str,
     assistant_message_id: str,
     user_id: str | None = None,
+    metadata_filters: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Drive the fixed one-retrieval Direct path and emit the same SSE protocol."""
 
@@ -276,6 +295,7 @@ async def stream_direct_events(
                 top_k=top_k,
                 include_restricted=include_restricted,
                 history=history,
+                metadata_filters=metadata_filters,
             ),
             timeout=120.0,
         )
@@ -283,6 +303,11 @@ async def stream_direct_events(
         citations = state.get("citations", [])
         provider, selected_model, _config = resolve_generation_target(model)
         resolved_model = f"{provider}/{selected_model}"
+
+        if state.get("filter_fallback") and state.get("filter_notice"):
+            notice = f"Note: {state['filter_notice']}\n\n"
+            full_tokens.append(notice)
+            yield encode_sse({"type": "token", "value": notice})
 
         if route_after_evidence_check(state) == "insufficient_evidence":
             answer = get_insufficient_evidence_message(
@@ -333,6 +358,9 @@ async def stream_direct_events(
                 "agent_mode": "direct",
                 "session_id": session_id,
                 "model": resolved_model,
+                "filter_applied": state.get("filter_applied", False),
+                "filter_fallback": state.get("filter_fallback", False),
+                "filter_notice": state.get("filter_notice"),
             }
         )
 

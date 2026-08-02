@@ -6,7 +6,7 @@ from app.modules.chat.rag.graph.state import (
     normalize_answer_mode,
 )
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
-from app.modules.retrieval.contracts import RetrievalRequest
+from app.modules.retrieval.contracts import MetadataFilters, RetrievalRequest
 from app.modules.retrieval.service import (
     retrieval_service,
 )
@@ -47,6 +47,7 @@ def retrieve_context_node(state: PDFQAState) -> dict:
             identifiers=tuple(_identifiers(state)),
             top_k=state.get("top_k", 8),
             include_restricted=state.get("include_restricted", False),
+            metadata_filters=MetadataFilters.from_mapping(state.get("metadata_filters")),
         ),
         preloaded_pages=state.get("pages", []),
     )
@@ -64,13 +65,14 @@ def check_evidence_node(state: PDFQAState) -> dict:
 def insufficient_evidence_node(state: PDFQAState) -> dict:
     """Return a mode-aware refusal when evidence is too weak."""
     reason = state.get("evidence_reason") or "The retrieved excerpts are too weak."
-    return {
-        "answer": get_insufficient_evidence_message(
-            question=state["question"],
-            reason=reason,
-            mode=_response_mode(state),
-        )
-    }
+    answer = get_insufficient_evidence_message(
+        question=state["question"],
+        reason=reason,
+        mode=_response_mode(state),
+    )
+    if state.get("filter_fallback") and state.get("filter_notice"):
+        answer = f"Note: {state['filter_notice']}\n\n{answer}"
+    return {"answer": answer}
 
 
 def generate_answer_node(state: PDFQAState) -> dict:
@@ -84,6 +86,8 @@ def generate_answer_node(state: PDFQAState) -> dict:
         history=state.get("history", []),
         citations=state.get("citations", []),
     )
+    if state.get("filter_fallback") and state.get("filter_notice"):
+        answer = f"Note: {state['filter_notice']}\n\n{answer}"
     return {"answer": answer, "resolved_model": resolved_model}
 
 

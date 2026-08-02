@@ -31,6 +31,7 @@ from app.modules.chat.schemas import (
 )
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.generator import generate_followup_suggestions
+from app.modules.retrieval.metadata_filters import metadata_filter_service
 from app.modules.settings.service import get_provider_api_key
 
 router = APIRouter(tags=["rag"])
@@ -86,7 +87,14 @@ async def chat(
     identifiers = doc_ids or filenames
 
     user_id = str(user["id"])
+    include_restricted = user["role"] == "admin"
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
+    metadata_filters = await asyncio.to_thread(
+        metadata_filter_service.infer,
+        payload.question,
+        payload.filters.model_dump(),
+        include_restricted=include_restricted,
+    )
 
     try:
         turn = await chat_turn_service.start(
@@ -114,8 +122,9 @@ async def chat(
                 response_mode=payload.response_mode,
                 answer_mode=effective_answer_mode,
                 top_k=payload.top_k,
-                include_restricted=user["role"] == "admin",
+                include_restricted=include_restricted,
                 history=history,
+                metadata_filters=metadata_filters.as_dict(),
             ),
             timeout=120.0,
         )
@@ -141,7 +150,7 @@ async def chat(
                             identifiers=doc_ids or filenames,
                             response_mode=payload.response_mode,
                             history=history,
-                            include_restricted=user["role"] == "admin",
+                            include_restricted=include_restricted,
                             model=payload.model,
                             user_id=user_id,
                             config=sug_cfg,
@@ -207,6 +216,12 @@ async def chat_stream(
     user_id = str(user["id"])
     is_admin = user["role"] == "admin"
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
+    metadata_filters = await asyncio.to_thread(
+        metadata_filter_service.infer,
+        payload.question,
+        payload.filters.model_dump(),
+        include_restricted=is_admin,
+    )
 
     try:
         turn = await chat_turn_service.start(
@@ -242,6 +257,7 @@ async def chat_stream(
                 session_id=session_id,
                 assistant_message_id=assistant_message_id,
                 user_id=user_id,
+                metadata_filters=metadata_filters.as_dict(),
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -277,6 +293,9 @@ async def chat_stream(
         "include_restricted": is_admin,
         "is_admin": is_admin,
         "user_id": user_id,
+        "metadata_filters": metadata_filters.as_dict(),
+        "filter_fallback": False,
+        "filter_notice": None,
         # Non-empty reset marker guarantees the persisted LastValue channel is
         # overwritten for every new user question. Resume requests do not pass
         # graph_input, so the same question keeps its counts across interrupt().

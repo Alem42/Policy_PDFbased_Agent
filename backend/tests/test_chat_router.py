@@ -38,6 +38,9 @@ def test_tool_result_event_exposes_compact_trace_summary() -> None:
         "source_titles": ["Space Strategy", "Defence Space"],
         "answer_plan": None,
         "citation_numbers": None,
+        "filter_applied": False,
+        "filter_fallback": False,
+        "filter_notice": None,
     }
 
 
