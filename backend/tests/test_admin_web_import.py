@@ -2,41 +2,27 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.modules.auth.dependencies import require_admin
-from app.modules.chat.rag.web_search.contracts import WebSearchResult
 from app.modules.documents import admin_router
-
-
-class FakeProvider:
-    name = "fake"
-
-    async def fetch_page(self, url: str) -> WebSearchResult:
-        return WebSearchResult(
-            url=url,
-            title="Fetched policy page",
-            content="# Policy\n\nReadable policy content.",
-        )
+from app.modules.documents.web_import import WebImportResult
 
 
 def test_admin_can_import_public_web_page(monkeypatch) -> None:
     captured: dict = {}
 
-    async def fake_validate(url: str) -> None:
-        captured["validated_url"] = url
-
-    async def fake_save_web_import(**kwargs):
-        captured.update(kwargs)
-        return (
-            {
+    async def fake_import(request):
+        captured["request"] = request
+        return WebImportResult(
+            document={
                 "id": "cfcf6243-c221-43f8-8b6b-048e7f387f47",
-                "title": kwargs["title"],
-                "source_url": kwargs["url"],
+                "title": request.title,
+                "source_url": request.url,
             },
-            False,
+            was_duplicate=False,
+            title=request.title,
+            source_url=request.url,
         )
 
-    monkeypatch.setattr(admin_router, "validate_public_url", fake_validate)
-    monkeypatch.setattr(admin_router, "get_active_web_search_provider", FakeProvider)
-    monkeypatch.setattr(admin_router, "save_web_import", fake_save_web_import)
+    monkeypatch.setattr(admin_router.web_import_service, "import_page", fake_import)
     app.dependency_overrides[require_admin] = lambda: {
         "id": "e8c8a641-9532-40c9-96cc-32e929f0bb33",
         "role": "admin",
@@ -58,9 +44,11 @@ def test_admin_can_import_public_web_page(monkeypatch) -> None:
         "was_duplicate": False,
         "processing_status": "indexed",
     }
-    assert captured["validated_url"] == "https://example.com/policy"
-    assert captured["imported_by"] == "e8c8a641-9532-40c9-96cc-32e929f0bb33"
-    assert captured["imported_via"] == "web_import_admin"
+    request = captured["request"]
+    assert request.url == "https://example.com/policy"
+    assert request.title == "My policy page"
+    assert request.imported_by == "e8c8a641-9532-40c9-96cc-32e929f0bb33"
+    assert request.imported_via == "web_import_admin"
 
 
 def test_web_import_requires_admin() -> None:

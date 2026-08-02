@@ -1,12 +1,12 @@
 import re
 from collections.abc import Callable
 
-from app.modules.documents.embeddings import (
-    estimate_embedding_token_count,
-    estimate_token_count,
-)
+from app.modules.embedding import service as embedding
+from app.modules.embedding.tokens import _tiktoken_count
 
 TokenCounter = Callable[[str], int]
+estimate_embedding_token_count = embedding.count_tokens
+estimate_token_count = _tiktoken_count
 
 # Defaults; the active budget is admin-tunable (Manage > Embedding) and passed
 # into chunk() at call time. The constants keep existing callers/tests unchanged.

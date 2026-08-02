@@ -15,9 +15,6 @@ from fastapi import (
 )
 
 from app.modules.auth.dependencies import require_admin
-from app.modules.chat.rag.web_search.contracts import WebSearchProviderError
-from app.modules.chat.rag.web_search.registry import get_active_web_search_provider
-from app.modules.crawling.security.urls import validate_public_url
 from app.modules.documents.admin_schemas import (
     AdminDocumentCreateResponse,
     AdminDocumentMetadataUpdate,
@@ -36,11 +33,15 @@ from app.modules.documents.service import (
     reembed_library,
     rescan_library,
     save_upload,
-    save_web_import,
 )
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
 )
+from app.modules.documents.web_import import (
+    WebImportRequest,
+    web_import_service,
+)
+from app.modules.web_search.contracts import WebSearchProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -138,22 +139,19 @@ async def import_web_document(
     url = payload.url.strip()
     title = payload.title.strip() if payload.title else None
     try:
-        await validate_public_url(url)
-        page = await get_active_web_search_provider().fetch_page(url)
-        if not page.content.strip():
-            raise ValueError("The page did not contain readable text to import.")
-        document, was_duplicate = await save_web_import(
-            url=page.url or url,
-            title=title or page.title or url,
-            markdown=page.content,
-            imported_by=str(admin["id"]),
-            imported_via="web_import_admin",
+        result = await web_import_service.import_page(
+            WebImportRequest(
+                url=url,
+                title=title,
+                imported_by=str(admin["id"]),
+                imported_via="web_import_admin",
+            )
         )
         return AdminWebImportResponse(
-            id=document["id"],
-            title=document.get("title") or document.get("name") or title or page.title or url,
-            source_url=document.get("source_url") or page.url or url,
-            was_duplicate=was_duplicate,
+            id=result.document["id"],
+            title=result.title,
+            source_url=result.source_url,
+            was_duplicate=result.was_duplicate,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

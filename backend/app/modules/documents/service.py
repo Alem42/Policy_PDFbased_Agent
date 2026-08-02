@@ -10,11 +10,6 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 from app.modules.documents.chunker import document_chunker
-from app.modules.documents.embeddings import (
-    embed_documents,
-    embed_query,
-    vector_literal,
-)
 from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.extraction import extract_document
 from app.modules.documents.file_store import document_file_store
@@ -86,8 +81,8 @@ def process_document(document_id: str) -> None:
             if header:
                 chunk.setdefault("metadata_json", {})["context_header"] = header
             chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
-        chunk_vectors = embed_documents(embed_inputs)
-        embeddings = [vector_literal(vector) for vector in chunk_vectors]
+        chunk_vectors = embedding.embed_documents(embed_inputs)
+        embeddings = [embedding.vector_literal(vector) for vector in chunk_vectors]
         embedding_repository.replace_document_chunks(
             document_id,
             chunks,
@@ -174,19 +169,56 @@ def _slugify_filename(title: str, url: str) -> str:
     return f"{base}.md"
 
 
-def _find_near_duplicate(document_id: str, sample_text: str) -> dict | None:
-    """L3 dedup: is this document's content an embedding near-duplicate of an
-    already-indexed document? Returns the existing document record if so."""
-    if not sample_text.strip():
+def _semantic_samples(text: str) -> list[str]:
+    """Return independent regions used for conservative semantic dedup.
+
+    Requiring agreement across multiple regions avoids deleting a document
+    merely because its introduction or boilerplate resembles another chunk.
+    Short pages rely on exact URL/byte/normalised-text dedup instead.
+    """
+    text = text.strip()
+    if len(text) < 1200:
+        return []
+    window = min(2000, max(600, len(text) // 4))
+    starts = (0, max(0, (len(text) - window) // 2), max(0, len(text) - window))
+    return list(dict.fromkeys(text[start : start + window] for start in starts))
+
+
+def _find_near_duplicate(document_id: str, text: str) -> dict | None:
+    """Return a semantic duplicate only when all page regions agree.
+
+    L3 is deliberately conservative. Exact duplicates are already handled by
+    L1/L2; false negatives here are safer than deleting a distinct policy page.
+    """
+    samples = _semantic_samples(text)
+    if len(samples) < 2:
         return None
-    query_vector = vector_literal(embed_query(sample_text[:4000]))
-    candidates = embedding_repository.retrieve_all(query_vector, limit=5, include_restricted=True)
-    for candidate in candidates:
-        if candidate["document_id"] == document_id:
-            continue
-        if candidate["distance"] <= L3_NEAR_DUPLICATE_DISTANCE:
-            return document_repository.get_record(candidate["document_id"], include_restricted=True)
-    return None
+
+    matches: list[dict[str, float]] = []
+    for sample in samples:
+        query_vector = embedding.vector_literal(embedding.embed_query(sample))
+        candidates = embedding_repository.retrieve_all(
+            query_vector,
+            limit=8,
+            include_restricted=True,
+        )
+        matches.append(
+            {
+                candidate["document_id"]: candidate["distance"]
+                for candidate in candidates
+                if candidate["document_id"] != document_id
+                and candidate["distance"] <= L3_NEAR_DUPLICATE_DISTANCE
+            }
+        )
+
+    common_ids = set(matches[0]).intersection(*(set(item) for item in matches[1:]))
+    if not common_ids:
+        return None
+    closest_id = min(
+        common_ids,
+        key=lambda candidate_id: sum(item[candidate_id] for item in matches),
+    )
+    return document_repository.get_record(closest_id, include_restricted=True)
 
 
 async def save_web_import(
@@ -212,33 +244,69 @@ async def save_web_import(
     """
     existing_by_url = document_repository.find_by_source_url(url)
     if existing_by_url:
-        record = document_repository.get_record(existing_by_url["id"], include_restricted=True)
-        return row_to_metadata(record), True
+        return (
+            document_content_repository.get_detail_record(
+                existing_by_url["id"], include_restricted=True
+            ),
+            True,
+        )
 
     filename = _slugify_filename(title, url)
     upload = UploadFile(filename=filename, file=io.BytesIO(markdown.encode("utf-8")))
-    saved = await save_upload(
-        upload,
-        source_url=url,
-        imported_by=imported_by,
-        imported_via=imported_via,
-    )
+    try:
+        saved = await save_upload(
+            upload,
+            source_url=url,
+            imported_by=imported_by,
+            imported_via=imported_via,
+        )
+    except DuplicateDocumentError as exc:
+        # A different URL may produce byte-identical Markdown. Treat the L1
+        # collision exactly like every other duplicate layer.
+        return (
+            document_content_repository.get_detail_record(
+                exc.existing_id,
+                include_restricted=True,
+            ),
+            True,
+        )
     document_id = saved["id"]
 
-    await asyncio.to_thread(process_document, document_id)
+    try:
+        await asyncio.to_thread(process_document, document_id)
+        duplicate = await asyncio.to_thread(
+            document_repository.find_by_content_hash,
+            document_file_store.normalized_content_hash(markdown),
+            exclude_id=document_id,
+        )
+        if duplicate is None:
+            duplicate = await asyncio.to_thread(_find_near_duplicate, document_id, markdown)
 
-    content_hash = document_file_store.normalized_content_hash(markdown)
-    duplicate = document_repository.find_by_content_hash(content_hash, exclude_id=document_id)
-    if duplicate is None:
-        duplicate = _find_near_duplicate(document_id, markdown)
+        if duplicate is not None:
+            await asyncio.to_thread(delete_document, document_id)
+            return (
+                document_content_repository.get_detail_record(
+                    duplicate["id"], include_restricted=True
+                ),
+                True,
+            )
 
-    if duplicate is not None:
-        delete_document(document_id)
-        record = document_repository.get_record(duplicate["id"], include_restricted=True)
-        return row_to_metadata(record), True
-
-    record = document_repository.get_record(document_id, include_restricted=True)
-    return row_to_metadata(record), False
+        # The fetched/site title is an explicit source fact. Persist it after
+        # generated metadata so the LLM cannot silently replace the requested
+        # display title.
+        return document_content_repository.update_metadata(
+            document_id,
+            {"title": title},
+        ), False
+    except Exception:
+        # Web import is transactional from the caller's perspective. The
+        # regular upload workflow keeps failed rows for status inspection, but
+        # this synchronous operation has no useful document id to return.
+        try:
+            await asyncio.to_thread(delete_document, document_id)
+        except Exception:
+            logger.exception("Failed to clean up web import %s", document_id)
+        raise
 
 
 def sync_existing_documents() -> None:
@@ -296,7 +364,7 @@ def reembed_document(document_id: str) -> int:
         f"{row['context_header']}\n\n{row['text']}" if row.get("context_header") else row["text"]
         for row in rows
     ]
-    literals = [vector_literal(vector) for vector in embed_documents(inputs)]
+    literals = [embedding.vector_literal(vector) for vector in embedding.embed_documents(inputs)]
     embedding_repository.store_vectors([row["chunk_id"] for row in rows], literals)
     return len(rows)
 
@@ -444,7 +512,7 @@ def retrieve_relevant_chunks(
     include_restricted: bool = False,
 ) -> list[dict]:
     document_ids = resolve_document_ids(identifiers, include_restricted)
-    query_vector = vector_literal(embed_query(question))
+    query_vector = embedding.vector_literal(embedding.embed_query(question))
 
     candidate_limit = max(limit * 3, 20)
     candidates = embedding_repository.retrieve(
@@ -465,7 +533,7 @@ def search_full_corpus(
     Used by the agent's search_full_corpus tool when the caller's selected
     documents don't have enough evidence to answer from.
     """
-    query_vector = vector_literal(embed_query(question))
+    query_vector = embedding.vector_literal(embedding.embed_query(question))
     candidate_limit = max(limit * 3, 20)
     candidates = embedding_repository.retrieve_all(
         query_vector,
