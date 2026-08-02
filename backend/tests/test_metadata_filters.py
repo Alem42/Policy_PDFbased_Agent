@@ -79,6 +79,30 @@ def test_after_year_is_an_exclusive_lower_bound() -> None:
     assert inferred.year_to is None
 
 
+def test_infer_recognises_exact_chinese_region_aliases() -> None:
+    service = MetadataFilterService(
+        FakeRepository(
+            [
+                *ROWS,
+                {**ROWS[0], "id": "doc-cn", "country_region": "China"},
+                {**ROWS[0], "id": "doc-sg", "country_region": "Singapore"},
+            ]
+        )
+    )
+
+    inferred = service.infer("比较澳大利亚、中国和新加坡的人工智能治理框架。")
+
+    assert inferred.country_regions == ("Australia", "China", "Singapore")
+
+
+def test_requested_answer_language_does_not_filter_source_language() -> None:
+    service = MetadataFilterService(FakeRepository(ROWS))
+
+    inferred = service.infer("请用中文回答：比较这些英文和法文政策。")
+
+    assert inferred.languages == ()
+
+
 def test_apply_exact_filters_restricts_selected_documents(monkeypatch) -> None:
     service = MetadataFilterService(FakeRepository(ROWS))
     monkeypatch.setattr(

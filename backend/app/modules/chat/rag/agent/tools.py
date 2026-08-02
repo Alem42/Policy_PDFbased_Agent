@@ -193,7 +193,13 @@ async def search_internal_documents(
     raw_citations = [
         dict(c, source_type="document", tier="internal") for c in result.get("citations", [])
     ]
-    numbered_results, new_citations = _number_citations(citations, raw_citations)
+    if sufficient:
+        numbered_results, new_citations = _number_citations(citations, raw_citations)
+    else:
+        # Weak evidence remains visible to the research loop for reflection,
+        # but is not promoted into the final citation set. This prevents a
+        # failed exploratory query from bloating or contaminating the answer.
+        numbered_results, new_citations = raw_citations, []
     tool_results = _results_with_evidence_text(
         numbered_results,
         result.get("chunks", []),
@@ -270,7 +276,10 @@ async def search_full_corpus(
         dict(citation, source_type="document", tier="full_corpus")
         for citation in result.citations
     ]
-    numbered_results, new_citations = _number_citations(citations, raw_citations)
+    if sufficient:
+        numbered_results, new_citations = _number_citations(citations, raw_citations)
+    else:
+        numbered_results, new_citations = raw_citations, []
     tool_results = _results_with_evidence_text(numbered_results, result.chunks)
     payload = {
         "evidence_sufficient": sufficient,
@@ -420,7 +429,10 @@ async def search_web(
         for c in candidates
         if c["passed"]
     ]
-    numbered_results, new_citations = _number_citations(citations, raw_citations)
+    if sufficient:
+        numbered_results, new_citations = _number_citations(citations, raw_citations)
+    else:
+        numbered_results, new_citations = raw_citations, []
     tool_results = _results_with_evidence_text(numbered_results, candidates)
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": tool_results}
     if sufficient:

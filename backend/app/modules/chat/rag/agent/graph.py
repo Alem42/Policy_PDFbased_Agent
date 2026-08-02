@@ -94,8 +94,6 @@ def _should_auto_finalize(state: AgentState) -> bool:
     """True if the just-received tool result is the first sufficient
     evidence-tier result this turn, in Open Discussion mode, for a question
     that isn't asking for a web comparison."""
-    if state.get("answer_mode", "analysis") != "chat":
-        return False
     last = state["messages"][-1]
     if not (isinstance(last, ToolMessage) and last.name in EVIDENCE_TIER_TOOLS):
         return False
@@ -106,19 +104,18 @@ def _should_auto_finalize(state: AgentState) -> bool:
     if not payload.get("evidence_sufficient"):
         return False
 
+    # Document Analysis has no escalation beyond the selected scope. Once
+    # that deterministic gate succeeds, another model decision can only add
+    # latency/cost or violate the tool protocol; synthesize the required
+    # prepare step immediately.
+    if state.get("answer_mode", "analysis") != "chat":
+        return True
+
     # A live-web result completes a freshness/comparison request. The
     # comparison wording should delay finalisation before the web check, not
     # cause the agent to search the web repeatedly after it has succeeded.
     if last.name == "search_web":
         return True
-
-    counts = state.get("tool_call_counts", {})
-    search_calls_this_turn = sum(counts.get(name, 0) for name in EVIDENCE_TIER_TOOLS)
-    if search_calls_this_turn != 1:
-        # Only short-circuit the very first search of the turn. If the model
-        # already chose to escalate past that, let its own loop play out
-        # rather than second-guessing a decision already in flight.
-        return False
 
     question = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
@@ -227,16 +224,18 @@ async def agent_node(state: AgentState) -> dict:
     client = create_chat_client(provider, selected_model)
     available_tools = _tools_for(is_admin, answer_mode, state.get("tool_call_counts"))
     last = state["messages"][-1]
+    last_payload: dict = {}
+    if isinstance(last, ToolMessage):
+        try:
+            last_payload = json.loads(last.content)
+        except (TypeError, ValueError):
+            last_payload = {}
     if (
         answer_mode == "chat"
         and isinstance(last, ToolMessage)
         and last.name in EVIDENCE_TIER_TOOLS - {"search_web"}
         and _question_requires_web_check(state)
     ):
-        try:
-            last_payload = json.loads(last.content)
-        except (TypeError, ValueError):
-            last_payload = {}
         if last_payload.get("evidence_sufficient"):
             # The document side of a freshness/comparison request is done.
             # Removing document search tools prevents repeated sufficient
@@ -247,6 +246,21 @@ async def agent_node(state: AgentState) -> dict:
                 for tool in available_tools
                 if tool.name in {"search_web", "prepare_final_answer"}
             ]
+    elif (
+        answer_mode == "chat"
+        and isinstance(last, ToolMessage)
+        and last.name == "search_internal_documents"
+        and last_payload.get("filter_fallback")
+        and "every explicitly requested region" in str(last_payload.get("reason") or "")
+    ):
+        # The selected scope cannot satisfy an explicit jurisdiction. Skip
+        # repeated query rewrites against the same mismatched documents and
+        # expose the full-library escalation immediately.
+        available_tools = [
+            tool
+            for tool in available_tools
+            if tool.name in {"search_full_corpus", "ask_user", "prepare_final_answer"}
+        ]
     if not available_tools:
         raise RuntimeError("The agent has exhausted every available tool action.")
     llm_with_tools = client.bind_tools(
@@ -287,7 +301,21 @@ async def agent_node(state: AgentState) -> dict:
                 len(response.tool_calls),
                 response.tool_calls[0].get("name"),
             )
-            response.tool_calls = response.tool_calls[:1]
+        # Do not mutate only the parsed ``tool_calls`` property: several
+        # providers also keep raw calls in additional_kwargs, and the raw
+        # count can disagree with the parsed count. Rebuild every accepted
+        # response so the next request sees exactly one call in one place.
+        clean_additional_kwargs = dict(response.additional_kwargs)
+        clean_additional_kwargs.pop("tool_calls", None)
+        response = AIMessage(
+            content=response.content,
+            additional_kwargs=clean_additional_kwargs,
+            response_metadata=response.response_metadata,
+            tool_calls=response.tool_calls[:1],
+            usage_metadata=response.usage_metadata,
+            id=response.id,
+            name=response.name,
+        )
 
         selected_call = response.tool_calls[0]
         selected_tool = selected_call.get("name")
@@ -479,6 +507,17 @@ def route_after_tools(state: AgentState) -> str:
         return "final_generation"
     if AUTO_FINALIZE_ENABLED and _should_auto_finalize(state):
         return "auto_finalize"
+    if (
+        state.get("answer_mode", "analysis") != "chat"
+        and isinstance(last, ToolMessage)
+        and last.name == "search_internal_documents"
+    ):
+        try:
+            payload = json.loads(last.content)
+        except (TypeError, ValueError):
+            payload = {}
+        if not payload.get("evidence_sufficient"):
+            return "insufficient_evidence"
     return "agent"
 
 

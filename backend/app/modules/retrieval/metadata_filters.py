@@ -32,10 +32,46 @@ _FRESHNESS_TERMS = (
     "时效性",
 )
 _LANGUAGE_PATTERNS = {
-    "English": (r"\bin english\b", r"\benglish[- ]language\b", "英文", "英语"),
-    "Chinese": (r"\bin chinese\b", r"\bchinese[- ]language\b", "中文", "汉语"),
-    "French": (r"\bin french\b", r"\bfrench[- ]language\b", "法文", "法语"),
-    "Spanish": (r"\bin spanish\b", r"\bspanish[- ]language\b", "西班牙语"),
+    "English": (
+        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin english\b",
+        r"\benglish[- ]language (?:documents?|files?|sources?|materials?)\b",
+        r"\benglish (?:documents?|files?|sources?|materials?)\b",
+        "英文文件",
+        "英文资料",
+        "英文来源",
+    ),
+    "Chinese": (
+        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin chinese\b",
+        r"\bchinese[- ]language (?:documents?|files?|sources?|materials?)\b",
+        r"\bchinese (?:documents?|files?|sources?|materials?)\b",
+        "中文文件",
+        "中文资料",
+        "中文来源",
+    ),
+    "French": (
+        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin french\b",
+        r"\bfrench[- ]language (?:documents?|files?|sources?|materials?)\b",
+        "法文文件",
+        "法文资料",
+        "法文来源",
+    ),
+    "Spanish": (
+        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin spanish\b",
+        r"\bspanish[- ]language (?:documents?|files?|sources?|materials?)\b",
+        "西班牙语文件",
+        "西班牙语资料",
+    ),
+}
+_REGION_ALIASES = {
+    "Australia": ("澳大利亚", "澳洲"),
+    "Canada": ("加拿大",),
+    "China": ("中国", "中华人民共和国"),
+    "Côte d'Ivoire": ("科特迪瓦",),
+    "European Union": ("欧盟",),
+    "France": ("法国",),
+    "Singapore": ("新加坡",),
+    "South Africa": ("南非",),
+    "United States": ("美国", "美利坚合众国"),
 }
 
 
@@ -63,7 +99,10 @@ def _contains_label(question: str, label: str) -> bool:
     clean = label.strip()
     if len(clean) < 4:
         return False
-    return clean.casefold() in question.casefold()
+    lowered = question.casefold()
+    if clean.casefold() in lowered:
+        return True
+    return any(alias.casefold() in lowered for alias in _REGION_ALIASES.get(clean, ()))
 
 
 class MetadataFilterService:
@@ -275,6 +314,12 @@ class MetadataFilterService:
             if filters.year_to is not None:
                 parts.append(f"year<={filters.year_to}")
         return "; ".join(parts) or "none"
+
+    @staticmethod
+    def text_mentions_region(text: str, region: str) -> bool:
+        """Exact label/alias check reused by the evidence coverage gate."""
+
+        return _contains_label(text, region)
 
 
 metadata_filter_service = MetadataFilterService()

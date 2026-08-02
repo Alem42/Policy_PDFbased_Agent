@@ -150,6 +150,110 @@ def test_metadata_subset_with_weak_evidence_retries_original_scope(monkeypatch) 
     assert "expanded to the original document scope" in result.filter_notice
 
 
+def test_multi_region_comparison_supplements_each_requested_region(monkeypatch) -> None:
+    filters = MetadataFilters(country_regions=("Australia", "China"))
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service,
+        "apply",
+        lambda *args, **kwargs: FilterApplication(
+            ("doc-au", "doc-cn"), applied=True, fallback=False
+        ),
+    )
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service.repository,
+        "list_records",
+        lambda *args, **kwargs: [
+            {"id": "doc-au", "country_region": "Australia"},
+            {"id": "doc-cn", "country_region": "China"},
+        ],
+    )
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: [])
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+
+    def retrieve(question, identifiers, **_kwargs):
+        document_id = identifiers[0]
+        country = "Australia" if document_id == "doc-au" else "China"
+        return [
+            {
+                "document_id": document_id,
+                "doc_title": f"{country} AI policy",
+                "file": f"{document_id}.pdf",
+                "chunk_id": f"chunk-{document_id}",
+                "page_start": 1,
+                "text": f"{country} assigns accountable officials for AI governance. " * 12,
+                "distance": 0.1,
+                "reranker_score": 2.0,
+            }
+        ]
+
+    monkeypatch.setattr(retrieval_module, "retrieve_relevant_chunks", retrieve)
+
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="Compare Australia and China AI governance accountability.",
+            identifiers=("doc-au", "doc-cn"),
+            metadata_filters=filters,
+        )
+    )
+
+    assert {citation["document_id"] for citation in result.citations} == {
+        "doc-au",
+        "doc-cn",
+    }
+    assert result.evidence.sufficient is True
+
+
+def test_fallback_document_from_wrong_region_cannot_pass_evidence_gate(monkeypatch) -> None:
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service,
+        "apply",
+        lambda *args, **kwargs: FilterApplication(
+            ("doc-za",), applied=True, fallback=True, notice="Expanded scope."
+        ),
+    )
+    monkeypatch.setattr(
+        retrieval_module.metadata_filter_service.repository,
+        "list_records",
+        lambda *args, **kwargs: [
+            {"id": "doc-za", "country_region": "South Africa"},
+        ],
+    )
+    monkeypatch.setattr(retrieval_module, "read_documents", lambda *args, **kwargs: [])
+    monkeypatch.setattr(retrieval_module, "documents_have_embeddings", lambda _: True)
+    monkeypatch.setattr(
+        retrieval_module,
+        "retrieve_relevant_chunks",
+        lambda *args, **kwargs: [
+            {
+                "document_id": "doc-za",
+                "doc_title": "South Africa notice",
+                "file": "notice.pdf",
+                "chunk_id": "chunk-za",
+                "page_start": 1,
+                "text": "South Africa withdrew its draft national AI policy. " * 12,
+                "distance": 0.1,
+                "reranker_score": 2.0,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        retrieval_module,
+        "assess_evidence_sufficiency",
+        lambda **kwargs: (True, None),
+    )
+
+    result = RetrievalService().retrieve(
+        RetrievalRequest(
+            question="What does Australia's AI policy require?",
+            identifiers=("doc-za",),
+            metadata_filters=MetadataFilters(country_regions=("Australia",)),
+        )
+    )
+
+    assert result.evidence.sufficient is False
+    assert "Missing: Australia" in result.evidence.reason
+
+
 def test_indexed_irrelevant_results_do_not_fall_back_to_misleading_page_citations(
     monkeypatch,
 ) -> None:

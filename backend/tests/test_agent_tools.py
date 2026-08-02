@@ -430,6 +430,58 @@ async def test_agent_uses_safe_fallback_after_repeated_missing_tool_calls(monkey
     assert call["args"]["query"] == "Tell me about AI safety"
 
 
+async def test_agent_rebuilds_provider_message_when_multiple_tools_are_returned(
+    monkeypatch,
+) -> None:
+    import app.modules.chat.rag.agent.graph as graph_module
+
+    calls = [
+        {
+            "name": "search_internal_documents",
+            "args": {"query": "AI safety", "decision_reason": "Use selected files."},
+            "id": "call-1",
+            "type": "tool_call",
+        },
+        {
+            "name": "search_full_corpus",
+            "args": {"query": "AI safety", "decision_reason": "Use the library."},
+            "id": "call-2",
+            "type": "tool_call",
+        },
+    ]
+
+    class FakeClient:
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        async def ainvoke(self, messages):
+            return AIMessage(
+                content="",
+                additional_kwargs={"tool_calls": [{"id": "raw-1"}, {"id": "raw-2"}]},
+                tool_calls=calls,
+            )
+
+    monkeypatch.setattr(
+        graph_module,
+        "resolve_generation_target",
+        lambda model: ("fake", "model", {}),
+    )
+    monkeypatch.setattr(graph_module, "create_chat_client", lambda provider, model: FakeClient())
+    monkeypatch.setattr(graph_module, "get_agent_system_prompt", lambda *args, **kwargs: "prompt")
+
+    result = await agent_node(
+        {
+            "messages": [HumanMessage(content="Tell me about AI safety")],
+            "answer_mode": "chat",
+            "is_admin": False,
+        }
+    )
+
+    message = result["messages"][0]
+    assert [call["id"] for call in message.tool_calls] == ["call-1"]
+    assert "tool_calls" not in message.additional_kwargs
+
+
 def test_prepare_final_answer_routes_to_streaming_generation() -> None:
     state = {
         "answer_mode": "chat",
@@ -455,6 +507,21 @@ def test_other_tool_results_return_to_agent_loop() -> None:
         ]
     }
     assert route_after_tools(state) == "agent"
+
+
+def test_analysis_mode_insufficient_search_routes_to_deterministic_refusal() -> None:
+    state = {
+        "answer_mode": "analysis",
+        "messages": [
+            ToolMessage(
+                content='{"evidence_sufficient": false, "reason": "No relevant passages."}',
+                tool_call_id="call-1",
+                name="search_internal_documents",
+            )
+        ],
+    }
+
+    assert route_after_tools(state) == "insufficient_evidence"
 
 
 def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:
@@ -525,7 +592,7 @@ def test_should_auto_finalize_false_for_comparison_request() -> None:
     assert _should_auto_finalize(state) is False
 
 
-def test_should_auto_finalize_false_when_not_first_search_this_turn() -> None:
+def test_should_auto_finalize_true_after_successful_escalation() -> None:
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
         {
@@ -534,7 +601,7 @@ def test_should_auto_finalize_false_when_not_first_search_this_turn() -> None:
         },
         search_calls_this_turn=2,
     )
-    assert _should_auto_finalize(state) is False
+    assert _should_auto_finalize(state) is True
 
 
 def test_should_auto_finalize_false_when_evidence_insufficient() -> None:
@@ -545,10 +612,9 @@ def test_should_auto_finalize_false_when_evidence_insufficient() -> None:
     assert _should_auto_finalize(state) is False
 
 
-def test_should_auto_finalize_false_in_document_analysis_mode() -> None:
-    # Analysis mode has no escalation tools anyway (see
-    # test_document_analysis_mode_only_offers_internal_search) — the
-    # backstop is scoped to Open Discussion mode only.
+def test_should_auto_finalize_true_in_document_analysis_mode() -> None:
+    # Analysis mode has no escalation tools, so a successful deterministic
+    # gate should skip a redundant second model decision.
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
         {
@@ -557,7 +623,7 @@ def test_should_auto_finalize_false_in_document_analysis_mode() -> None:
         },
         answer_mode="analysis",
     )
-    assert _should_auto_finalize(state) is False
+    assert _should_auto_finalize(state) is True
 
 
 def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(

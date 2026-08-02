@@ -168,6 +168,16 @@ async def stream_agent_events(
                             "filter_notice"
                         ):
                             fallback_notice = result_event["filter_notice"]
+                        elif result_event.get("filter_applied") and result_event.get(
+                            "evidence_sufficient"
+                        ):
+                            # A later tier can satisfy the same metadata
+                            # constraint without relaxing it (for example,
+                            # selected files miss Australia but the library
+                            # contains an Australian document). The earlier
+                            # fallback warning no longer describes the final
+                            # evidence in that case.
+                            fallback_notice = None
                         apply_tool_result(steps, result_event)
                         await chat_turn_service.update_steps(assistant_message_id, steps)
                         yield encode_sse(result_event)

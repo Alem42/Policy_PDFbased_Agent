@@ -106,6 +106,19 @@ class RetrievalService:
         else:  # pragma: no cover - Literal protects typed callers
             raise ValueError(f"Unknown retrieval scope: {request.scope}")
 
+        region_rows: list[dict] = []
+        if request.metadata_filters.country_regions:
+            region_rows = metadata_filter_service.repository.list_records(
+                effective_identifiers,
+                include_restricted=request.include_restricted,
+            )
+        if len(request.metadata_filters.country_regions) > 1:
+            raw_chunks = self._supplement_region_evidence(
+                request,
+                raw_chunks,
+                region_rows,
+            )
+
         chunks = [
             chunk
             for chunk in raw_chunks
@@ -121,6 +134,17 @@ class RetrievalService:
             context=context,
             has_embeddings=has_embeddings,
         )
+        missing_regions = self._missing_requested_regions(
+            request,
+            chunks,
+            region_rows,
+        )
+        if missing_regions:
+            sufficient = False
+            reason = (
+                "No relevant evidence was retrieved for every explicitly requested "
+                f"region. Missing: {', '.join(missing_regions)}."
+            )
         result = RetrievalResult(
             pages=pages,
             chunks=chunks,
@@ -139,6 +163,7 @@ class RetrievalService:
             and filter_application.applied
             and not filter_application.fallback
             and not result.evidence.sufficient
+            and len(request.metadata_filters.country_regions) <= 1
         ):
             # Natural-language metadata constraints are retrieval preferences,
             # not a reason to leave the user with no answer. If the narrowed
@@ -159,6 +184,66 @@ class RetrievalService:
             )
             return expanded
         return result
+
+    @staticmethod
+    def _supplement_region_evidence(
+        request: RetrievalRequest,
+        raw_chunks: list[dict],
+        region_rows: list[dict],
+    ) -> list[dict]:
+        """Diversify comparison retrieval across explicitly named regions."""
+
+        merged = list(raw_chunks)
+        seen = {str(chunk.get("chunk_id")) for chunk in merged}
+        per_region_limit = max(2, request.top_k // len(request.metadata_filters.country_regions))
+        for region in request.metadata_filters.country_regions:
+            region_ids = [
+                str(row["id"])
+                for row in region_rows
+                if str(row.get("country_region") or "").casefold() == region.casefold()
+            ]
+            if not region_ids:
+                continue
+            candidates = retrieve_relevant_chunks(
+                f"{request.question}\nFocus region: {region}",
+                region_ids,
+                limit=per_region_limit,
+                include_restricted=request.include_restricted,
+            )
+            for chunk in candidates:
+                key = str(chunk.get("chunk_id"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(chunk)
+        return merged
+
+    @staticmethod
+    def _missing_requested_regions(
+        request: RetrievalRequest,
+        chunks: list[dict],
+        region_rows: list[dict],
+    ) -> list[str]:
+        if not request.metadata_filters.country_regions:
+            return []
+        cited_document_ids = {str(chunk.get("document_id")) for chunk in chunks}
+        missing: list[str] = []
+        for region in request.metadata_filters.country_regions:
+            region_document_ids = {
+                str(row["id"])
+                for row in region_rows
+                if str(row.get("country_region") or "").casefold() == region.casefold()
+            }
+            mentioned_in_evidence = any(
+                metadata_filter_service.text_mentions_region(
+                    str(chunk.get("text") or ""),
+                    region,
+                )
+                for chunk in chunks
+            )
+            if not (region_document_ids & cited_document_ids) and not mentioned_in_evidence:
+                missing.append(region)
+        return missing
 
     def validate_questions(self, request: QuestionValidationRequest) -> list[str]:
         """Return answerable candidates using one batched dense retrieval pass."""
