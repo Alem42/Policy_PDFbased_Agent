@@ -1,13 +1,15 @@
+import { lazy } from "react";
 import { createBrowserRouter, Navigate, useOutletContext } from "react-router-dom";
 import App from "./App";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminManagementPage from "./pages/AdminManagementPage";
-import AuthPage from "./pages/AuthPage";
-import ChatPage from "./pages/ChatPage";
-import HistoryPage from "./pages/HistoryPage";
-import HomePage from "./pages/HomePage";
-import LibraryPage from "./pages/LibraryPage";
 import { ROUTES } from "./routes";
+
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminManagementPage = lazy(() => import("./pages/AdminManagementPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const ChatPage = lazy(() => import("./pages/ChatPage"));
+const HistoryPage = lazy(() => import("./pages/HistoryPage"));
+const HomePage = lazy(() => import("./pages/HomePage"));
+const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 
 function HomeRoute() {
   const { documents, loading, user, handleDocumentsChanged, navigateToView } = useOutletContext();
