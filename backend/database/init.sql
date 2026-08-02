@@ -847,6 +847,7 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "agent_mode"          text        COLLATE "pg_catalog"."default" DEFAULT 'react',
   "evidence_sources"    jsonb       NOT NULL DEFAULT '[]',
   "suggestions_json"    jsonb       NOT NULL DEFAULT '[]',
+  "token_usage"         jsonb       NOT NULL DEFAULT '{}',
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 

@@ -3,10 +3,10 @@ dedup, and admin-only tool filtering. These don't hit the database."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
-import json
 
 from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
@@ -340,7 +340,7 @@ def test_prepare_final_answer_routes_to_streaming_generation() -> None:
                 tool_call_id="call-1",
                 name="prepare_final_answer",
             )
-        ]
+        ],
     }
     assert route_after_tools(state) == "final_generation"
 
@@ -418,7 +418,10 @@ def test_should_auto_finalize_false_for_comparison_request() -> None:
     # exception in AGENT_STRATEGY_PROMPT — the backstop must not pre-empt it.
     state = _auto_finalize_state(
         "这份文件的说法现在还准确吗，能否上网核实一下？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert _should_auto_finalize(state) is False
 
@@ -426,7 +429,10 @@ def test_should_auto_finalize_false_for_comparison_request() -> None:
 def test_should_auto_finalize_false_when_not_first_search_this_turn() -> None:
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
         search_calls_this_turn=2,
     )
     assert _should_auto_finalize(state) is False
@@ -446,7 +452,10 @@ def test_should_auto_finalize_false_in_document_analysis_mode() -> None:
     # backstop is scoped to Open Discussion mode only.
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
         answer_mode="analysis",
     )
     assert _should_auto_finalize(state) is False
@@ -464,7 +473,10 @@ def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
     monkeypatch.setattr(graph_module, "AUTO_FINALIZE_ENABLED", True)
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert route_after_tools(state) == "auto_finalize"
 
@@ -472,7 +484,10 @@ def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
 def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled() -> None:
     state = _auto_finalize_state(
         "生成式人工智能对就业市场有什么影响？",
-        {"evidence_sufficient": True, "results": [{"number": 1, "title": "Doc", "quote": "On topic."}]},
+        {
+            "evidence_sufficient": True,
+            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
+        },
     )
     assert route_after_tools(state) == "agent"
 
@@ -480,7 +495,10 @@ def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled() -> None
 def test_auto_finalize_node_synthesizes_prepare_final_answer_pair() -> None:
     state = {
         "citations": [{"number": 1, "title": "Doc"}, {"number": 2, "title": "Doc 2"}],
-        "messages": [HumanMessage(content="q"), ToolMessage(content="{}", tool_call_id="c1", name="x")],
+        "messages": [
+            HumanMessage(content="q"),
+            ToolMessage(content="{}", tool_call_id="c1", name="x"),
+        ],
     }
     update = auto_finalize_node(state)
     ai_message, tool_message = update["messages"]

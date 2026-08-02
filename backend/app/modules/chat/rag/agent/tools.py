@@ -168,11 +168,11 @@ async def search_internal_documents(
     turn, also fill `reflection_on_previous_result` — see its own
     description for what goes there.
 
-    You may call this at most twice per turn. If the first call comes back
-    evidence_sufficient=false, the second call should materially reformulate
-    the query rather than repeating it — in particular, split a query that
-    bundled multiple sub-topics into one string, which dilutes the match and
-    can make documents that do have the answer look insufficient.
+    You may call this at most five times per turn for distinct sub-topics or
+    materially different query reformulations. Stop as soon as a call is
+    sufficient. In particular, split a query that bundled multiple
+    sub-topics into one string, which dilutes the match and can make
+    documents that do have the answer look insufficient.
     """
     identifiers = document_ids or filenames or []
 
@@ -227,11 +227,12 @@ async def search_full_corpus(
     this conversation.
 
     Each result has a `number`: cite it with exactly that [N], never a
-    guessed or recomputed one. The ReAct loop enforces a small per-turn call
-    budget, so materially reformulate any second query. Briefly state why
-    you chose this action in `decision_reason`. If this is not your first
-    tool call this turn, also fill `reflection_on_previous_result` — see its
-    own description for what goes there.
+    guessed or recomputed one. The ReAct loop allows at most five calls per
+    turn for distinct sub-topics or materially different reformulations;
+    stop as soon as a call is sufficient. Briefly state why you chose this
+    action in `decision_reason`. If this is not your first tool call this
+    turn, also fill `reflection_on_previous_result` — see its own description
+    for what goes there.
     """
 
     def _run() -> tuple[bool, str | None, list[dict]]:

@@ -51,9 +51,7 @@ async def list_models(_: CurrentUser) -> list[ProviderModels]:
     providers = {item["id"]: item for item in catalog.get("providers", [])}
     provider_ids = list(dict.fromkeys(entry["provider"] for entry in catalog["entries"]))
     for provider in provider_ids:
-        models = [
-            entry for entry in catalog["entries"] if entry["provider"] == provider
-        ]
+        models = [entry for entry in catalog["entries"] if entry["provider"] == provider]
         if not models:
             continue
         api_key = await asyncio.to_thread(get_provider_api_key, provider)
@@ -285,7 +283,11 @@ def _turn_token_usage(messages: list) -> dict:
     stored as-is in the token_usage jsonb column, never null.
     """
     latest_human_index = next(
-        (index for index in range(len(messages) - 1, -1, -1) if isinstance(messages[index], HumanMessage)),
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(messages[index], HumanMessage)
+        ),
         0,
     )
     prompt_tokens = completion_tokens = total_tokens = 0
@@ -430,9 +432,8 @@ async def _stream_agent_events(
             async for mode, chunk in stream:
                 if mode == "messages":
                     message, meta = chunk
-                    if (
-                        meta.get("langgraph_node") == "final_generation"
-                        and getattr(message, "content", None)
+                    if meta.get("langgraph_node") == "final_generation" and getattr(
+                        message, "content", None
                     ):
                         full_tokens.append(message.content)
                         yield _sse({"type": "token", "value": message.content})
@@ -554,9 +555,7 @@ async def _stream_agent_events(
         # mode's run_retrieval output) — approximate it from the retrieved
         # excerpts actually cited this turn, same text the model itself cited from.
         context = "\n\n".join(c.get("quote", "") for c in citations if c.get("quote"))
-        question = next(
-            (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
-        )
+        question = next((m.content for m in reversed(messages) if isinstance(m, HumanMessage)), "")
         suggestion_history = await asyncio.to_thread(
             chat_history_repository.get_history_for_llm, session_id, MAX_HISTORY_TURNS
         )

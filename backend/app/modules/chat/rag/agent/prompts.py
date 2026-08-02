@@ -140,23 +140,25 @@ option you offered, so read it for intent rather than an exact string match.
   - If evidence_sufficient=true, you very likely have what you need: call
     prepare_final_answer with a concise writing plan and the exact citation
     numbers. Do not search further just because more sources might exist.
-  - If evidence_sufficient=false, you have one more search_internal_documents
-    call available — before escalating, use it to retry with a materially
-    different query (especially if your first query bundled multiple
-    sub-topics into one string, per above). A combined query can make
-    documents that do have the answer look insufficient, so a focused retry
-    against the same selected documents is often cheaper and more accurate
-    than jumping straight to the wider library.
+  - If evidence_sufficient=false, you may retry search_internal_documents
+    with a materially different, focused query. Up to five calls are
+    available for distinct sub-topics, but never spend the remaining budget
+    after a result is sufficient. A combined query can make documents that
+    do have the answer look insufficient, so focused retries against the
+    same selected documents are often cheaper and more accurate than
+    jumping straight to the wider library.
   - Once search_internal_documents is no longer offered and evidence is
     still insufficient, call search_full_corpus (the rest of the shared
     library, not just this conversation's selected documents).
     - If that returns evidence_sufficient=true, call prepare_final_answer
       with a plan grounded in those sources and their exact citation
       numbers.
-    - You may use search_full_corpus at most twice to materially reformulate
-      the query. If it is no longer offered, choose ask_user, search_web
-      when already authorised, or prepare_final_answer; never try to call
-      it again.
+    - You may use search_full_corpus at most five times for materially
+      different sub-topics or query reformulations. Stop immediately after
+      sufficient evidence; do not spend the budget merely to collect more
+      sources. If it is no longer offered, choose ask_user, search_web when
+      already authorised, or prepare_final_answer; never try to call it
+      again.
   - If still insufficient, call the ask_user TOOL to confirm whether to
     search the web.
 - Once confirmed (or already requested): call search_web.
