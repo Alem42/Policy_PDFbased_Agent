@@ -45,16 +45,38 @@ class DocumentContentRepository:
                     %s::jsonb, %s, now()
                 )
                 ON CONFLICT (document_id) DO UPDATE
-                SET title = EXCLUDED.title,
-                    summary = EXCLUDED.summary,
-                    source_type = EXCLUDED.source_type,
-                    source_organisation = EXCLUDED.source_organisation,
-                    country_region = EXCLUDED.country_region,
-                    language = EXCLUDED.language,
-                    year = EXCLUDED.year,
-                    publication_date = EXCLUDED.publication_date,
-                    policy_areas = EXCLUDED.policy_areas,
-                    keywords = EXCLUDED.keywords,
+                SET title = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.title IS NOT NULL
+                        THEN document_metadata.title ELSE EXCLUDED.title END,
+                    summary = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.summary IS NOT NULL
+                        THEN document_metadata.summary ELSE EXCLUDED.summary END,
+                    source_type = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.source_type IS NOT NULL
+                        THEN document_metadata.source_type ELSE EXCLUDED.source_type END,
+                    source_organisation = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.source_organisation IS NOT NULL
+                        THEN document_metadata.source_organisation
+                        ELSE EXCLUDED.source_organisation END,
+                    country_region = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.country_region IS NOT NULL
+                        THEN document_metadata.country_region ELSE EXCLUDED.country_region END,
+                    language = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.language IS NOT NULL
+                        THEN document_metadata.language ELSE EXCLUDED.language END,
+                    year = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.year IS NOT NULL
+                        THEN document_metadata.year ELSE EXCLUDED.year END,
+                    publication_date = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND document_metadata.publication_date IS NOT NULL
+                        THEN document_metadata.publication_date
+                        ELSE EXCLUDED.publication_date END,
+                    policy_areas = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND cardinality(document_metadata.policy_areas) > 0
+                        THEN document_metadata.policy_areas ELSE EXCLUDED.policy_areas END,
+                    keywords = CASE WHEN document_metadata.reviewed_at IS NOT NULL
+                            AND cardinality(document_metadata.keywords) > 0
+                        THEN document_metadata.keywords ELSE EXCLUDED.keywords END,
                     stakeholders = EXCLUDED.stakeholders,
                     implementation_risks = EXCLUDED.implementation_risks,
                     metadata_json = EXCLUDED.metadata_json,
@@ -210,10 +232,10 @@ class DocumentContentRepository:
                 INSERT INTO document_metadata (
                     document_id, title, summary, source_type, source_organisation,
                     country_region, language, year, publication_date,
-                    policy_areas, keywords
+                    policy_areas, keywords, reviewed_at
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    COALESCE(%s::text[], '{}'), COALESCE(%s::text[], '{}'))
+                    COALESCE(%s::text[], '{}'), COALESCE(%s::text[], '{}'), now())
                 ON CONFLICT (document_id) DO UPDATE
                 SET title = COALESCE(EXCLUDED.title, document_metadata.title),
                     summary = COALESCE(EXCLUDED.summary, document_metadata.summary),

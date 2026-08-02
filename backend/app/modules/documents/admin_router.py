@@ -68,7 +68,7 @@ def _processing_status(status_value: str) -> ProcessingStatus:
 async def upload_document(
     file: Annotated[UploadFile, File()],
     background_tasks: BackgroundTasks,
-    _: AdminUser,
+    admin: AdminUser,
     title: Annotated[str | None, Form()] = None,
     source_organisation: Annotated[str | None, Form()] = None,
     policy_area: Annotated[str | None, Form()] = None,
@@ -79,7 +79,14 @@ async def upload_document(
     credibility_level: Annotated[str, Form()] = "unknown",
 ) -> AdminDocumentCreateResponse:
     try:
-        row = await save_upload(file)
+        clean_source_url = source_url.strip() if source_url and source_url.strip() else None
+        row = await save_upload(
+            file,
+            source_url=clean_source_url,
+            canonical_url=clean_source_url,
+            imported_by=str(admin["id"]),
+            imported_via="file_upload_admin",
+        )
         document_id = row["id"]
 
         metadata = {
