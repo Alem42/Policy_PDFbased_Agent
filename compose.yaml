@@ -31,6 +31,7 @@ services:
       - ./backend/database/migrations/016_evidence_source_to_list.sql:/docker-entrypoint-initdb.d/17_migration_016.sql:ro
       - ./backend/database/migrations/017_add_suggestions.sql:/docker-entrypoint-initdb.d/18_migration_017.sql:ro
       - ./backend/database/migrations/018_add_token_usage_to_chat_messages.sql:/docker-entrypoint-initdb.d/19_migration_018.sql:ro
+      - ./backend/database/migrations/019_add_documents_canonical_url.sql:/docker-entrypoint-initdb.d/20_migration_019.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s
