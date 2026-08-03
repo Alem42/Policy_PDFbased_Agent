@@ -103,9 +103,17 @@ def test_assess_evidence_rejects_low_reranker_score() -> None:
 
 
 def test_assess_evidence_accepts_strong_chunks() -> None:
+    from app.modules.chat.rag.evidence import min_reranker_score
+
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        raw_chunks=[{"distance": 0.2, "reranker_score": -5.0, "text": "housing reform details"}],
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": min_reranker_score() + 1.0,
+                "text": "housing reform details",
+            }
+        ],
         pages=[],
         context="x" * 300,
         has_embeddings=True,
