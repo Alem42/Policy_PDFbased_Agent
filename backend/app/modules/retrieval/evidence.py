@@ -15,6 +15,28 @@ REASON_LOW_RELEVANCE = (
 )
 REASON_SHORT_CONTEXT = "Too little relevant text was retrieved to support a reliable answer."
 
+# Named laws and policy instruments are factual identifiers, not merely search
+# keywords. Dense retrieval can correctly recognise that two passages are about
+# the same broad topic while still returning the wrong Act or framework. Keep
+# this deliberately narrow: only title-cased names ending in a known instrument
+# type are checked, so ordinary questions and semantic paraphrases are unchanged.
+_NAMED_INSTRUMENT = re.compile(
+    r"\b((?:(?:[A-Z][A-Za-z0-9'’.-]*|\d{4})\s+){1,7}"
+    r"(?:Act|Bill|Regulations?|Standard|Framework|Policy|Plan))\b"
+)
+_GENERIC_INSTRUMENT_TERMS = {
+    "act",
+    "ai",
+    "bill",
+    "framework",
+    "plan",
+    "policy",
+    "regulation",
+    "regulations",
+    "s",
+    "standard",
+}
+
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP_WORDS = {
     "a",
@@ -82,6 +104,29 @@ def lexical_support(question: str, text: str) -> tuple[int, float]:
     return matches, matches / len(query_terms)
 
 
+def _unsupported_named_instrument(question: str, evidence_text: str) -> str | None:
+    """Return the first explicit instrument name not supported by the evidence.
+
+    Matching every question word would make the gate brittle. Instead, this
+    checks only the distinctive terms in an explicitly named Act, Standard,
+    Framework, etc. For example, broad Australian AI-policy text cannot support
+    a question about the fictional "2031 Quantum AI Act" unless both ``2031``
+    and ``quantum`` occur in the retrieved evidence.
+    """
+
+    evidence_terms = set(_WORD.findall(evidence_text.lower()))
+    for match in _NAMED_INSTRUMENT.finditer(question):
+        name = match.group(1).strip()
+        distinctive_terms = {
+            term
+            for term in _WORD.findall(name.lower())
+            if term not in _GENERIC_INSTRUMENT_TERMS
+        }
+        if distinctive_terms and not distinctive_terms.issubset(evidence_terms):
+            return name
+    return None
+
+
 def is_chunk_relevant(question: str, chunk: dict) -> bool:
     """Combine dense, reranker, and lexical signals conservatively."""
 
@@ -115,8 +160,19 @@ def assess_evidence_sufficiency(
     if has_embeddings:
         if not raw_chunks:
             return False, REASON_LOW_RELEVANCE
-        if not any(is_chunk_relevant(question, chunk) for chunk in raw_chunks):
+        relevant_chunks = [chunk for chunk in raw_chunks if is_chunk_relevant(question, chunk)]
+        if not relevant_chunks:
             return False, REASON_LOW_RELEVANCE
+        evidence_text = "\n".join(
+            [context] + [str(chunk.get("text", "")) for chunk in relevant_chunks]
+        )
+        unsupported_name = _unsupported_named_instrument(question, evidence_text)
+        if unsupported_name:
+            return (
+                False,
+                f'The retrieved passages do not mention the explicitly named '
+                f'instrument "{unsupported_name}".',
+            )
         if len(context.strip()) < MIN_CONTEXT_CHARACTERS:
             return False, REASON_SHORT_CONTEXT
         return True, None
@@ -124,6 +180,20 @@ def assess_evidence_sufficiency(
     clean_context = context.strip()
     if len(clean_context) < MIN_CONTEXT_CHARACTERS:
         if pages and sum(len(page.get("text", "")) for page in pages) >= MIN_CONTEXT_CHARACTERS:
+            evidence_text = "\n".join(str(page.get("text", "")) for page in pages)
+        else:
+            return False, REASON_NO_TEXT
+    else:
+        evidence_text = clean_context
+    unsupported_name = _unsupported_named_instrument(question, evidence_text)
+    if unsupported_name:
+        return (
+            False,
+            f'The retrieved passages do not mention the explicitly named '
+            f'instrument "{unsupported_name}".',
+        )
+    if len(clean_context) < MIN_CONTEXT_CHARACTERS:
+        if pages:
             return True, None
         return False, REASON_NO_TEXT
     if len(clean_context) >= MIN_CONTEXT_CHARACTERS:
