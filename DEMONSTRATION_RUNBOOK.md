@@ -1,61 +1,6 @@
 # AI Policy Research Assistant — Demonstration Runbook
 
-更新日期：2026-08-03  
-建议演示时长：核心版 12–15 分钟；完整版 20–25 分钟
-
-## 1. 演示目标
-
-这次演示不只是展示“LLM 能回答问题”，而是展示一条可治理、可追溯的政策研究流程：
-
-1. 文档进入系统后完成文本提取、OCR、Metadata、Chunk 和 Embedding。
-2. 用户可以通过 Metadata 筛选和选择文档限定研究范围。
-3. Chat 使用 ReAct 在选中文档、共享 Library 和 Web 之间逐级寻找证据。
-4. 回答带有引用、证据来源层级、Token Usage 和 Suggested follow-ups。
-5. 证据不足时系统明确拒绝编造，而不是强行输出答案。
-6. 管理员可以配置模型、分类、网页搜索和证据阈值。
-
-建议开场话术：
-
-> This is an evidence-grounded AI policy research assistant. The main point is
-> not only that it can generate an answer, but that it can show where the answer
-> came from, expand its search in a controlled way, and stop when the evidence is
-> not sufficient.
-
-## 2. 演示前准备
-
-### 2.1 服务与账号
-
-- 确认 Frontend、Backend、PostgreSQL 均正常运行。
-- 准备一个普通用户账号和一个管理员账号。
-- 注册流程目前标记为“等待完善”；若现场不稳定，直接使用预先创建的账号登录。
-- 确认 LLM、Embedding 和 Web Search 的 API key 有效且余额充足。
-- 提前打开 Library、Configuration、Chat 和 History 页面，减少现场导航时间。
-
-### 2.2 演示文件
-
-准备以下四份文件：
-
-| 文件 | 地区 / 年份 | 主要演示能力 |
-|---|---|---|
-| `Australia_Responsible_AI_Government_Policy_v2_2025.pdf` | Australia / 2025 | 普通 RAG、强制要求、精确引用 |
-| `Singapore_Model_AI_Governance_Framework_Agentic_AI_2026.pdf` | Singapore / 2026 | Agentic AI、较长 PDF、Metadata Filter 回退 |
-| `China_AI_Safety_Governance_Framework_2024_zh.pdf` | China / 2024 | 中文源文件、英文 Metadata、跨语言问答 |
-| `South_Africa_AI_Policy_Withdrawal_2026_OCR_demo.pdf` | South Africa / 2026 | 无文本层扫描件、OCR、政策状态边界 |
-
-此外，Web Search 场景需要 Library 中已有：
-
-- `Voluntary AI Safety Standard`（2024）；
-- 或其他适合与实时网页信息比较的澳大利亚 AI 政策文件。
-
-### 2.3 现场风险控制
-
-- 演示前完整运行一遍所有问题，把成功结果保留在 History。
-- 上传、OCR、Embedding、网页导入和实时 Web Search 都依赖外部服务，可能耗时。
-- 如果现场 API 延迟，打开预先生成的 History，继续讲解引用和 ReAct 路径。
-- 不要在正式演示中真正保存新的 Embedding dimension 或 chunk size；只展示确认弹窗，否则会触发全库重新索引。
-- 不要现场删除唯一一份演示文件。
-
-## 3. 推荐演示流程
+## 推荐演示流程
 
 ### Step 1 — 注册与登录
 
@@ -74,15 +19,11 @@
 
 ### Step 2 — Document Library 与文件处理
 
-建议时间：2–4 分钟
-
 #### 2.1 上传文件
 
 1. 进入 `Documents / Library`。
-2. 上传四份演示文件。
+2. 上传一份演示文件，只现场上传体积最小的 South Africa OCR 文件，其余三份提前上传。
 3. 展示状态变化，例如 Uploaded、Parsed、OCR、Annotated、Ready。
-
-如果时间有限：只现场上传体积最小的 South Africa OCR 文件，其余三份提前上传。
 
 讲解话术：
 
@@ -92,7 +33,7 @@
 
 #### 2.2 展示文件详情
 
-打开一份文档的 `Details`，依次展示：
+打开一份文档的 `Details`（展示几个就可以了）：
 
 - 自动生成的英文 Title 和 Summary；
 - Country / Region、Language、Year、Source organisation；
@@ -102,7 +43,7 @@
 - Chunk 原文、页码和 Metadata；
 - Approved / Access level 等治理状态。
 
-重点展示中文文件：源文件和 Chunk 可以保留中文，但面向 Library 用户的 Metadata 被标准化为英文。例如中文文件标题显示为 `Artificial Intelligence Safety Governance Framework`。
+可选：展示中文文件：源文件和 Chunk 可以保留中文，但面向 Library 用户的 Metadata 被标准化为英文。例如中文文件标题显示为 `Artificial Intelligence Safety Governance Framework`。
 
 #### 2.3 重复文件检测
 
@@ -246,8 +187,6 @@ https://www.industry.gov.au/publications/national-ai-plan
 网页导入可能较慢，核心版演示可以只展示页面和已导入结果，不现场等待。
 
 ### Step 4 — Add to Chat
-
-建议时间：30 秒
 
 1. 在 Library 中选择四份演示文件。
 2. 点击 `Add to Chat`。
@@ -457,23 +396,7 @@ reference?
 > web when the mode allows it, and explicitly stop when the available evidence
 > cannot support the requested claim.
 
-## 4. 核心版时间安排
-
-| 环节 | 时间 | 必须展示 |
-|---|---:|---|
-| 登录与定位 | 0:45 | 用户 / 管理员角色 |
-| Library | 2:15 | 一次上传、Metadata、Chunk、重复检测 |
-| Configuration | 2:00 | LLM key、Embedding、Reranker、Web Search |
-| 普通回答 | 2:00 | 引用、Suggestion、Token Usage |
-| Filter 回退 | 1:30 | ReAct trace、warning |
-| Library escalation | 1:30 | selected → full corpus |
-| Low Evidence | 1:00 | 红色警告、0 citation |
-| Web Search | 2:00 | internal + web tiers |
-| History 与总结 | 1:00 | 可追溯性 |
-
-若只有 10 分钟：移除 Filter Bar、网页永久导入、跨语言比较、OCR 现场问答和 Persona 切换，只做口头说明或用 History 展示。
-
-## 5. 功能覆盖检查表
+## 功能覆盖检查表
 
 - [ ] 注册 / 登录或预建账号登录
 - [ ] 普通用户与管理员权限
@@ -507,7 +430,7 @@ reference?
 - [ ] Chat History
 - [ ] Answer Purpose / Persona
 
-## 6. 常见问题与回答
+## 常见问题与回答
 
 ### “ReAct 是什么？”
 
