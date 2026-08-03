@@ -35,11 +35,16 @@ class DocumentRepository:
         return dict(row) if row else None
 
     def find_by_source_url(self, source_url: str) -> dict | None:
-        """Return the existing document imported from this URL, or None."""
+        """Return the document owning this canonical URL, or a legacy match."""
         with get_connection() as connection:
             row = connection.execute(
-                "SELECT id, original_filename FROM documents WHERE source_url = %s LIMIT 1",
-                (source_url,),
+                """
+                SELECT id, original_filename FROM documents
+                WHERE canonical_url = %s OR (canonical_url IS NULL AND source_url = %s)
+                ORDER BY (canonical_url = %s) DESC, uploaded_at ASC
+                LIMIT 1
+                """,
+                (source_url, source_url, source_url),
             ).fetchone()
         return dict(row) if row else None
 
@@ -63,6 +68,7 @@ class DocumentRepository:
         mime_type: str = "application/pdf",
         upsert: bool = False,
         source_url: str | None = None,
+        canonical_url: str | None = None,
         imported_by: str | None = None,
         imported_via: str | None = None,
     ) -> str:
@@ -85,9 +91,9 @@ class DocumentRepository:
                     INSERT INTO documents (
                         id, original_filename, stored_filename, file_path,
                         file_size, sha256, mime_type, status,
-                        source_url, imported_by, imported_via
+                        source_url, canonical_url, imported_by, imported_via
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s, %s, %s, %s)
                     {conflict_sql}
                     RETURNING id
                     """,
@@ -100,6 +106,7 @@ class DocumentRepository:
                         checksum,
                         mime_type,
                         source_url,
+                        canonical_url,
                         imported_by,
                         imported_via,
                     ),
@@ -111,6 +118,12 @@ class DocumentRepository:
             # sha256 UNIQUE constraint serialises it here.
             if getattr(exc.diag, "constraint_name", "") == "documents_sha256_key":
                 existing = self.find_by_checksum(checksum)
+                if existing:
+                    raise DuplicateDocumentError(
+                        str(existing["id"]), existing["original_filename"]
+                    ) from exc
+            if getattr(exc.diag, "constraint_name", "") == "uq_documents_canonical_url":
+                existing = self.find_by_source_url(canonical_url or source_url or "")
                 if existing:
                     raise DuplicateDocumentError(
                         str(existing["id"]), existing["original_filename"]

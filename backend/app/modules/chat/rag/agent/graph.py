@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
@@ -38,7 +39,7 @@ _tools_for = tools_for
 # like the agent had stopped calling prepare_final_answer at all. Flip back
 # to True to re-enable — _should_auto_finalize/auto_finalize_node below are
 # untouched, only route_after_tools' use of them is gated.
-AUTO_FINALIZE_ENABLED = False
+AUTO_FINALIZE_ENABLED = True
 
 # --- TEMPORARY code-level backstop -----------------------------------------
 # Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
@@ -82,6 +83,10 @@ _COMPARISON_TRIGGER_WORDS = (
     "up-to-date",
     "still accurate",
     "still current",
+    "latest",
+    "newest",
+    "most recent",
+    "newer",
 )
 
 
@@ -89,8 +94,6 @@ def _should_auto_finalize(state: AgentState) -> bool:
     """True if the just-received tool result is the first sufficient
     evidence-tier result this turn, in Open Discussion mode, for a question
     that isn't asking for a web comparison."""
-    if state.get("answer_mode", "analysis") != "chat":
-        return False
     last = state["messages"][-1]
     if not (isinstance(last, ToolMessage) and last.name in EVIDENCE_TIER_TOOLS):
         return False
@@ -101,13 +104,18 @@ def _should_auto_finalize(state: AgentState) -> bool:
     if not payload.get("evidence_sufficient"):
         return False
 
-    counts = state.get("tool_call_counts", {})
-    search_calls_this_turn = sum(counts.get(name, 0) for name in EVIDENCE_TIER_TOOLS)
-    if search_calls_this_turn != 1:
-        # Only short-circuit the very first search of the turn. If the model
-        # already chose to escalate past that, let its own loop play out
-        # rather than second-guessing a decision already in flight.
-        return False
+    # Document Analysis has no escalation beyond the selected scope. Once
+    # that deterministic gate succeeds, another model decision can only add
+    # latency/cost or violate the tool protocol; synthesize the required
+    # prepare step immediately.
+    if state.get("answer_mode", "analysis") != "chat":
+        return True
+
+    # A live-web result completes a freshness/comparison request. The
+    # comparison wording should delay finalisation before the web check, not
+    # cause the agent to search the web repeatedly after it has succeeded.
+    if last.name == "search_web":
+        return True
 
     question = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
@@ -115,6 +123,16 @@ def _should_auto_finalize(state: AgentState) -> bool:
     )
     question = question if isinstance(question, str) else str(question)
     return not any(word in question.lower() for word in _COMPARISON_TRIGGER_WORDS)
+
+
+def _question_requires_web_check(state: AgentState) -> bool:
+    question = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "",
+    )
+    question = question if isinstance(question, str) else str(question)
+    lowered = question.lower()
+    return any(word in lowered for word in _COMPARISON_TRIGGER_WORDS)
 
 
 def auto_finalize_node(state: AgentState) -> dict:
@@ -205,6 +223,44 @@ async def agent_node(state: AgentState) -> dict:
     provider, selected_model, _config = resolve_generation_target(state.get("model"))
     client = create_chat_client(provider, selected_model)
     available_tools = _tools_for(is_admin, answer_mode, state.get("tool_call_counts"))
+    last = state["messages"][-1]
+    last_payload: dict = {}
+    if isinstance(last, ToolMessage):
+        try:
+            last_payload = json.loads(last.content)
+        except (TypeError, ValueError):
+            last_payload = {}
+    if (
+        answer_mode == "chat"
+        and isinstance(last, ToolMessage)
+        and last.name in EVIDENCE_TIER_TOOLS - {"search_web"}
+        and _question_requires_web_check(state)
+    ):
+        if last_payload.get("evidence_sufficient"):
+            # The document side of a freshness/comparison request is done.
+            # Removing document search tools prevents repeated sufficient
+            # retrieval calls while leaving the model the choice to run the
+            # authorised web check or finish with a limitation note.
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool.name in {"search_web", "prepare_final_answer"}
+            ]
+    elif (
+        answer_mode == "chat"
+        and isinstance(last, ToolMessage)
+        and last.name == "search_internal_documents"
+        and last_payload.get("filter_fallback")
+        and "every explicitly requested region" in str(last_payload.get("reason") or "")
+    ):
+        # The selected scope cannot satisfy an explicit jurisdiction. Skip
+        # repeated query rewrites against the same mismatched documents and
+        # expose the full-library escalation immediately.
+        available_tools = [
+            tool
+            for tool in available_tools
+            if tool.name in {"search_full_corpus", "ask_user", "prepare_final_answer"}
+        ]
     if not available_tools:
         raise RuntimeError("The agent has exhausted every available tool action.")
     llm_with_tools = client.bind_tools(
@@ -220,17 +276,46 @@ async def agent_node(state: AgentState) -> dict:
     ]
 
     allowed_tool_names = {tool.name for tool in available_tools}
-    for _attempt in range(3):
+    for attempt in range(3):
         response: AIMessage = await llm_with_tools.ainvoke(messages)
         if not response.tool_calls:
-            raise RuntimeError("The agent did not choose a required tool action.")
+            logger.warning(
+                "Model returned no tool call despite tool_choice=required (attempt %s/3).",
+                attempt + 1,
+            )
+            messages.extend(
+                [
+                    response,
+                    HumanMessage(
+                        content=(
+                            "Your previous response was not a valid tool action. "
+                            "Do not answer in prose. Choose exactly one of the bound tools now."
+                        )
+                    ),
+                ]
+            )
+            continue
         if len(response.tool_calls) > 1:
             logger.warning(
                 "Model returned %s tool calls despite parallel_tool_calls=False; keeping only %s.",
                 len(response.tool_calls),
                 response.tool_calls[0].get("name"),
             )
-            response.tool_calls = response.tool_calls[:1]
+        # Do not mutate only the parsed ``tool_calls`` property: several
+        # providers also keep raw calls in additional_kwargs, and the raw
+        # count can disagree with the parsed count. Rebuild every accepted
+        # response so the next request sees exactly one call in one place.
+        clean_additional_kwargs = dict(response.additional_kwargs)
+        clean_additional_kwargs.pop("tool_calls", None)
+        response = AIMessage(
+            content=response.content,
+            additional_kwargs=clean_additional_kwargs,
+            response_metadata=response.response_metadata,
+            tool_calls=response.tool_calls[:1],
+            usage_metadata=response.usage_metadata,
+            id=response.id,
+            name=response.name,
+        )
 
         selected_call = response.tool_calls[0]
         selected_tool = selected_call.get("name")
@@ -263,7 +348,102 @@ async def agent_node(state: AgentState) -> dict:
             ]
         )
 
-    raise RuntimeError("The agent repeatedly selected an unavailable tool action.")
+    fallback = _fallback_tool_action(state, allowed_tool_names)
+    logger.warning(
+        "Agent tool protocol failed after retries; using deterministic fallback action %s.",
+        fallback.tool_calls[0]["name"],
+    )
+    return {"messages": [fallback], "resolved_model": f"{provider}/{selected_model}"}
+
+
+def _fallback_tool_action(state: AgentState, allowed_tool_names: set[str]) -> AIMessage:
+    """Return a safe ReAct action when a provider ignores tool_choice.
+
+    Provider tool calling is an optimisation boundary, not a user-visible
+    failure boundary. This policy preserves the retrieval order and always
+    terminates through ``prepare_final_answer`` when it cannot safely search.
+    """
+
+    question = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "the user's question",
+    )
+    question = question if isinstance(question, str) else str(question)
+    last = state["messages"][-1]
+    tool_name = getattr(last, "name", None) if isinstance(last, ToolMessage) else None
+    payload: dict = {}
+    if isinstance(last, ToolMessage):
+        try:
+            payload = json.loads(last.content)
+        except (TypeError, ValueError):
+            payload = {}
+
+    if (
+        tool_name in EVIDENCE_TIER_TOOLS - {"search_web"}
+        and payload.get("evidence_sufficient")
+        and _question_requires_web_check(state)
+        and "search_web" in allowed_tool_names
+    ):
+        action = "search_web"
+    elif tool_name in EVIDENCE_TIER_TOOLS and payload.get("evidence_sufficient"):
+        action = "prepare_final_answer"
+    elif tool_name == "search_internal_documents" and "search_full_corpus" in allowed_tool_names:
+        action = "search_full_corpus"
+    elif tool_name == "ask_user" and "search_web" in allowed_tool_names:
+        action = "search_web"
+    elif tool_name is None and "search_internal_documents" in allowed_tool_names:
+        action = "search_internal_documents"
+    elif "prepare_final_answer" in allowed_tool_names:
+        action = "prepare_final_answer"
+    else:
+        action = next(iter(sorted(allowed_tool_names)))
+
+    citations = state.get("citations", [])
+    citation_numbers = sorted(
+        {
+            citation["number"]
+            for citation in citations
+            if isinstance(citation.get("number"), int)
+        }
+    )
+    if action == "prepare_final_answer":
+        reason = payload.get("reason") or state.get("last_evidence_reason")
+        args = {
+            "answer_plan": (
+                "Answer from the retrieved evidence and clearly mention any evidence or "
+                f"metadata limitations. Last retrieval note: {reason or 'none'}."
+            ),
+            "citation_numbers": citation_numbers,
+        }
+    elif action == "ask_user":
+        args = {
+            "question": "The selected and shared documents were insufficient. Search the web?",
+            "decision_reason": (
+                "Document evidence was insufficient, so web-search permission is needed."
+            ),
+            "mode": "confirm",
+            "options": ["Yes", "No"],
+        }
+    else:
+        args = {
+            "query": question,
+            "decision_reason": (
+                "The model did not emit a valid action, so the safe retrieval "
+                "fallback is being used."
+            ),
+        }
+
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": action,
+                "args": args,
+                "id": f"fallback-{uuid4().hex}",
+                "type": "tool_call",
+            }
+        ],
+    )
 
 
 def route_after_agent(state: AgentState) -> str:
@@ -327,6 +507,17 @@ def route_after_tools(state: AgentState) -> str:
         return "final_generation"
     if AUTO_FINALIZE_ENABLED and _should_auto_finalize(state):
         return "auto_finalize"
+    if (
+        state.get("answer_mode", "analysis") != "chat"
+        and isinstance(last, ToolMessage)
+        and last.name == "search_internal_documents"
+    ):
+        try:
+            payload = json.loads(last.content)
+        except (TypeError, ValueError):
+            payload = {}
+        if not payload.get("evidence_sufficient"):
+            return "insufficient_evidence"
     return "agent"
 
 

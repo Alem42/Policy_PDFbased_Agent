@@ -136,7 +136,7 @@ Routes do not issue individual session/message repository operations.
 - [x] Move selected-document retrieval out of Direct graph nodes.
 - [x] Move full-corpus retrieval behind the same service.
 - [x] Update Direct and ReAct code to call the service.
-- [ ] Update Suggestions to reuse the applicable retrieval primitives.
+- [x] Update Suggestions to reuse the applicable retrieval primitives.
 - [x] Remove or replace unused `chat.rag.contracts`.
 
 ### Phase 3 - Chat application boundary
@@ -144,6 +144,7 @@ Routes do not issue individual session/message repository operations.
 - [x] Extract SSE encoding/event mapping from `chat/router.py`.
 - [x] Extract token-usage aggregation from the router.
 - [x] Extract conversation/session lifecycle into `ChatTurnService`.
+- [x] Move Direct/ReAct stream drivers and suggestion-tail handling out of the HTTP router.
 - [x] Keep `/chat`, `/chat/stream`, and `/chat/resume` contracts unchanged.
 - [x] Add service-level tests so features can be called without FastAPI.
 
@@ -218,23 +219,24 @@ If work resumes with limited context:
   remains available only for documents without embeddings.
 - Streaming and non-streaming paths now read prior history before inserting the current question, so
   the current question is not sent to the model twice.
-- Admin registration once again requires a configured matching secret.
+- Admin registration secret enforcement remains intentionally disabled until a real secret is
+  configured; the earlier temporary enforcement change was reverted.
 - Local `testdb` was missing migration 009. Migrations 009 and 010 were applied and the provider
   registry was seeded (five providers, 24 chat-model catalog entries).
-- Final backend result: 226 passed, 5 skipped. Frontend production build completed with only the
-  existing large-bundle warning.
+- Suggestions now call `RetrievalService.validate_questions()` for batched evidence validation.
+- Explicit metadata filters support exact policy-area, region, organisation, language, tag, year,
+  and freshness constraints. A zero-result filter falls back to the original scope with a mandatory
+  user-visible warning.
+- Migrations 019/020 add canonical-URL uniqueness and permanent web-document lifecycle governance;
+  both are mounted in Compose and were applied to local `testdb`.
+- Final backend result: 232 passed, 5 skipped with no warnings. Route-level lazy loading reduced the
+  initial frontend JS chunk from 1,149.60 kB to 491.91 kB and removed the Vite size warning.
 
 ### Recommended next task
 
-1. Move the remaining Direct/ReAct streaming drivers out of the still-large `chat/router.py` into
-   dedicated API stream adapters; the business helpers and persistence boundary are already extracted.
-2. Move Suggestions' optimised multi-query batch validation behind a retrieval-owned black box. It
-   deliberately differs from single-query RAG today, so combining it safely needs performance tests.
-3. Decide whether to implement `ChatRequest.filters` end to end or remove/deprecate it; it is accepted
-   by the API but currently does not alter retrieval.
-4. Add a database-level canonical URL key/uniqueness strategy for imports across multiple workers.
-   Application normalisation and all duplicate layers are consistent now, but cross-process URL races
-   still need a schema-level guarantee.
-5. Decide whether imported pages should enter as `approved=true/public` or require a governance review.
-6. Implement Tavily before allowing it to be selected outside the disabled frontend option.
-7. Address the Starlette TestClient/httpx deprecation warning and frontend bundle-size warning.
+1. Implement the scheduled web-refresh worker described in `WEB_KNOWLEDGE_GOVERNANCE.md`, including
+   content-version retention, rollback, retry, and notification policy.
+2. Implement Tavily before allowing it to be selected outside the disabled frontend option.
+3. Move the remaining duplicate schemas to their owning modules once downstream imports are audited.
+4. Add a management UI for web-governance status, review dates, and archive/reactivate actions if the
+   product team wants these controls outside the API.

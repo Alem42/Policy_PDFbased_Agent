@@ -7,11 +7,13 @@ from uuid import uuid4
 import pytest
 
 from app.modules.chat import router as chat_router
+from app.modules.chat.application import streaming as chat_streaming
 from app.modules.chat.schemas import ChatRequest
 from app.modules.chat.suggestions import generator
 from app.modules.chat.suggestions.config import SuggestionConfig
 from app.modules.embedding import providers as embedding_providers
 from app.modules.embedding import service as embedding_service
+from app.modules.retrieval import service as retrieval_module
 
 
 def _cfg(**over) -> SuggestionConfig:
@@ -39,8 +41,8 @@ def _patch_pipeline(monkeypatch, candidates, distances, reranker=5.0):
         "rerank_questions": [],
     }
     monkeypatch.setattr(generator, "_propose_candidates", lambda **kw: list(candidates))
-    monkeypatch.setattr(generator, "max_vector_distance", lambda: 0.45)
-    monkeypatch.setattr(generator, "min_reranker_score", lambda: -7.0)
+    monkeypatch.setattr(retrieval_module, "max_vector_distance", lambda: 0.45)
+    monkeypatch.setattr(retrieval_module, "min_reranker_score", lambda: -7.0)
 
     def fake_resolve(identifiers, include_restricted=False):
         captured["resolve_calls"] += 1
@@ -68,17 +70,19 @@ def _patch_pipeline(monkeypatch, candidates, distances, reranker=5.0):
         captured.setdefault("rerank_chunk_counts", []).append(len(chunks))
         return [{**chunk, "reranker_score": reranker} for chunk in chunks[:limit]]
 
-    monkeypatch.setattr(generator, "resolve_document_ids", fake_resolve)
-    monkeypatch.setattr(generator.embedding, "embed_queries", fake_embed_queries)
-    monkeypatch.setattr(generator.embedding, "vector_literal", lambda vector: str(vector))
-    monkeypatch.setattr(generator.embedding_repository, "retrieve_many", fake_retrieve_many)
-    monkeypatch.setattr(generator.reranking, "enabled", lambda: True)
+    monkeypatch.setattr(retrieval_module, "resolve_document_ids", fake_resolve)
+    monkeypatch.setattr(retrieval_module.embedding, "embed_queries", fake_embed_queries)
+    monkeypatch.setattr(retrieval_module.embedding, "vector_literal", lambda vector: str(vector))
     monkeypatch.setattr(
-        generator.reranking,
+        retrieval_module.embedding_repository, "retrieve_many", fake_retrieve_many
+    )
+    monkeypatch.setattr(retrieval_module.reranking, "enabled", lambda: True)
+    monkeypatch.setattr(
+        retrieval_module.reranking,
         "active_config",
         lambda: SimpleNamespace(provider="local"),
     )
-    monkeypatch.setattr(generator.reranking, "rerank", fake_rerank)
+    monkeypatch.setattr(retrieval_module.reranking, "rerank", fake_rerank)
     return captured
 
 
@@ -213,7 +217,7 @@ def test_reranker_only_receives_validation_top_k(monkeypatch):
         captured["dense_limit"] = limit
         return [[{"distance": 0.1 + index / 1000, "text": str(index)} for index in range(20)]]
 
-    monkeypatch.setattr(generator.embedding_repository, "retrieve_many", twenty_chunks)
+    monkeypatch.setattr(retrieval_module.embedding_repository, "retrieve_many", twenty_chunks)
     out = generator.generate_followup_suggestions(
         question="original",
         answer="ans",
@@ -307,8 +311,8 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         lambda mid, items: persisted.update(message_id=mid, items=items) or True,
     )
     monkeypatch.setattr(
-        chat_router,
-        "run_retrieval",
+        chat_streaming.direct_orchestrator,
+        "retrieve",
         lambda **_kwargs: {
             "context": "Grounded document context",
             "citations": [{"title": "Policy", "quote": "Evidence"}],
@@ -318,7 +322,7 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         },
     )
     monkeypatch.setattr(
-        chat_router,
+        chat_streaming,
         "resolve_generation_target",
         lambda _model: ("openai", "fast-model", {}),
     )
@@ -327,14 +331,14 @@ async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatc
         yield "Grounded "
         yield "answer"
 
-    monkeypatch.setattr(chat_router, "generate_answer_streaming", fake_answer_stream)
+    monkeypatch.setattr(chat_streaming, "generate_answer_streaming", fake_answer_stream)
     monkeypatch.setattr(
-        chat_router.suggestions_service,
+        chat_streaming.suggestions_service,
         "active_config",
         lambda: _cfg(),
     )
     monkeypatch.setattr(
-        chat_router,
+        chat_streaming,
         "generate_followup_suggestions",
         lambda **_kwargs: ["Next grounded question?"],
     )

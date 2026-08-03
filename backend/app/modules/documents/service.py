@@ -115,6 +115,7 @@ async def save_upload(
     upload: UploadFile,
     *,
     source_url: str | None = None,
+    canonical_url: str | None = None,
     imported_by: str | None = None,
     imported_via: str | None = None,
 ) -> dict:
@@ -146,6 +147,7 @@ async def save_upload(
             checksum=checksum,
             mime_type=document_file_store.mime_type_for(filename),
             source_url=source_url,
+            canonical_url=canonical_url,
             imported_by=imported_by,
             imported_via=imported_via,
         )
@@ -257,6 +259,7 @@ async def save_web_import(
         saved = await save_upload(
             upload,
             source_url=url,
+            canonical_url=url,
             imported_by=imported_by,
             imported_via=imported_via,
         )

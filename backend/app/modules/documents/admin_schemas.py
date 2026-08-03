@@ -22,6 +22,12 @@ class ProcessingStatus(StrEnum):
     FAILED = "failed"
 
 
+class WebLifecycleStatus(StrEnum):
+    ACTIVE = "active"
+    STALE = "stale"
+    ARCHIVED = "archived"
+
+
 class AdminDocumentCreateResponse(BaseModel):
     id: UUID
     processing_status: ProcessingStatus = ProcessingStatus.QUEUED
@@ -38,6 +44,29 @@ class AdminWebImportResponse(BaseModel):
     source_url: str
     was_duplicate: bool = False
     processing_status: ProcessingStatus = ProcessingStatus.INDEXED
+
+
+class WebGovernanceRead(BaseModel):
+    document_id: UUID
+    lifecycle_status: WebLifecycleStatus
+    refresh_interval_days: int
+    first_imported_at: datetime
+    last_fetched_at: datetime
+    last_checked_at: datetime | None = None
+    next_review_at: datetime
+    last_http_status: int | None = None
+    last_refresh_error: str | None = None
+    content_version: int
+    title: str | None = None
+    canonical_url: str | None = None
+    source_url: str | None = None
+    document_status: str | None = None
+
+
+class WebGovernanceUpdate(BaseModel):
+    lifecycle_status: WebLifecycleStatus | None = None
+    refresh_interval_days: int | None = Field(default=None, ge=1, le=3650)
+    next_review_at: datetime | None = None
 
 
 class AdminDocumentMetadataUpdate(BaseModel):

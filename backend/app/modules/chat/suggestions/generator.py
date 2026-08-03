@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -26,11 +25,8 @@ from app.modules.chat.rag.generation import create_chat_client, resolve_generati
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.config import SuggestionConfig
 from app.modules.chat.suggestions.profile import personalization_hint
-from app.modules.documents.repositories.embeddings import embedding_repository
-from app.modules.documents.service import resolve_document_ids
-from app.modules.embedding import service as embedding
-from app.modules.reranking import service as reranking
-from app.modules.retrieval.evidence import max_vector_distance, min_reranker_score
+from app.modules.retrieval.contracts import QuestionValidationRequest
+from app.modules.retrieval.service import retrieval_service
 
 logger = logging.getLogger(__name__)
 
@@ -155,92 +151,6 @@ def _propose_candidates(
     return _parse_candidates(str(response.content))
 
 
-def _passes_reranker_gate(
-    candidate: str,
-    chunks: list[dict],
-    cfg: SuggestionConfig,
-) -> bool:
-    """Apply the expensive secondary gate only after dense distance passes."""
-    try:
-        ranked = reranking.rerank(
-            candidate,
-            chunks[: cfg.validation_top_k],
-            limit=cfg.validation_top_k,
-        )
-    except Exception:
-        logger.exception("Reranker validation failed for candidate; dropping it")
-        return False
-    scores = [chunk["reranker_score"] for chunk in ranked if "reranker_score" in chunk]
-    return bool(scores) and max(scores) >= min_reranker_score()
-
-
-def _validated_candidates(
-    candidates: list[str],
-    identifiers: list[str],
-    include_restricted: bool,
-    cfg: SuggestionConfig,
-) -> list[str]:
-    """Batch dense retrieval, then progressively apply the evidence gates."""
-    document_ids = resolve_document_ids(identifiers, include_restricted)
-    vectors = embedding.embed_queries(candidates)
-    if len(vectors) != len(candidates):
-        raise RuntimeError("Embedding provider returned an unexpected query-vector count.")
-
-    # Preserve normal RAG's wider dense recall pool, but do not send all 20
-    # chunks through the expensive reranker.
-    dense_limit = max(cfg.validation_top_k * 3, 20)
-    dense_results = embedding_repository.retrieve_many(
-        [embedding.vector_literal(vector) for vector in vectors],
-        document_ids,
-        limit=dense_limit,
-    )
-    if len(dense_results) != len(candidates):
-        raise RuntimeError("Batch retrieval returned an unexpected result-group count.")
-
-    gate_distance = cfg.effective_distance(max_vector_distance())
-    distance_survivors: list[tuple[int, str, list[dict]]] = []
-    for index, (candidate, chunks) in enumerate(zip(candidates, dense_results, strict=True)):
-        if not chunks:
-            continue
-        best_distance = min(float(chunk.get("distance", 1.0)) for chunk in chunks)
-        if best_distance <= gate_distance:
-            distance_survivors.append((index, candidate, chunks))
-
-    if not cfg.use_reranker_validation or not reranking.enabled():
-        return [candidate for _, candidate, _ in distance_survivors][: cfg.max_suggestions]
-
-    passed_indices: set[int] = set()
-    reranker_provider = reranking.active_config().provider
-    if reranker_provider == "local":
-        # Local inference already batches a candidate's chunk pairs internally.
-        # Keep it sequential to avoid CPU/GPU contention, stopping once enough pass.
-        for index, candidate, chunks in distance_survivors:
-            if _passes_reranker_gate(candidate, chunks, cfg):
-                passed_indices.add(index)
-            if len(passed_indices) >= cfg.max_suggestions:
-                break
-    else:
-        # Remote APIs generally accept one query with many documents, not many
-        # queries. Bound concurrency so their network latency overlaps without
-        # creating a request spike.
-        workers = min(3, len(distance_survivors))
-        if workers:
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {
-                    index: executor.submit(_passes_reranker_gate, candidate, chunks, cfg)
-                    for index, candidate, chunks in distance_survivors
-                }
-                for index, future in futures.items():
-                    if future.result():
-                        passed_indices.add(index)
-
-    return [
-        candidate
-        for index, candidate, _ in distance_survivors
-        if index in passed_indices
-    ][: cfg.max_suggestions]
-
-
 def generate_followup_suggestions(
     *,
     question: str,
@@ -277,11 +187,16 @@ def generate_followup_suggestions(
         return []
 
     try:
-        return _validated_candidates(
-            candidates,
-            identifiers,
-            include_restricted,
-            cfg,
+        return retrieval_service.validate_questions(
+            QuestionValidationRequest(
+                questions=tuple(candidates),
+                identifiers=tuple(identifiers),
+                top_k=cfg.validation_top_k,
+                max_results=cfg.max_suggestions,
+                include_restricted=include_restricted,
+                max_distance=cfg.validation_distance,
+                use_reranker=cfg.use_reranker_validation,
+            )
         )
     except Exception:
         logger.exception("Follow-up validation failed")

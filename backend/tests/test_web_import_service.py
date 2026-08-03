@@ -22,6 +22,15 @@ class FakeSearchService:
         return self.page
 
 
+class FakeGovernanceService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def register_import(self, document_id: str, *, created_by: str | None):
+        self.calls.append((document_id, created_by))
+        return {"document_id": document_id}
+
+
 def request(**overrides) -> WebImportRequest:
     base = WebImportRequest(
         url="HTTPS://Example.COM:443/policy#overview",
@@ -69,7 +78,13 @@ async def test_import_page_validates_requested_and_canonical_url_and_persists_ti
             "source_url": kwargs["url"],
         }, False
 
-    service = WebImportService(search_service=search, url_validator=validate, saver=save)
+    governance = FakeGovernanceService()
+    service = WebImportService(
+        search_service=search,
+        url_validator=validate,
+        saver=save,
+        governance_service=governance,
+    )
     result = await service.import_page(request())
 
     assert search.requested_url == "https://example.com/policy"
@@ -87,6 +102,7 @@ async def test_import_page_validates_requested_and_canonical_url_and_persists_ti
     assert result.title == "Admin title"
     assert result.source_url == "https://www.example.com/canonical"
     assert result.was_duplicate is False
+    assert governance.calls == [("document-1", "user-1")]
 
 
 @pytest.mark.asyncio
@@ -106,6 +122,7 @@ async def test_import_page_uses_provider_title_when_no_override() -> None:
         search_service=FakeSearchService(page),
         url_validator=validate,
         saver=save,
+        governance_service=FakeGovernanceService(),
     )
     result = await service.import_page(request(title=None))
     assert result.title == "Site title"
@@ -127,6 +144,7 @@ async def test_import_page_rejects_blank_content_before_saving() -> None:
         search_service=FakeSearchService(page),
         url_validator=validate,
         saver=save,
+        governance_service=FakeGovernanceService(),
     )
     with pytest.raises(ValueError, match="readable text"):
         await service.import_page(request(url="https://example.com"))
@@ -146,6 +164,7 @@ async def test_import_page_rejects_oversized_content_before_saving() -> None:
         search_service=FakeSearchService(page),
         url_validator=validate,
         saver=save,
+        governance_service=FakeGovernanceService(),
         max_content_bytes=4,
     )
     with pytest.raises(ValueError, match="too large"):

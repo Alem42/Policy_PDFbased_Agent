@@ -32,6 +32,7 @@ class ChatFilters(BaseModel):
     policy_area: str | None = None
     country_or_region: str | None = None
     source_organisation: str | None = None
+    language: str | None = None
     tags: list[str] = Field(default_factory=list)
     published_year_from: int | None = None
     published_year_to: int | None = None

@@ -108,6 +108,7 @@ class AgentState(TypedDict):
     answer_mode: NotRequired[AnswerMode]
     top_k: NotRequired[int]
     include_restricted: NotRequired[bool]
+    metadata_filters: NotRequired[dict]
     is_admin: NotRequired[bool]
     user_id: NotRequired[str]
     tool_call_counts: NotRequired[dict[str, int]]
@@ -137,6 +138,8 @@ class AgentState(TypedDict):
     # call's `reason` — used to explain an insufficient-evidence refusal even
     # though no citations were ever recorded for it.
     last_evidence_reason: NotRequired[str | None]
+    filter_fallback: NotRequired[bool]
+    filter_notice: NotRequired[str | None]
     resolved_model: NotRequired[str | None]
     # The chat_messages row created up front for this turn (see
     # history_repository.create_pending_message) — carried in state so a

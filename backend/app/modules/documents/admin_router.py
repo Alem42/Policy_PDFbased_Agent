@@ -22,6 +22,9 @@ from app.modules.documents.admin_schemas import (
     AdminWebImportResponse,
     DocumentProcessingStatus,
     ProcessingStatus,
+    WebGovernanceRead,
+    WebGovernanceUpdate,
+    WebLifecycleStatus,
 )
 from app.modules.documents.exceptions import DuplicateDocumentError
 from app.modules.documents.service import (
@@ -37,6 +40,7 @@ from app.modules.documents.service import (
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
 )
+from app.modules.documents.web_governance import web_governance_service
 from app.modules.documents.web_import import (
     WebImportRequest,
     web_import_service,
@@ -64,7 +68,7 @@ def _processing_status(status_value: str) -> ProcessingStatus:
 async def upload_document(
     file: Annotated[UploadFile, File()],
     background_tasks: BackgroundTasks,
-    _: AdminUser,
+    admin: AdminUser,
     title: Annotated[str | None, Form()] = None,
     source_organisation: Annotated[str | None, Form()] = None,
     policy_area: Annotated[str | None, Form()] = None,
@@ -75,7 +79,14 @@ async def upload_document(
     credibility_level: Annotated[str, Form()] = "unknown",
 ) -> AdminDocumentCreateResponse:
     try:
-        row = await save_upload(file)
+        clean_source_url = source_url.strip() if source_url and source_url.strip() else None
+        row = await save_upload(
+            file,
+            source_url=clean_source_url,
+            canonical_url=clean_source_url,
+            imported_by=str(admin["id"]),
+            imported_via="file_upload_admin",
+        )
         document_id = row["id"]
 
         metadata = {
@@ -157,6 +168,45 @@ async def import_web_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except WebSearchProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/web-governance", response_model=list[WebGovernanceRead])
+async def list_web_governance(
+    _: AdminUser,
+    lifecycle_status: WebLifecycleStatus | None = None,
+    due_only: bool = False,
+) -> list[WebGovernanceRead]:
+    rows = await asyncio.to_thread(
+        web_governance_service.list,
+        lifecycle_status=lifecycle_status.value if lifecycle_status else None,
+        due_only=due_only,
+    )
+    return [WebGovernanceRead(**row) for row in rows]
+
+
+@router.patch("/{document_id}/web-governance", response_model=WebGovernanceRead)
+async def update_web_governance(
+    document_id: UUID,
+    payload: WebGovernanceUpdate,
+    _: AdminUser,
+) -> WebGovernanceRead:
+    try:
+        values = payload.model_dump(exclude_unset=True)
+        lifecycle = values.get("lifecycle_status")
+        if lifecycle is not None:
+            values["lifecycle_status"] = lifecycle.value
+        await asyncio.to_thread(
+            web_governance_service.update,
+            str(document_id),
+            **values,
+        )
+        rows = await asyncio.to_thread(web_governance_service.list)
+        row = next(item for item in rows if str(item["document_id"]) == str(document_id))
+        return WebGovernanceRead(**row)
+    except (FileNotFoundError, StopIteration) as exc:
+        raise HTTPException(status_code=404, detail="Web governance record not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/rescan")

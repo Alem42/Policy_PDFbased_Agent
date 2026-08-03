@@ -8,12 +8,14 @@ HTTP routes and Agent tools should not duplicate any of these policies.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from app.modules.crawling.security.urls import validate_public_url
 from app.modules.documents.service import save_web_import
+from app.modules.documents.web_governance import WebGovernanceService, web_governance_service
 from app.modules.web_search.contracts import WebSearchResult
 from app.modules.web_search.service import WebSearchService, web_search_service
 
@@ -86,11 +88,13 @@ class WebImportService:
         search_service: WebSearchService = web_search_service,
         url_validator: Callable[[str], Awaitable[None]] = validate_public_url,
         saver: Callable[..., Awaitable[tuple[dict, bool]]] = save_web_import,
+        governance_service: WebGovernanceService = web_governance_service,
         max_content_bytes: int = MAX_WEB_IMPORT_BYTES,
     ) -> None:
         self._search_service = search_service
         self._url_validator = url_validator
         self._saver = saver
+        self._governance_service = governance_service
         self._max_content_bytes = max_content_bytes
 
     async def import_page(self, request: WebImportRequest) -> WebImportResult:
@@ -112,6 +116,11 @@ class WebImportService:
             markdown=content,
             imported_by=request.imported_by,
             imported_via=request.imported_via,
+        )
+        await asyncio.to_thread(
+            self._governance_service.register_import,
+            str(document["id"]),
+            created_by=request.imported_by,
         )
         display_title = document.get("title") or title or document.get("name") or source_url
         return WebImportResult(
