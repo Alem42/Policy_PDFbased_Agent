@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogActions,
   Autocomplete,
+  Tooltip,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -689,9 +690,10 @@ export default function LibraryPage({
               <Box
                 key={i}
                 sx={{
-                  display: { xs: "block", md: "grid" },
-                  gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(110px, 0.5fr) minmax(360px, auto)",
-                  gap: 2,
+                  display: { xs: "block", lg: "grid" },
+                  gridTemplateColumns: "minmax(220px, 1.15fr) minmax(240px, 0.9fr) minmax(120px, 0.45fr) minmax(330px, auto)",
+                  columnGap: 3,
+                  rowGap: 2,
                   px: 3,
                   py: 2,
                   borderBottom: "1px solid #eaece5",
@@ -711,7 +713,7 @@ export default function LibraryPage({
                   <Skeleton variant="text" width={80} height={20} />
                   <Skeleton variant="text" width={60} height={16} />
                 </Box>
-                <Box sx={{ display: "flex", gap: 1, mt: { xs: 1, md: 0 }, justifySelf: "end" }}>
+                <Box sx={{ display: "flex", gap: 1, mt: { xs: 1, lg: 0 }, justifySelf: "end" }}>
                   <Skeleton variant="rounded" width={110} height={40} />
                   <Skeleton variant="rounded" width={76} height={40} />
                   <Skeleton variant="rounded" width={88} height={40} />
@@ -729,9 +731,10 @@ export default function LibraryPage({
             <Box
               key={document.id}
               sx={{
-                display: { xs: "block", md: "grid" },
-                gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(110px, 0.5fr) minmax(360px, auto)",
-                gap: 2,
+                display: { xs: "block", lg: "grid" },
+                gridTemplateColumns: "minmax(220px, 1.15fr) minmax(240px, 0.9fr) minmax(120px, 0.45fr) minmax(330px, auto)",
+                columnGap: 3,
+                rowGap: 2,
                 px: 3,
                 py: 2,
                 borderBottom: "1px solid #eaece5",
@@ -741,19 +744,34 @@ export default function LibraryPage({
             >
               {/* Document cell */}
               <Box sx={{ minWidth: 0 }}>
-                <Typography component="strong" sx={{ fontWeight: 700, display: "block" }}>
+                <Typography
+                  component="strong"
+                  sx={{ fontWeight: 700, display: "block", overflowWrap: "anywhere" }}
+                >
                   {document.title || document.name}
                 </Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  {document.name}
-                </Typography>
+                <Tooltip title={document.original_filename || document.name || ""} arrow>
+                  <Typography
+                    variant="caption"
+                    noWrap
+                    sx={{
+                      color: "text.secondary",
+                      display: "block",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    Original file: {document.original_filename || document.name}
+                  </Typography>
+                </Tooltip>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
                   {formatSize(document.size)} - {formatDate(document.uploaded_at)}
                 </Typography>
               </Box>
 
               {/* Metadata cell */}
-              <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
                   {document.country_region || "Unknown region"}
                 </Typography>
@@ -793,9 +811,9 @@ export default function LibraryPage({
                   flexWrap: "wrap",
                   gap: 1,
                   alignItems: "center",
-                  justifyContent: { xs: "flex-start", md: "flex-end" },
-                  justifySelf: { md: "end" },
-                  mt: { xs: 2, md: 0 },
+                  justifyContent: { xs: "flex-start", lg: "flex-end" },
+                  justifySelf: { lg: "end" },
+                  mt: { xs: 2, lg: 0 },
                   "& .MuiButton-root": {
                     minHeight: 40,
                   },
