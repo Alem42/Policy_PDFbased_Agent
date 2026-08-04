@@ -493,11 +493,12 @@ export default function EmbeddingSection({
               }
               label="Auto-detect dimension on save (probe once, read vector length)"
             />
-            <Field label="Dimensions" hint="From the catalog; auto-detected on save unless you override. A change requires a re-embed.">
+            <Field label="Dimensions" hint="Auto-detected by default. Manual range: 64–4096; a change requires a re-embed.">
               <TextField
                 value={form.dimensions}
                 onChange={(e) => set("dimensions", Number(e.target.value))}
                 type="number"
+                inputProps={{ min: 64, max: 4096 }}
                 size="small"
                 disabled={form.auto_detect_dimensions}
                 sx={{ maxWidth: 200 }}
@@ -509,20 +510,22 @@ export default function EmbeddingSection({
         {/* Chunking & tokens */}
         <SubCard title="Chunking & tokens">
           <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-            <Field label="Batch size" hint="Texts per embedding call.">
+            <Field label="Batch size" hint="Texts per embedding call. Recommended: 32; allowed: 1–256.">
               <TextField
                 value={form.batch_size}
                 onChange={(e) => set("batch_size", Number(e.target.value))}
                 type="number"
+                inputProps={{ min: 1, max: 256 }}
                 size="small"
                 sx={{ width: 160 }}
               />
             </Field>
-            <Field label="Chunk token budget" hint="Max tokens per chunk. Keep below the model's input limit.">
+            <Field label="Chunk token budget" hint="Max tokens per chunk. Recommended: 480; allowed: 64–8192.">
               <TextField
                 value={form.chunk_token_budget}
                 onChange={(e) => set("chunk_token_budget", Number(e.target.value))}
                 type="number"
+                inputProps={{ min: 64, max: 8192 }}
                 size="small"
                 sx={{ width: 200 }}
               />

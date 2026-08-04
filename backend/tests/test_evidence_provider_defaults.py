@@ -17,6 +17,22 @@ def test_embedding_rejects_unsafe_evidence_threshold(value: float) -> None:
         EmbeddingConfig(evidence_distance_threshold=value)
 
 
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"dimensions": 63},
+        {"dimensions": 4097},
+        {"batch_size": 0},
+        {"batch_size": 257},
+        {"chunk_token_budget": 63},
+        {"chunk_token_budget": 8193},
+    ],
+)
+def test_embedding_rejects_unsafe_numeric_settings(override: dict) -> None:
+    with pytest.raises(ValidationError):
+        EmbeddingConfig(**override)
+
+
 def test_reranker_evidence_default_is_provider_aware() -> None:
     assert RerankingConfig(provider="local").resolved_min_score() == -2.0
     assert RerankingConfig(provider="api").resolved_min_score() == 0.99

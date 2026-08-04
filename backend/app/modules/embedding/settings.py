@@ -73,13 +73,13 @@ class EmbeddingConfig(BaseModel):
     api_base_url: str = ""
     api_key: str = ""  # never returned raw to the client — masked in the API layer
     api_model: str = ""
-    dimensions: int = Field(default=384, ge=1)
+    dimensions: int = Field(default=384, ge=64, le=4096)
     auto_detect_dimensions: bool = True
     symmetric: bool = True  # API models are usually symmetric (query == passage encoding)
 
     # Chunking / token accounting.
     batch_size: int = Field(default=32, ge=1, le=256)
-    chunk_token_budget: int = Field(default=480, ge=64)
+    chunk_token_budget: int = Field(default=480, ge=64, le=8192)
     token_counting: Literal["auto", "model", "tiktoken"] = "auto"
 
     # Retrieval / evidence knobs (calibrated per embedding model).
