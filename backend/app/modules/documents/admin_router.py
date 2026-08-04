@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -27,6 +26,7 @@ from app.modules.documents.admin_schemas import (
     WebLifecycleStatus,
 )
 from app.modules.documents.exceptions import DuplicateDocumentError
+from app.modules.documents.processing_queue import document_processing_queue
 from app.modules.documents.service import (
     delete_document as delete_document_record,
 )
@@ -67,7 +67,6 @@ def _processing_status(status_value: str) -> ProcessingStatus:
 @router.post("", response_model=AdminDocumentCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     file: Annotated[UploadFile, File()],
-    background_tasks: BackgroundTasks,
     admin: AdminUser,
     title: Annotated[str | None, Form()] = None,
     source_organisation: Annotated[str | None, Form()] = None,
@@ -102,9 +101,9 @@ async def upload_document(
         if any(value is not None for value in metadata.values()):
             row = update_document_metadata_record(document_id, metadata)
 
-        # Schedule heavy PDF processing in a thread pool so the response
-        # returns immediately (202 Accepted) without blocking the event loop.
-        background_tasks.add_task(_run_process_document, document_id)
+        # A shared FIFO queue gives all users three processing slots in total.
+        # Saving the upload remains quick; extraction/embedding runs in workers.
+        await document_processing_queue.enqueue(document_id, _run_process_document)
         logger.info("Document %s queued for background processing", document_id)
 
         return AdminDocumentCreateResponse(
@@ -126,11 +125,7 @@ async def upload_document(
 
 
 def _run_process_document(document_id: str) -> None:
-    """Run process_document in a new thread via asyncio.to_thread wrapper.
-
-    BackgroundTasks runs sync callables directly in a thread already, so this
-    function is called in a worker thread and can safely block.
-    """
+    """Process one document inside a queue worker thread."""
     try:
         process_document(document_id)
     except Exception as exc:
@@ -236,11 +231,10 @@ async def reembed_documents(_: AdminUser) -> dict:
 @router.post("/{document_id}/rescan", status_code=status.HTTP_202_ACCEPTED)
 async def rescan_document(
     document_id: UUID,
-    background_tasks: BackgroundTasks,
     _: AdminUser,
 ) -> dict:
     """Reprocess ONE document (re-extract, re-chunk, re-metadata, re-embed active model)."""
-    background_tasks.add_task(_run_process_document, str(document_id))
+    await document_processing_queue.enqueue(str(document_id), _run_process_document)
     logger.info("Single-document rescan queued: %s", document_id)
     return {"id": str(document_id), "processing_status": "queued"}
 
@@ -278,13 +272,50 @@ async def get_processing_status(
     _: AdminUser,
 ) -> DocumentProcessingStatus:
     try:
+        queue_state = document_processing_queue.state(str(document_id))
         row = await asyncio.to_thread(get_document_detail, str(document_id), True)
+        raw_status = row.get("status", "uploaded")
+        if queue_state and queue_state.status == "queued":
+            processing_status = ProcessingStatus.QUEUED
+            progress_percent = 0
+            message = (
+                f"Waiting for a processing slot (queue position {queue_state.position})"
+                if queue_state.position
+                else "Waiting for a processing slot"
+            )
+        elif queue_state and queue_state.status == "processing" and raw_status in {
+            "uploaded",
+            "ready",
+        }:
+            processing_status = ProcessingStatus.EXTRACTING
+            progress_percent = 10
+            message = "Extracting document"
+        else:
+            processing_status = _processing_status(raw_status)
+            progress_percent = {
+                ProcessingStatus.QUEUED: 0,
+                ProcessingStatus.EXTRACTING: 10,
+                ProcessingStatus.OCR: 25,
+                ProcessingStatus.CHUNKING: 50,
+                ProcessingStatus.EMBEDDING: 75,
+                ProcessingStatus.INDEXED: 100,
+                ProcessingStatus.FAILED: 100,
+            }[processing_status]
+            message = {
+                ProcessingStatus.QUEUED: "Waiting for a processing slot",
+                ProcessingStatus.EXTRACTING: "Extracting document",
+                ProcessingStatus.OCR: "Running OCR",
+                ProcessingStatus.CHUNKING: "Chunking document",
+                ProcessingStatus.EMBEDDING: "Creating embeddings",
+                ProcessingStatus.INDEXED: "Document indexed",
+                ProcessingStatus.FAILED: row.get("error_message"),
+            }[processing_status]
         return DocumentProcessingStatus(
             id=document_id,
-            status=_processing_status(row.get("status", "uploaded")),
-            progress_percent=100 if row.get("status") == "ready" else 50,
-            message=row.get("error_message"),
-            error=row.get("error_message") if row.get("status") == "failed" else None,
+            status=processing_status,
+            progress_percent=progress_percent,
+            message=message,
+            error=row.get("error_message") if raw_status == "failed" else None,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

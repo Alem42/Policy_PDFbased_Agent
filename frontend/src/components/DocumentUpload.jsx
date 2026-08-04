@@ -202,7 +202,17 @@ function UploadJobRow({ job, onToggle, onDismiss, onMouseEnter, onMouseLeave }) 
           </IconButton>
         )}
       </Box>
-      {!isTerminal && <LinearProgress variant="indeterminate" />}
+      {!isTerminal && job.message && (
+        <Typography variant="caption" sx={{ display: "block", px: 1.25, pb: 0.75, color: "text.secondary" }}>
+          {job.message}
+        </Typography>
+      )}
+      {!isTerminal && (
+        <LinearProgress
+          variant={Number.isFinite(job.progressPercent) ? "determinate" : "indeterminate"}
+          value={Number.isFinite(job.progressPercent) ? job.progressPercent : undefined}
+        />
+      )}
       {job.dismissDeadline && <DismissCountdown deadline={job.dismissDeadline} />}
       {job.status === "failed" && job.error && (
         <Alert severity="error" sx={{ borderRadius: 0 }}>
@@ -357,7 +367,15 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
       setJobs((current) =>
         current.map((job) => {
           const result = lastResults.find((r) => r && r.id === job.id);
-          return result ? { ...job, status: result.status, error: result.error } : job;
+          return result
+            ? {
+                ...job,
+                status: result.status,
+                progressPercent: result.progress_percent,
+                message: result.message,
+                error: result.error,
+              }
+            : job;
         }),
       );
 
@@ -396,6 +414,8 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
         id: upload.id,
         filename: pendingFiles[index]?.name || upload.id,
         status: upload.processing_status || "queued",
+        progressPercent: 0,
+        message: "Waiting for a processing slot",
         error: null,
         detail: null,
         expanded: false,
