@@ -4,8 +4,7 @@
     POST /admin/catalog                        -> add/upsert one entry
 
 New keys are entered on the LLM & API keys page (provider key store), not here.
-A future crawler can bulk-populate this via POST — see the TODO in the frontend
-LLM & API keys section ("Rescan endpoints").
+Administrators can add or update individual endpoints through this API.
 """
 
 from __future__ import annotations

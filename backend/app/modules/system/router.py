@@ -12,6 +12,5 @@ async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "environment": settings.app_env,
-        "crawling_enabled": settings.crawling_enabled,
         "database": database.status,
     }

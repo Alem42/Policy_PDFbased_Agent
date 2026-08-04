@@ -13,11 +13,11 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
-from app.modules.crawling.security.urls import validate_public_url
 from app.modules.documents.service import save_web_import
 from app.modules.documents.web_governance import WebGovernanceService, web_governance_service
 from app.modules.web_search.contracts import WebSearchResult
 from app.modules.web_search.service import WebSearchService, web_search_service
+from app.modules.web_search.url_security import validate_public_url
 
 MAX_WEB_IMPORT_BYTES = 2 * 1024 * 1024
 MAX_WEB_IMPORT_TITLE_CHARACTERS = 200

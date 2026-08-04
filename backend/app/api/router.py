@@ -6,9 +6,6 @@ from app.modules.chat.history_router import router as chat_history_router
 from app.modules.chat.router import router as chat_router
 from app.modules.chat.suggestions.router import admin_router as suggestions_admin_router
 from app.modules.chat.suggestions.router import user_router as suggestions_user_router
-from app.modules.crawling.routers.documents import router as crawled_documents_router
-from app.modules.crawling.routers.jobs import router as crawl_jobs_router
-from app.modules.crawling.routers.sources import router as crawl_sources_router
 from app.modules.documents.admin_router import router as admin_documents_router
 from app.modules.documents.router import router as documents_router
 from app.modules.documents.taxonomy_router import router as taxonomy_router
@@ -32,6 +29,3 @@ api_router.include_router(reranking_admin_router)
 api_router.include_router(catalog_admin_router)
 api_router.include_router(taxonomy_router)
 api_router.include_router(settings_router)
-api_router.include_router(crawl_sources_router)
-api_router.include_router(crawl_jobs_router)
-api_router.include_router(crawled_documents_router)

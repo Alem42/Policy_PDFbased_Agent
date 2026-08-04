@@ -26,7 +26,7 @@ Access levels used below:
 
 | Method | Path | Access | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/health` | Public | Return service, environment, crawling, and database status. |
+| `GET` | `/api/v1/health` | Public | Return service, environment, and database status. |
 
 ## Authentication
 
@@ -95,75 +95,6 @@ Document search returns `{items, page, page_size, total, pages}`. Supported
 sort values are `uploaded_desc`, `name_asc`, `year_desc`, and `chunks_desc`.
 An omitted or blank `q` returns a paginated catalogue without a text-search
 condition.
-
-## Crawled documents
-
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/crawled-documents` | Public | List crawled documents; optionally filter by `crawl_source_id`. |
-| `GET` | `/api/v1/crawled-documents/search?q={query}&limit=20` | Public | Search crawled content; `limit` is between 1 and 100. |
-| `GET` | `/api/v1/crawled-documents/{crawled_document_id}?snippet_limit=8` | Public | Return detail with up to 0–50 snippet previews. |
-| `GET` | `/api/v1/crawled-documents/{crawled_document_id}/versions` | Public | Return version history. |
-| `GET` | `/api/v1/crawled-documents/{crawled_document_id}/assets` | Public | Return linked assets. |
-
-There is no separate crawled-document `/chunks` endpoint in the current API;
-snippet previews are included in the detail response.
-
-## Crawl sources
-
-| Method | Path | Access | Success | Description |
-| --- | --- | --- | --- | --- |
-| `GET` | `/api/v1/crawl-sources` | Public | `200` | List configured sources. |
-| `POST` | `/api/v1/crawl-sources` | Public | `201` | Create a source. |
-| `GET` | `/api/v1/crawl-sources/{crawl_source_id}` | Public | `200` | Return one source. |
-| `PATCH` | `/api/v1/crawl-sources/{crawl_source_id}` | Public | `200` | Partially update a source. |
-| `DELETE` | `/api/v1/crawl-sources/{crawl_source_id}` | Public | `204` | Delete a source. |
-
-A source create body has this shape:
-
-```json
-{
-  "name": "OECD AI policy initiatives",
-  "start_url": "https://example.org/policies",
-  "allowed_domains": ["example.org"],
-  "include_patterns": [],
-  "exclude_patterns": [],
-  "crawler_preference": "auto",
-  "max_pages": 100,
-  "max_documents": 100,
-  "max_depth": 3,
-  "enabled": true,
-  "schedule": null,
-  "config": {}
-}
-```
-
-`crawler_preference` accepts `auto`, `http`, `playwright`, or `firecrawl`.
-The old `/api/v1/sources` path has been replaced by `/api/v1/crawl-sources`.
-
-## Crawl jobs
-
-| Method | Path | Access | Success | Description |
-| --- | --- | --- | --- | --- |
-| `GET` | `/api/v1/crawl-jobs` | Public | `200` | List crawl jobs. |
-| `POST` | `/api/v1/crawl-jobs` | Public | `202` | Create a job and schedule it as a background task. |
-| `GET` | `/api/v1/crawl-jobs/{crawl_job_id}` | Public | `200` | Return job status and counters. |
-
-Create a safe dry-run job with:
-
-```json
-{
-  "crawl_source_id": "<uuid>",
-  "dry_run": true
-}
-```
-
-`dry_run` defaults to `true`. A non-dry-run job can contact remote sites only
-when `CRAWLING_ENABLED=true`. Creating a job for a disabled source returns
-`409`; an unknown source returns `404`.
-
-When `DATABASE_ENABLED=false`, crawl source, crawl job, and crawled-document
-repositories use process-local in-memory storage. That data is not durable.
 
 ## Document administration
 

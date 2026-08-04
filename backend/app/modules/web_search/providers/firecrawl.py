@@ -45,7 +45,7 @@ class FirecrawlSearchProvider:
             from firecrawl import AsyncFirecrawl  # type: ignore[import-not-found]
         except ImportError as exc:
             raise WebSearchProviderError(
-                "Firecrawl SDK is not installed. Install the 'crawlers' extra."
+                "Firecrawl SDK is not installed. Install the 'web-search' extra."
             ) from exc
         return AsyncFirecrawl(api_key=self._api_key)
 
