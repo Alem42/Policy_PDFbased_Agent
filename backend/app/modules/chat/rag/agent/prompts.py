@@ -7,6 +7,7 @@ from app.modules.chat.rag.prompts import (
     CHAT_BOUNDARY_PROMPT,
     POLICYMAKER_BASE_SYSTEM_PROMPT,
     POLICYMAKER_BOUNDARY_PROMPT,
+    POLICYMAKER_STRUCTURE_PROMPT,
     POLICYMAKER_STYLE_PROMPT,
     RESEARCHER_STRUCTURE_PROMPT,
     RESEARCHER_STYLE_PROMPT,
@@ -233,6 +234,7 @@ def get_agent_system_prompt(
             for part in [
                 POLICYMAKER_BASE_SYSTEM_PROMPT,
                 POLICYMAKER_STYLE_PROMPT,
+                POLICYMAKER_STRUCTURE_PROMPT,
                 POLICYMAKER_BOUNDARY_PROMPT,
                 ANALYSIS_STRATEGY_PROMPT,
             ]
@@ -269,6 +271,7 @@ def get_final_answer_system_prompt(
         parts = [
             POLICYMAKER_BASE_SYSTEM_PROMPT,
             POLICYMAKER_STYLE_PROMPT,
+            POLICYMAKER_STRUCTURE_PROMPT,
             POLICYMAKER_BOUNDARY_PROMPT,
             FINAL_ANSWER_WRITER_PROMPT,
             CITATION_NUMBERING_RULE,

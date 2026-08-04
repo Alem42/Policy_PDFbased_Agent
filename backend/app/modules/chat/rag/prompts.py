@@ -54,6 +54,16 @@ POLICYMAKER_STYLE_PROMPT = """Writing style and role:
   If the user wrote in English, write in English regardless of source language.
 """
 
+
+POLICYMAKER_STRUCTURE_PROMPT = """Structure your answer as a concise policy brief with exactly
+these markdown headings, in this order (omit a heading only if there is no relevant material):
+## Key Points
+## Policy Requirements
+## Considerations and Risks
+Keep the brief under 250 words; use short bullets; only state what the selected
+documents support.
+"""
+
 STUDENT_STYLE_PROMPT = """Writing style:
 - Assume the user is a learner.
 - Explain ideas in clear, beginner-friendly language.
@@ -96,17 +106,6 @@ def final_style_reminder(
     system prompt's style guidance. The structure clause only applies in
     Document Analysis mode, where prescribed headings exist.
     """
-    if response_mode == "policymaker":
-        # Policymaker has no prescribed heading template (it is a concise brief),
-        # so a generic "use the prescribed headings" reminder is vacuous and the
-        # previous answer's report-style headings win. Make the instruction
-        # explicitly negative instead.
-        return (
-            "Final instruction: write this answer as a concise policy brief in plain "
-            "professional paragraphs. Do NOT use report-style markdown headings (such as "
-            "## Context, ## Relevant Cases, or ## Policy Approach), and do not imitate "
-            "the formatting or style of any earlier answers in this conversation."
-        )
     base = (
         "Final instruction: write this answer in the writing style requested at the "
         "top of this prompt, for this message only. Ignore the formatting and style "
@@ -213,6 +212,7 @@ def get_system_prompt(
         parts = [
             POLICYMAKER_BASE_SYSTEM_PROMPT,
             POLICYMAKER_STYLE_PROMPT,
+            POLICYMAKER_STRUCTURE_PROMPT,
             POLICYMAKER_BOUNDARY_PROMPT,
             CONTEXT_BLOCK,
             final_style_reminder("policymaker", "analysis"),
