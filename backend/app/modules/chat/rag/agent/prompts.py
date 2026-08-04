@@ -7,11 +7,13 @@ from app.modules.chat.rag.prompts import (
     CHAT_BOUNDARY_PROMPT,
     POLICYMAKER_BASE_SYSTEM_PROMPT,
     POLICYMAKER_BOUNDARY_PROMPT,
+    POLICYMAKER_STRUCTURE_PROMPT,
     POLICYMAKER_STYLE_PROMPT,
     RESEARCHER_STRUCTURE_PROMPT,
     RESEARCHER_STYLE_PROMPT,
     STUDENT_STRUCTURE_PROMPT,
     STUDENT_STYLE_PROMPT,
+    final_style_reminder,
 )
 
 # Shared citation rule, reused by both strategy prompts below. Every tool
@@ -203,13 +205,17 @@ tool results and ends with a prepare_final_answer tool result containing the
 approved answer plan and citation numbers.
 
 Write the final user-facing answer now. Follow the requested persona, style,
-knowledge boundary, and the approved plan. Use only exact citation `number`
-values present in tool results; never renumber or invent citations.
+knowledge boundary, and the approved plan. The plan describes CONTENT only,
+never formatting: always apply the requested persona's prescribed heading
+structure exactly, and do not invent, rename, or merge headings. Use only
+exact citation `number` values present in tool results; never renumber or
+invent citations.
 
 Return only the answer body. Do not call or describe tools, expose the
 research trace, ask whether to search the web, or offer an action that would
 require another user confirmation. Those decisions belong to the completed
-ReAct phase.
+ReAct phase. Ignore the formatting and style of any earlier answers in this
+conversation.
 """
 
 
@@ -228,6 +234,7 @@ def get_agent_system_prompt(
             for part in [
                 POLICYMAKER_BASE_SYSTEM_PROMPT,
                 POLICYMAKER_STYLE_PROMPT,
+                POLICYMAKER_STRUCTURE_PROMPT,
                 POLICYMAKER_BOUNDARY_PROMPT,
                 ANALYSIS_STRATEGY_PROMPT,
             ]
@@ -264,9 +271,11 @@ def get_final_answer_system_prompt(
         parts = [
             POLICYMAKER_BASE_SYSTEM_PROMPT,
             POLICYMAKER_STYLE_PROMPT,
+            POLICYMAKER_STRUCTURE_PROMPT,
             POLICYMAKER_BOUNDARY_PROMPT,
             FINAL_ANSWER_WRITER_PROMPT,
             CITATION_NUMBERING_RULE,
+            final_style_reminder("policymaker", "analysis"),
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
@@ -279,5 +288,12 @@ def get_final_answer_system_prompt(
             STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
         )
         parts.append(structure)
-    parts.extend([boundary, FINAL_ANSWER_WRITER_PROMPT, CITATION_NUMBERING_RULE])
+    parts.extend(
+        [
+            boundary,
+            FINAL_ANSWER_WRITER_PROMPT,
+            CITATION_NUMBERING_RULE,
+            final_style_reminder(response_mode, answer_mode),
+        ]
+    )
     return "\n".join(part.strip() for part in parts if part.strip())
