@@ -67,6 +67,7 @@ function SubCard({ icon, title, description, children }) {
 export default function WebSearchSection({
   user,
   onNavigate,
+  onDocumentsChanged,
   configurationVersion = 0,
   onConfigurationChanged,
 }) {
@@ -121,6 +122,11 @@ export default function WebSearchSection({
     setImportBusy(true);
     try {
       const result = await importWebDocument(url, importTitle);
+      // The Library page queries its own live result set, while Chat renders
+      // sources from App's shared document cache. Refresh that cache as part
+      // of the import so a newly imported page added in Library is immediately
+      // available when the user returns to Chat.
+      await onDocumentsChanged?.([result.id]);
       setImportResult(result);
       setImportUrl("");
       setImportTitle("");

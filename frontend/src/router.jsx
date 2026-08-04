@@ -99,8 +99,14 @@ function AdminRoute() {
 }
 
 function ManageRoute() {
-  const { user, navigateToView } = useOutletContext();
-  return <AdminManagementPage user={user} onNavigate={navigateToView} />;
+  const { user, handleDocumentsChanged, navigateToView } = useOutletContext();
+  return (
+    <AdminManagementPage
+      user={user}
+      onDocumentsChanged={handleDocumentsChanged}
+      onNavigate={navigateToView}
+    />
+  );
 }
 
 function HistoryRoute() {

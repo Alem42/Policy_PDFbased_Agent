@@ -524,7 +524,7 @@ export default function LibraryPage({
 
   function handleAddToChat(event, document) {
     try {
-      onAddSource(document.id);
+      onAddSource(document.id, document);
       setAddedPopover({ anchorEl: event.currentTarget, document, success: true });
     } catch (addError) {
       setAddedPopover({ anchorEl: event.currentTarget, document, success: false, error: addError.message });
