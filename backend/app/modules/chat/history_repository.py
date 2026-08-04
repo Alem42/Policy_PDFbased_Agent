@@ -155,6 +155,18 @@ class ChatHistoryRepository:
             )
             conn.commit()
 
+    def update_session_document_ids(self, session_id: str, document_ids: list[str]) -> None:
+        """Keep the session's stored document set in sync with what a turn
+        actually used -- so sources added or removed mid-conversation (via
+        Library's "Add to chat") show up in history, not just the set picked
+        when the session was first created."""
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE chat_sessions SET document_ids = %s WHERE id = %s",
+                (document_ids, session_id),
+            )
+            conn.commit()
+
     def update_message_suggestions(
         self,
         message_id: str,
