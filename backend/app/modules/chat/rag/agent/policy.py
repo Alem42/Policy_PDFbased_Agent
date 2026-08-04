@@ -1,5 +1,7 @@
 """Tool visibility and per-turn budgets for the ReAct orchestrator."""
 
+from app.modules.chat.agent_limits.config import AgentToolLimitsConfig
+from app.modules.chat.agent_limits.service import active_config as active_tool_limits
 from app.modules.chat.rag.agent.tools import (
     ALL_TOOLS,
     import_web_page,
@@ -10,14 +12,10 @@ from app.modules.chat.rag.agent.tools import (
 NON_ADMIN_TOOLS = [tool for tool in ALL_TOOLS if tool is not import_web_page]
 ANALYSIS_MODE_TOOLS = [search_internal_documents, prepare_final_answer]
 
-TOOL_CALL_LIMITS = {
-    "search_internal_documents": 5,
-    "search_full_corpus": 5,
-    "ask_user": 20,
-    "search_web": 4,
-    "import_web_page": 1,
-    "prepare_final_answer": 1,
-}
+# Defaults -- also the fallback used until an admin overrides them via
+# Manage > Agent tool limits (see chat.agent_limits), or when the
+# agent_tool_limit_settings row is absent.
+TOOL_CALL_LIMITS = AgentToolLimitsConfig().as_limits()
 
 EVIDENCE_TIER_TOOLS = {"search_internal_documents", "search_full_corpus", "search_web"}
 
@@ -34,8 +32,9 @@ def tools_for(
     else:
         available = ALL_TOOLS if is_admin else NON_ADMIN_TOOLS
     counts = tool_call_counts or {}
+    limits = active_tool_limits().as_limits()
     return [
         tool
         for tool in available
-        if counts.get(tool.name, 0) < TOOL_CALL_LIMITS.get(tool.name, 1)
+        if counts.get(tool.name, 0) < limits.get(tool.name, 1)
     ]

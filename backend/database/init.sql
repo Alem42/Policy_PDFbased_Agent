@@ -218,6 +218,18 @@ CREATE TABLE IF NOT EXISTS "public"."suggestion_settings" (
 ;
 
 -- ----------------------------
+-- Table structure for agent_tool_limit_settings (admin-tunable per-tool call budgets for the ReAct agent, one JSON row)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS "public"."agent_tool_limit_settings" (
+  "id" int4 NOT NULL DEFAULT 1,
+  "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "agent_tool_limit_settings_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "agent_tool_limit_settings_singleton" CHECK ("id" = 1)
+)
+;
+
+-- ----------------------------
 -- Table structure for suggestion_clicks (which suggested questions users click)
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS "public"."suggestion_clicks" (

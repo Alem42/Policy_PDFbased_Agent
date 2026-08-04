@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Box, Container, Alert } from "@mui/material";
 import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
-import { getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
+import { chatSessionPath, getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
 
 export default function App() {
   const location = useLocation();
@@ -14,11 +14,32 @@ export default function App() {
   const [error, setError] = useState("");
 
   const [contextSourceIds, setContextSourceIds] = useState([]);
+  // The most recently visited chat URL (bare /chat or /chat/<sessionId>).
+  // Lets "Go to chat" and the header's Chat nav return to the conversation
+  // the user left, instead of always starting a blank one.
+  const [lastChatPath, setLastChatPath] = useState(ROUTES.chat);
+  // The chat session ChatPage currently has open, if any. Lets ChatPage tell
+  // a same-session remount (e.g. Library -> "Go to chat" round trip) apart
+  // from switching to a different saved conversation: on a same-session
+  // return, sources just added in Library must survive, not be clobbered by
+  // that session's last-persisted document_ids.
+  const [activeChatSessionId, setActiveChatSessionId] = useState(null);
 
   const documentCount = useMemo(() => documents.length, [documents]);
   const activeView = getViewFromPath(location.pathname);
 
+  useEffect(() => {
+    if (location.pathname === ROUTES.chat || location.pathname.startsWith(`${ROUTES.chat}/`)) {
+      setLastChatPath(location.pathname);
+    }
+  }, [location.pathname]);
+
   function navigateToView(view, options) {
+    if (view === "chat") {
+      const path = options?.sessionId ? chatSessionPath(options.sessionId) : lastChatPath;
+      navigate(path, options?.replace ? { replace: true } : undefined);
+      return;
+    }
     navigate(VIEW_PATHS[view] || ROUTES.chat, options);
   }
 
@@ -115,7 +136,10 @@ export default function App() {
     clearAuth();
     setUser(null);
     setContextSourceIds([]);
-    navigateToView("chat", { replace: true });
+    // A logged-out visitor shouldn't land back on someone's private session.
+    setLastChatPath(ROUTES.chat);
+    setActiveChatSessionId(null);
+    navigate(ROUTES.chat, { replace: true });
   }
 
   function handleAuthenticated(nextUser) {
@@ -161,12 +185,14 @@ export default function App() {
             loading,
             user,
             contextSourceIds,
+            activeChatSessionId,
             loadDocuments,
             handleDocumentsChanged,
             handleRescanDocuments,
             handleAddSource,
             handleRemoveSource,
             handleSetSources,
+            handleActiveChatSessionChange: setActiveChatSessionId,
             handleAuthenticated,
             navigateToView,
           }}

@@ -99,8 +99,7 @@ export default function HistoryPage({ onNavigate }) {
   }
 
   function openSession(session) {
-    // Pass the session ID as router navigation state so ChatPage can load it.
-    onNavigate("chat", { state: { sessionId: session.id } });
+    onNavigate("chat", { sessionId: session.id });
   }
 
   return (

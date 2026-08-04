@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -55,6 +55,7 @@ import {
 } from "../api";
 import CitationList from "../components/CitationList";
 import DocumentDrawer from "../components/DocumentDrawer";
+import { chatSessionPath, ROUTES } from "../routes";
 
 // Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
@@ -524,12 +525,18 @@ export default function ChatPage({
   user,
   onNavigate,
   contextSourceIds = [],
+  activeSessionId = null,
   onAddSource,
   onRemoveSource,
   onSetSources,
+  onActiveSessionChange,
 }) {
   const location = useLocation();
-  const resumeSessionId = location.state?.sessionId ?? null;
+  const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams();
+  // The route param is the source of truth (bookmarkable, like ChatGPT's
+  // /c/<id>); router state is a legacy fallback for any stale in-flight links.
+  const resumeSessionId = routeSessionId ?? location.state?.sessionId ?? null;
 
   const [selected, setSelected] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -650,7 +657,7 @@ export default function ChatPage({
     })();
   }, []);
 
-  // Load a prior session when navigated here with a sessionId in router state
+  // Load a prior session when navigated here with a sessionId in the URL
   useEffect(() => {
     if (!resumeSessionId) return;
     let cancelled = false;
@@ -666,6 +673,18 @@ export default function ChatPage({
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeSessionId]);
+
+  // Give every conversation its own URL (like ChatGPT's /c/<id>): once a
+  // session exists -- freshly created or just loaded -- rewrite a bare /chat
+  // (or a stale id) to match it, without adding a back-stack entry.
+  useEffect(() => {
+    if (!sessionId) return;
+    const target = chatSessionPath(sessionId);
+    if (location.pathname !== target) {
+      navigate(target, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // Sync selected docs when contextSourceIds changes externally
   useEffect(() => {
@@ -793,7 +812,15 @@ export default function ChatPage({
         missing.push(docId);
       }
     }
-    if (onSetSources) onSetSources(found);
+    // Only replace the working source set when actually switching to a
+    // different conversation. Re-landing on the session that was already
+    // active (e.g. add a source in Library, then "Go to chat") must keep
+    // whatever was just added -- it isn't in this session's persisted
+    // document_ids yet because no message has carried it there.
+    const isSameActiveSession =
+      activeSessionId != null && String(activeSessionId) === String(detail.id);
+    if (onSetSources && !isSameActiveSession) onSetSources(found);
+    onActiveSessionChange?.(String(detail.id));
     if (missing.length > 0) {
       const noun = missing.length === 1 ? "document" : "documents";
       setSnackbar({
@@ -806,6 +833,7 @@ export default function ChatPage({
   async function handleLoadSession(id) {
     try {
       const detail = await getChatSession(id);
+      navigate(chatSessionPath(id));
       restoreSession(detail);
     } catch {
       setError("Failed to load session.");
@@ -816,6 +844,8 @@ export default function ChatPage({
     setMessages([]);
     setSessionId(null);
     setError("");
+    onActiveSessionChange?.(null);
+    navigate(ROUTES.chat);
   }
 
   function handleExportMessage(message, index) {
@@ -1063,6 +1093,7 @@ export default function ChatPage({
         });
         if (evt.session_id && !sessionId) {
           setSessionId(String(evt.session_id));
+          onActiveSessionChange?.(String(evt.session_id));
           loadSessions();
         }
       } else if (evt.type === "answer_done") {

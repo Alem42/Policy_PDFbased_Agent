@@ -36,6 +36,12 @@ class ChatTurnService:
                 session_id,
                 MAX_HISTORY_TURNS,
             )
+            if request.identifiers:
+                await asyncio.to_thread(
+                    self.repository.update_session_document_ids,
+                    session_id,
+                    list(request.identifiers),
+                )
         else:
             session_id = await asyncio.to_thread(
                 self.repository.create_session,

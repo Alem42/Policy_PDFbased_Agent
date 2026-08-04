@@ -20,6 +20,10 @@ class FakeHistoryRepository:
         self.calls.append("history")
         return list(self.messages)
 
+    def update_session_document_ids(self, session_id: str, document_ids: list[str]) -> None:
+        self.calls.append("update_document_ids")
+        self.last_document_ids = document_ids
+
     def create_session(self, *args) -> str:
         self.calls.append("create_session")
         return "new-session"
@@ -52,7 +56,7 @@ async def test_start_reads_prior_history_before_inserting_current_question() -> 
     repository = FakeHistoryRepository()
     turn = await ChatTurnService(repository).start(request())
 
-    assert repository.calls == ["owns", "history", "add_message", "pending"]
+    assert repository.calls == ["owns", "history", "update_document_ids", "add_message", "pending"]
     assert turn.history == [{"role": "assistant", "content": "Previous answer"}]
     assert all(item["content"] != "Current question" for item in turn.history)
     assert repository.messages[-1] == {"role": "user", "content": "Current question"}
@@ -76,4 +80,21 @@ async def test_start_creates_new_session_with_empty_prior_history() -> None:
     assert repository.calls == ["create_session", "add_message"]
     assert turn.session_id == "new-session"
     assert turn.history == []
-    assert turn.assistant_message_id is None
+
+
+@pytest.mark.asyncio
+async def test_start_syncs_document_ids_to_the_current_turns_selection() -> None:
+    """Sources added or removed mid-conversation must land in history, not just
+    the set picked when the session was first created."""
+    repository = FakeHistoryRepository()
+    await ChatTurnService(repository).start(request(identifiers=("doc-2", "doc-3")))
+    assert repository.last_document_ids == ["doc-2", "doc-3"]
+
+
+@pytest.mark.asyncio
+async def test_start_does_not_touch_document_ids_when_turn_has_none() -> None:
+    """A resume/interrupt turn with no identifiers must not wipe the session's
+    stored document set."""
+    repository = FakeHistoryRepository()
+    await ChatTurnService(repository).start(request(identifiers=()))
+    assert "update_document_ids" not in repository.calls

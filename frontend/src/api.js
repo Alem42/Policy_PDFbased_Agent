@@ -534,6 +534,19 @@ export function logSuggestionClick(sessionId, question) {
   }).catch(() => {});
 }
 
+// ── Agent tool limits ────────────────────────────────────────────────────
+export function getAgentToolLimits() {
+  return request("/admin/agent-tool-limits");
+}
+
+export function saveAgentToolLimits(payload) {
+  return request("/admin/agent-tool-limits", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getTaxonomy() {
   return request("/taxonomy");
 }

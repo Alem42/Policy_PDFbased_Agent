@@ -7,6 +7,7 @@ import EmbeddingSection from "./manage/EmbeddingSection";
 import RerankingSection from "./manage/RerankingSection";
 import WebSearchSection from "./manage/WebSearchSection";
 import SuggestionsSection from "./manage/SuggestionsSection";
+import AgentToolLimitsSection from "./manage/AgentToolLimitsSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
@@ -48,6 +49,12 @@ const SECTIONS = [
     label: "Suggested follow-ups",
     desc: "Tune the follow-up questions shown after each answer: how many, how strictly they must be answerable from the documents, and generation style.",
     Component: SuggestionsSection,
+  },
+  {
+    id: "agent-tool-limits",
+    label: "Agent tool limits",
+    desc: "Set how many times per turn the ReAct agent may call each tool (document search, web search, asking the user, and more).",
+    Component: AgentToolLimitsSection,
   },
 ];
 
