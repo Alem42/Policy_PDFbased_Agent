@@ -49,6 +49,8 @@ def public_user(row: dict) -> dict:
         "id": str(row["id"]),
         "uid": row["uid"],
         "username": row["username"],
+        "email": row.get("email"),
+        "email_verified": row.get("email_verified_at") is not None,
         "role": row["role"],
         "created_at": row["created_at"].isoformat(),
     }
@@ -56,15 +58,21 @@ def public_user(row: dict) -> dict:
 
 def create_user(
     username: str,
+    email: str,
     password: str,
     role: str | None = None,
     secret: str | None = None,
 ) -> dict:
     clean_username = username.strip()
+    clean_email = email.strip().lower()
     if len(clean_username) < 3:
         raise ValueError("Username must be at least 3 characters.")
-    if not password:
-        raise ValueError("Password is required.")
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters.")
+    if not any(character.isalpha() for character in password) or not any(
+        character.isdigit() for character in password
+    ):
+        raise ValueError("Password must include at least one letter and one number.")
     clean_role = role or "user"
     if clean_role not in {"admin", "user"}:
         raise ValueError("Role must be admin or user.")
@@ -73,7 +81,7 @@ def create_user(
     #     configured_secret = get_settings().admin_register_secret
     #     if not configured_secret or secret != configured_secret:
     #         raise ValueError("Invalid admin registration secret.")
-    row = user_repository.create(clean_username, hash_password(password), clean_role)
+    row = user_repository.create(clean_username, clean_email, hash_password(password), clean_role)
     return public_user(row)
 
 

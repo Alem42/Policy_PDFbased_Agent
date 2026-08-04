@@ -20,6 +20,7 @@ import {
 import CatalogModelPicker from "./CatalogModelPicker";
 
 const ACCENT = "#214f42";
+const RERANKER_DEFAULTS = { local: -2.0, api: 0.99 };
 
 const DEFAULTS = {
   enabled: true,
@@ -29,8 +30,18 @@ const DEFAULTS = {
   api_base_url: "",
   api_key: "",
   api_model: "rerank",
-  min_score: "", // "" -> provider default (local -7.0, api 0.2)
+  min_score: RERANKER_DEFAULTS.local,
 };
+
+function normaliseSettings(result) {
+  const settings = result.settings || result;
+  const provider = settings.provider || DEFAULTS.provider;
+  return {
+    ...DEFAULTS,
+    ...settings,
+    min_score: settings.min_score ?? RERANKER_DEFAULTS[provider],
+  };
+}
 
 // Field + SubCard mirror the Embedding section's layout.
 function Field({ label, hint, children }) {
@@ -96,8 +107,7 @@ export default function RerankingSection({
       .catch(() => setProvidersWithKey(null));
     try {
       const result = await getRerankingSettings();
-      const s = result.settings || result;
-      setForm({ ...DEFAULTS, ...s, min_score: s.min_score ?? "" });
+      setForm(normaliseSettings(result));
       setStatus(result.status || null);
       setConnected(true);
     } catch {
@@ -114,7 +124,7 @@ export default function RerankingSection({
   }, [configurationVersion]);
 
   function payload() {
-    // Empty min_score -> null (use the provider default on the backend).
+    // Empty min_score -> null (use the provider-aware default on the backend).
     const trimmed = String(form.min_score).trim();
     return { ...form, min_score: trimmed === "" ? null : Number(trimmed) };
   }
@@ -126,8 +136,7 @@ export default function RerankingSection({
     setError("");
     try {
       const result = await saveRerankingSettings(payload());
-      const s = result.settings || result;
-      setForm({ ...DEFAULTS, ...s, min_score: s.min_score ?? "" });
+      setForm(normaliseSettings(result));
       setStatus(result.status || null);
       setConnected(true);
       setNotice("Reranker settings saved. Takes effect immediately for new questions.");
@@ -226,7 +235,14 @@ export default function RerankingSection({
             <TextField
               select
               value={form.provider}
-              onChange={(e) => set("provider", e.target.value)}
+              onChange={(e) => {
+                const provider = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  provider,
+                  min_score: RERANKER_DEFAULTS[provider],
+                }));
+              }}
               size="small"
               sx={{ maxWidth: 320 }}
             >
@@ -271,14 +287,16 @@ export default function RerankingSection({
         <SubCard title="Evidence gate">
           <Field
             label="Reranker evidence floor (min score)"
-            hint="Best reranker score below this = 'no relevant passage'. Blank = provider default (local -7.0, API 0.2). Scales differ per provider — recalibrate on your corpus (API scores can cluster near 1.0)."
+            hint={`Best score below this means no relevant passage. Recommended ${form.provider} default: ${RERANKER_DEFAULTS[form.provider]}. ${form.provider === "api" ? "API range: 0–1." : "Local BGE range: -10–10."}`}
           >
             <TextField
               value={form.min_score}
               onChange={(e) => set("min_score", e.target.value)}
               type="number"
-              inputProps={{ step: 0.1 }}
-              placeholder="provider default"
+              inputProps={form.provider === "api"
+                ? { step: 0.01, min: 0, max: 1 }
+                : { step: 0.1, min: -10, max: 10 }}
+              placeholder={String(RERANKER_DEFAULTS[form.provider])}
               size="small"
               sx={{ width: 220 }}
             />

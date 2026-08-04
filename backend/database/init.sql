@@ -85,12 +85,36 @@ CREATE TABLE "public"."app_users" (
   "id" uuid NOT NULL,
   "uid" text COLLATE "pg_catalog"."default" NOT NULL,
   "username" text COLLATE "pg_catalog"."default" NOT NULL,
+  "email" text COLLATE "pg_catalog"."default",
+  "email_verified_at" timestamptz(6),
   "password_hash" text COLLATE "pg_catalog"."default" NOT NULL,
   "role" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'user'::text,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
   "updated_at" timestamptz(6) NOT NULL DEFAULT now()
 )
 ;
+
+-- ----------------------------
+-- Table structure for email_verification_codes
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."email_verification_codes";
+CREATE TABLE "public"."email_verification_codes" (
+  "id" uuid PRIMARY KEY,
+  "email" text COLLATE "pg_catalog"."default" NOT NULL,
+  "code_hash" text COLLATE "pg_catalog"."default" NOT NULL,
+  "expires_at" timestamptz(6) NOT NULL,
+  "consumed_at" timestamptz(6),
+  "attempt_count" integer NOT NULL DEFAULT 0,
+  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
+  CONSTRAINT "email_verification_attempt_count_check"
+    CHECK (attempt_count >= 0)
+)
+;
+
+CREATE INDEX "idx_email_verification_codes_email_created"
+  ON "public"."email_verification_codes" (lower("email"), "created_at" DESC);
+CREATE UNIQUE INDEX "app_users_email_lower_key"
+  ON "public"."app_users" (lower("email")) WHERE "email" IS NOT NULL;
 
 -- ----------------------------
 -- Table structure for chunk_embeddings

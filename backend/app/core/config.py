@@ -55,6 +55,19 @@ class Settings(BaseSettings):
 
     app_secret: str = "development-only-change-me"
 
+    # Registration email verification. "development" returns the code to the
+    # local UI; "smtp" sends it and never exposes it through the API.
+    email_verification_mode: str = "development"
+    email_verification_code_ttl_seconds: int = Field(default=600, ge=120, le=3600)
+    email_verification_resend_seconds: int = Field(default=60, ge=10, le=600)
+    email_verification_max_attempts: int = Field(default=5, ge=1, le=10)
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+
     firecrawl_api_key: str | None = None
     admin_register_secret: str | None = None
 

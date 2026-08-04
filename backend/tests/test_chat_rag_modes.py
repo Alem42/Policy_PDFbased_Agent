@@ -103,9 +103,17 @@ def test_assess_evidence_rejects_low_reranker_score() -> None:
 
 
 def test_assess_evidence_accepts_strong_chunks() -> None:
+    from app.modules.chat.rag.evidence import min_reranker_score
+
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",
-        raw_chunks=[{"distance": 0.2, "reranker_score": -5.0, "text": "housing reform details"}],
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": min_reranker_score() + 1.0,
+                "text": "housing reform details",
+            }
+        ],
         pages=[],
         context="x" * 300,
         has_embeddings=True,
@@ -148,6 +156,61 @@ def test_assess_evidence_rejects_high_reranker_without_query_term_support() -> N
     )
     assert sufficient is False
     assert reason == REASON_LOW_RELEVANCE
+
+
+def test_assess_evidence_rejects_semantically_related_policy_without_named_instrument() -> None:
+    """A broad AI-policy match must not prove a specifically named fictional Act."""
+
+    context = (
+        "Australia's responsible AI policy requires agencies to maintain governance "
+        "registers and review high-risk AI uses every year. "
+    ) * 5
+    sufficient, reason = assess_evidence_sufficiency(
+        question=(
+            "What exact civil penalty amount does Australia's 2031 Quantum AI Act "
+            "impose for lunar data-centre violations?"
+        ),
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": 1.0,
+                "text": context,
+            }
+        ],
+        pages=[],
+        context=context,
+        has_embeddings=True,
+    )
+
+    assert sufficient is False
+    assert reason is not None
+    assert "Quantum AI Act" in reason
+
+
+def test_assess_evidence_accepts_named_instrument_when_it_is_present() -> None:
+    context = (
+        "Australia's 2031 Quantum AI Act imposes a civil penalty of AUD 42 million "
+        "for lunar data-centre violations. "
+    ) * 4
+    sufficient, reason = assess_evidence_sufficiency(
+        question=(
+            "What exact civil penalty amount does Australia's 2031 Quantum AI Act "
+            "impose for lunar data-centre violations?"
+        ),
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": 1.0,
+                "text": context,
+            }
+        ],
+        pages=[],
+        context=context,
+        has_embeddings=True,
+    )
+
+    assert sufficient is True
+    assert reason is None
 
 
 def test_route_after_evidence_check_analysis_blocks_weak_evidence() -> None:

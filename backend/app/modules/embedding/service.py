@@ -23,7 +23,12 @@ from app.modules.embedding.providers import (
     OpenAICompatibleProvider,
 )
 from app.modules.embedding.repository import embedding_settings_repository
-from app.modules.embedding.settings import EmbeddingConfig, vector_table_name
+from app.modules.embedding.settings import (
+    DEFAULT_API_EVIDENCE_DISTANCE,
+    DEFAULT_LOCAL_EVIDENCE_DISTANCE,
+    EmbeddingConfig,
+    vector_table_name,
+)
 
 # Lazy singleton cache of the active config + provider.
 _cache: dict = {"config": None, "provider": None}
@@ -118,7 +123,7 @@ def active_model_id() -> str:
 
 
 def evidence_distance_threshold() -> float:
-    return active_config().evidence_distance_threshold
+    return active_config().resolved_evidence_distance_threshold()
 
 
 def active_vector_table() -> str:
@@ -164,6 +169,9 @@ def update_config(partial: dict) -> EmbeddingConfig:
     """
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
+    if "evidence_distance_threshold" in partial:
+        # Explicit null means "use the selected provider's calibrated default".
+        merged["evidence_distance_threshold"] = partial["evidence_distance_threshold"]
     provider_changed = (
         "api_provider" in partial
         and partial.get("api_provider") != current.get("api_provider")
@@ -202,6 +210,10 @@ def status() -> dict:
     resolved = _resolved_config(config)
     return {
         "settings": data,
+        "defaults": {
+            "local": {"evidence_distance_threshold": DEFAULT_LOCAL_EVIDENCE_DISTANCE},
+            "api": {"evidence_distance_threshold": DEFAULT_API_EVIDENCE_DISTANCE},
+        },
         "status": {
             "provider": config.provider,
             "api_provider": config.api_provider,
@@ -209,5 +221,6 @@ def status() -> dict:
             "dimension": config.active_dimension(),
             "vector_table": active_vector_table(),
             "api_key_configured": bool(resolved.api_key),
+            "evidence_distance_threshold": config.resolved_evidence_distance_threshold(),
         },
     }

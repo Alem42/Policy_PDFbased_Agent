@@ -20,13 +20,6 @@ def _cfg(**over) -> SuggestionConfig:
     base = dict(
         enabled=True,
         max_suggestions=2,
-        candidate_pool=5,
-        use_reranker_validation=True,
-        validation_top_k=5,
-        validation_distance=None,
-        temperature=0.0,
-        max_question_chars=140,
-        personalize=False,
     )
     base.update(over)
     return SuggestionConfig(**base)
@@ -62,7 +55,7 @@ def _patch_pipeline(monkeypatch, candidates, distances, reranker=5.0):
         captured["dense_limit"] = limit
         return [
             [{"distance": distances.get(candidate, 1.0), "text": f"Evidence for {candidate}"}]
-            for candidate in candidates
+            for candidate in candidates[: len(vectors)]
         ]
 
     def fake_rerank(question, chunks, *, limit):
@@ -196,20 +189,20 @@ def test_multifile_resolves_all_identifiers_once(monkeypatch):
     assert captured["include_restricted"] is True
 
 
-def test_validation_distance_override_is_stricter(monkeypatch):
+def test_suggestions_reuse_live_evidence_distance(monkeypatch):
     captured = _patch_pipeline(monkeypatch, ["Q1"], {"Q1": 0.4})
     out = generator.generate_followup_suggestions(
         question="original",
         answer="ans",
         context="ctx",
         identifiers=["d1"],
-        config=_cfg(validation_distance=0.3),
+        config=_cfg(),
     )
-    assert out == []
-    assert captured["rerank_questions"] == []
+    assert out == ["Q1"]
+    assert captured["rerank_questions"] == ["Q1"]
 
 
-def test_reranker_only_receives_validation_top_k(monkeypatch):
+def test_reranker_uses_fixed_safe_validation_top_k(monkeypatch):
     candidates = ["Q1"]
     captured = _patch_pipeline(monkeypatch, candidates, {"Q1": 0.1})
 
@@ -223,11 +216,17 @@ def test_reranker_only_receives_validation_top_k(monkeypatch):
         answer="ans",
         context="ctx",
         identifiers=["d1"],
-        config=_cfg(validation_top_k=4),
+        config=_cfg(),
     )
     assert out == ["Q1"]
     assert captured["dense_limit"] == 20
-    assert captured["rerank_chunk_counts"] == [4]
+    assert captured["rerank_chunk_counts"] == [5]
+
+
+def test_candidate_pool_is_derived_from_display_count():
+    assert SuggestionConfig(max_suggestions=1).candidate_pool == 3
+    assert SuggestionConfig(max_suggestions=3).candidate_pool == 5
+    assert SuggestionConfig(max_suggestions=8).candidate_pool == 10
 
 
 def test_embed_queries_preserves_query_mode_and_order(monkeypatch):

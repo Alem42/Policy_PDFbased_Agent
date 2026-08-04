@@ -27,6 +27,8 @@ from app.modules.reranking.service import rerank as rerank_chunks
 
 logger = logging.getLogger(__name__)
 
+_LOSSY_TITLE = re.compile(r"[?？]{3,}")
+
 
 def process_document(document_id: str) -> None:
     """Orchestrate extraction, enrichment, chunking, and indexing."""
@@ -443,6 +445,12 @@ def update_document_governance(
 
 
 def update_document_metadata(identifier: str, payload: dict) -> dict:
+    title = payload.get("title")
+    if isinstance(title, str) and _LOSSY_TITLE.search(title):
+        raise ValueError(
+            "The title appears to contain encoding-damaged text (a run of question marks). "
+            "Submit UTF-8 text or keep the automatically generated English title."
+        )
     return document_content_repository.update_metadata(identifier, payload)
 
 

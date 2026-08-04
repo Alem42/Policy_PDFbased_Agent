@@ -13,18 +13,7 @@ import {
 import { getSuggestionSettings, saveSuggestionSettings } from "../../api";
 
 const ACCENT = "#214f42";
-
-const DEFAULTS = {
-  enabled: true,
-  max_suggestions: 3,
-  candidate_pool: 5,
-  validation_distance: "", // "" -> null -> reuse the evidence gate's distance cutoff
-  use_reranker_validation: true,
-  validation_top_k: 5,
-  temperature: 0.3,
-  max_question_chars: 140,
-  personalize: false,
-};
+const DEFAULTS = { enabled: true, max_suggestions: 3 };
 
 function Field({ label, hint, children }) {
   return (
@@ -71,12 +60,7 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
     setError("");
     try {
       const result = await getSuggestionSettings();
-      const s = result.settings || result;
-      setForm({
-        ...DEFAULTS,
-        ...s,
-        validation_distance: s.validation_distance ?? "",
-      });
+      setForm({ ...DEFAULTS, ...(result.settings || result) });
       setConnected(true);
     } catch {
       setConnected(false);
@@ -90,36 +74,25 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
     load();
   }, [configurationVersion]);
 
-  function payload() {
-    const distance = String(form.validation_distance).trim();
-    return {
-      ...form,
-      max_suggestions: Number(form.max_suggestions),
-      candidate_pool: Number(form.candidate_pool),
-      validation_top_k: Number(form.validation_top_k),
-      temperature: Number(form.temperature),
-      max_question_chars: Number(form.max_question_chars),
-      validation_distance: distance === "" ? null : Number(distance),
-    };
-  }
-
   async function handleSave(event) {
     event.preventDefault();
     setBusy(true);
     setNotice("");
     setError("");
     try {
-      const result = await saveSuggestionSettings(payload());
-      const s = result.settings || result;
-      setForm({ ...DEFAULTS, ...s, validation_distance: s.validation_distance ?? "" });
+      const result = await saveSuggestionSettings({
+        enabled: form.enabled,
+        max_suggestions: Number(form.max_suggestions),
+      });
+      setForm({ ...DEFAULTS, ...(result.settings || result) });
       setConnected(true);
-      setNotice("Suggestion settings saved. Takes effect immediately for new answers.");
+      setNotice("Suggestion settings saved. They apply to new answers immediately.");
       onConfigurationChanged?.();
     } catch (saveError) {
       setError(
         connected
           ? saveError.message
-          : "Backend endpoint /admin/suggestions is not reachable — settings not persisted.",
+          : "The suggestions settings service is unavailable, so changes were not saved.",
       );
     } finally {
       setBusy(false);
@@ -154,9 +127,8 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
       </Box>
 
       <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
-        After each grounded answer, the system proposes a few next questions. Every candidate is
-        re-checked against the selected documents with the same evidence gate a real question faces,
-        so suggestions never point users at questions the documents can't answer.
+        Show useful next questions below a document-grounded answer. Each suggestion is checked
+        against the same documents and evidence rules as a normal chat question before users see it.
       </Typography>
 
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
@@ -168,8 +140,11 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
           label="Enable follow-up suggestions"
         />
 
-        <SubCard title="Amount">
-          <Field label="Suggestions shown" hint="How many chips to display under each answer (1–8).">
+        <SubCard title="Display">
+          <Field
+            label="Suggestions shown"
+            hint="Recommended: 3. Choose between 1 and 8 questions below each answer."
+          >
             <TextField
               value={form.max_suggestions}
               onChange={(e) => set("max_suggestions", e.target.value)}
@@ -179,89 +154,13 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
               sx={{ width: 160 }}
             />
           </Field>
-          <Field
-            label="Candidate pool"
-            hint="How many candidates the model proposes before validation filters them. Larger = more choice but more retrieval work. Should be ≥ suggestions shown."
-          >
-            <TextField
-              value={form.candidate_pool}
-              onChange={(e) => set("candidate_pool", e.target.value)}
-              type="number"
-              inputProps={{ min: 1, max: 16 }}
-              size="small"
-              sx={{ width: 160 }}
-            />
-          </Field>
         </SubCard>
 
-        <SubCard title="Quality gate">
-          <Field
-            label="Validation distance override"
-            hint="Cosine-distance cutoff a candidate must beat to be shown. Blank = reuse the embedding evidence threshold. Set LOWER than the gate for stricter, higher-quality suggestions."
-          >
-            <TextField
-              value={form.validation_distance}
-              onChange={(e) => set("validation_distance", e.target.value)}
-              type="number"
-              inputProps={{ step: 0.01, min: 0, max: 2 }}
-              placeholder="evidence gate default"
-              size="small"
-              sx={{ width: 220 }}
-            />
-          </Field>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.use_reranker_validation}
-                onChange={(e) => set("use_reranker_validation", e.target.checked)}
-              />
-            }
-            label="Also apply the reranker evidence floor to candidates (when the reranker is on)"
-          />
-          <Field
-            label="Chunks retrieved per candidate"
-            hint="How many chunks to pull when validating each candidate (1–20). Small is cheap and enough."
-          >
-            <TextField
-              value={form.validation_top_k}
-              onChange={(e) => set("validation_top_k", e.target.value)}
-              type="number"
-              inputProps={{ min: 1, max: 20 }}
-              size="small"
-              sx={{ width: 160 }}
-            />
-          </Field>
-        </SubCard>
-
-        <SubCard title="Generation">
-          <Field
-            label="Creativity (temperature)"
-            hint="Controls how varied the proposed follow-up questions are, not how much evidence supports them. 0–0.2 is focused and repeatable; 0.3–0.5 explores more wording and topic angles; higher values are more experimental and may create more candidates that the evidence checks reject. Recommended: 0.3."
-          >
-            <TextField
-              value={form.temperature}
-              onChange={(e) => set("temperature", e.target.value)}
-              type="number"
-              inputProps={{ step: 0.1, min: 0, max: 1.5 }}
-              size="small"
-              sx={{ width: 160 }}
-            />
-          </Field>
-          <Field label="Max question length (characters)" hint="Keeps suggestions short and clickable (20–400).">
-            <TextField
-              value={form.max_question_chars}
-              onChange={(e) => set("max_question_chars", e.target.value)}
-              type="number"
-              inputProps={{ min: 20, max: 400 }}
-              size="small"
-              sx={{ width: 160 }}
-            />
-          </Field>
-          <FormControlLabel
-            control={<Switch checked={form.personalize} onChange={(e) => set("personalize", e.target.checked)} />}
-            label="Personalize from each user's past suggestion clicks (experimental)"
-          />
-        </SubCard>
+        <Alert severity="info">
+          Quality controls are automatic: the system creates two spare candidates, reuses the
+          active Embedding Evidence Gate and Reranker, checks five chunks per candidate, and keeps
+          questions under 140 characters.
+        </Alert>
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           <Button variant="contained" disabled={busy} type="submit">
