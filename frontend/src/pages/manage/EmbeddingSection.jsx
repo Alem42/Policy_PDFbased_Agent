@@ -29,9 +29,10 @@ import {
 import CatalogModelPicker from "./CatalogModelPicker";
 
 const ACCENT = "#214f42";
+const EVIDENCE_DEFAULTS = { local: 0.45, api: 0.5 };
 
-// Debug-phase defaults. Kept broad on purpose so the whole pipeline is tunable
-// from the UI while the backend is being wired; trim later once stable.
+// Safe starting values; provider-specific evidence defaults are calibrated
+// separately because local and API embedding distance scales are not identical.
 const DEFAULTS = {
   provider: "local", // "local" | "api"
   local_model: "BAAI/bge-small-en-v1.5",
@@ -48,6 +49,17 @@ const DEFAULTS = {
   distance_metric: "cosine", // "cosine" | "l2" | "ip"
   evidence_distance_threshold: 0.45,
 };
+
+function normaliseSettings(result) {
+  const settings = result.settings || result;
+  const provider = settings.provider || DEFAULTS.provider;
+  return {
+    ...DEFAULTS,
+    ...settings,
+    evidence_distance_threshold:
+      settings.evidence_distance_threshold ?? EVIDENCE_DEFAULTS[provider],
+  };
+}
 
 // Curated local models fastembed can download by name (weights + tokenizer + dim
 // come with the model). "custom" lets an admin type any fastembed-supported id.
@@ -149,7 +161,7 @@ export default function EmbeddingSection({
       .catch(() => setProvidersWithKey(null));
     try {
       const result = await getEmbeddingSettings();
-      const loaded = { ...DEFAULTS, ...(result.settings || result) };
+      const loaded = normaliseSettings(result);
       setForm(loaded);
       setInitial(loaded);
       setStatus(result.status || null);
@@ -254,7 +266,7 @@ export default function EmbeddingSection({
     setError("");
     try {
       const result = await saveEmbeddingSettings(form);
-      const saved = { ...DEFAULTS, ...(result.settings || result) };
+      const saved = normaliseSettings(result);
       setForm(saved);
       setInitial(saved);
       setStatus(result.status || null);
@@ -399,7 +411,14 @@ export default function EmbeddingSection({
             <TextField
               select
               value={form.provider}
-              onChange={(e) => set("provider", e.target.value)}
+              onChange={(e) => {
+                const provider = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  provider,
+                  evidence_distance_threshold: EVIDENCE_DEFAULTS[provider],
+                }));
+              }}
               size="small"
               sx={{ maxWidth: 320 }}
             >
@@ -543,12 +562,15 @@ export default function EmbeddingSection({
                 ))}
               </TextField>
             </Field>
-            <Field label="Evidence distance threshold" hint="Chunks above this distance are treated as non-evidence. Re-calibrate per model.">
+            <Field
+              label="Evidence distance threshold"
+              hint={`Chunks above this cosine distance are not evidence. Recommended ${form.provider} default: ${EVIDENCE_DEFAULTS[form.provider]}. Allowed range: 0.10–1.00; lower is stricter.`}
+            >
               <TextField
                 value={form.evidence_distance_threshold}
                 onChange={(e) => set("evidence_distance_threshold", Number(e.target.value))}
                 type="number"
-                inputProps={{ step: 0.01 }}
+                inputProps={{ step: 0.01, min: 0.1, max: 1.0 }}
                 size="small"
                 sx={{ width: 220 }}
               />

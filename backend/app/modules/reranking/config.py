@@ -14,9 +14,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 DEFAULT_LOCAL_RERANKER = "BAAI/bge-reranker-base"
+DEFAULT_LOCAL_MIN_SCORE = -2.0
+DEFAULT_API_MIN_SCORE = 0.99
 
 
 class RerankingConfig(BaseModel):
@@ -36,10 +38,20 @@ class RerankingConfig(BaseModel):
     # scales differ (local logits vs API [0,1]) so this must be recalibrated.
     min_score: float | None = None
 
+    @model_validator(mode="after")
+    def validate_provider_score_scale(self) -> RerankingConfig:
+        if self.min_score is None:
+            return self
+        if self.provider == "api" and not 0.0 <= self.min_score <= 1.0:
+            raise ValueError("API reranker minimum score must be between 0 and 1.")
+        if self.provider == "local" and not -10.0 <= self.min_score <= 10.0:
+            raise ValueError("Local reranker minimum score must be between -10 and 10.")
+        return self
+
     def active_model_id(self) -> str:
         return self.local_model if self.provider == "local" else (self.api_model or "rerank")
 
     def resolved_min_score(self) -> float:
         if self.min_score is not None:
             return self.min_score
-        return 0.2 if self.provider == "api" else -7.0
+        return DEFAULT_API_MIN_SCORE if self.provider == "api" else DEFAULT_LOCAL_MIN_SCORE

@@ -43,6 +43,18 @@ KNOWN_LOCAL_DIMENSIONS: dict[str, int] = {
 }
 
 DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
+DEFAULT_LOCAL_EVIDENCE_DISTANCE = 0.45
+DEFAULT_API_EVIDENCE_DISTANCE = 0.50
+
+
+def default_evidence_distance(provider: str) -> float:
+    """Return the demo-calibrated evidence cutoff for a provider mode."""
+
+    return (
+        DEFAULT_API_EVIDENCE_DISTANCE
+        if provider == "api"
+        else DEFAULT_LOCAL_EVIDENCE_DISTANCE
+    )
 
 
 class EmbeddingConfig(BaseModel):
@@ -72,7 +84,7 @@ class EmbeddingConfig(BaseModel):
 
     # Retrieval / evidence knobs (calibrated per embedding model).
     distance_metric: Literal["cosine", "l2", "ip"] = "cosine"
-    evidence_distance_threshold: float = 0.70
+    evidence_distance_threshold: float | None = Field(default=None, ge=0.10, le=1.00)
     # (reranker settings moved to the reranking package / Manage > Reranker)
 
     def active_model_id(self) -> str:
@@ -84,6 +96,11 @@ class EmbeddingConfig(BaseModel):
         if self.provider == "local":
             return KNOWN_LOCAL_DIMENSIONS.get(self.local_model, self.dimensions)
         return self.dimensions
+
+    def resolved_evidence_distance_threshold(self) -> float:
+        if self.evidence_distance_threshold is not None:
+            return self.evidence_distance_threshold
+        return default_evidence_distance(self.provider)
 
 
 def mask_key(key: str | None) -> str | None:

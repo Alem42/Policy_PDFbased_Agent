@@ -15,7 +15,11 @@ import logging
 
 from app.core.settings_store import mask_secret
 from app.modules.reranking import providers
-from app.modules.reranking.config import RerankingConfig
+from app.modules.reranking.config import (
+    DEFAULT_API_MIN_SCORE,
+    DEFAULT_LOCAL_MIN_SCORE,
+    RerankingConfig,
+)
 from app.modules.reranking.repository import reranking_settings_repository
 
 logger = logging.getLogger(__name__)
@@ -104,6 +108,9 @@ def rerank(question: str, chunks: list[dict], *, limit: int) -> list[dict]:
 def _merge(partial: dict) -> RerankingConfig:
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
+    if "min_score" in partial:
+        # Explicit null restores the provider-specific calibrated default.
+        merged["min_score"] = partial["min_score"]
     provider_changed = (
         "api_provider" in partial
         and partial.get("api_provider") != current.get("api_provider")
@@ -146,6 +153,10 @@ def status() -> dict:
     _, resolved_key, _ = _resolve_creds(config)
     return {
         "settings": data,
+        "defaults": {
+            "local": {"min_score": DEFAULT_LOCAL_MIN_SCORE},
+            "api": {"min_score": DEFAULT_API_MIN_SCORE},
+        },
         "status": {
             "enabled": config.enabled,
             "provider": config.provider,
