@@ -1,48 +1,149 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
   Alert,
-  Select,
-  MenuItem,
+  Box,
+  Button,
+  Card,
+  Checkbox,
   FormControl,
-  ToggleButtonGroup,
+  FormControlLabel,
+  IconButton,
+  InputAdornment,
+  MenuItem,
+  Select,
+  TextField,
   ToggleButton,
+  ToggleButtonGroup,
+  Typography,
 } from "@mui/material";
-import { login, register, saveAuth } from "../api";
+import {
+  AutoAwesomeOutlined,
+  CheckCircleOutlined,
+  DescriptionOutlined,
+  LockOutlined,
+  VisibilityOffOutlined,
+  VisibilityOutlined,
+} from "@mui/icons-material";
+import { login, register, requestRegistrationCode, saveAuth } from "../api";
 
-// mode: "login" | "register"
-// loginType: "user" | "admin"
+const GREEN = "#214f42";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function Label({ children }) {
+  return (
+    <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
+      {children}
+    </Typography>
+  );
+}
+
+function PasswordField({ label, value, onChange, autoComplete, visible, onToggle, hint }) {
+  return (
+    <Box sx={{ display: "grid", gap: 0.5 }}>
+      <Label>{label}</Label>
+      <TextField
+        value={value}
+        onChange={onChange}
+        type={visible ? "text" : "password"}
+        autoComplete={autoComplete}
+        fullWidth
+        size="small"
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton onClick={onToggle} edge="end" aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}>
+                {visible ? <VisibilityOffOutlined /> : <VisibilityOutlined />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+      />
+      {hint && <Typography variant="caption" color="text.secondary">{hint}</Typography>}
+    </Box>
+  );
+}
+
+function BrandPanel() {
+  return (
+    <Box
+      sx={{
+        display: { xs: "none", md: "flex" },
+        flexDirection: "column",
+        justifyContent: "space-between",
+        color: "white",
+        p: 5,
+        minHeight: 610,
+        background: "linear-gradient(145deg, #183c33 0%, #286755 62%, #c58a3a 160%)",
+      }}
+    >
+      <Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, mb: 6 }}>
+          <DescriptionOutlined />
+          <Typography sx={{ fontWeight: 900, letterSpacing: 0.2 }}>Policy in Action</Typography>
+        </Box>
+        <Typography variant="h2" sx={{ color: "white", fontSize: 38, lineHeight: 1.18, mb: 2 }}>
+          Research policy with evidence you can inspect.
+        </Typography>
+        <Typography sx={{ color: "rgba(255,255,255,0.78)", lineHeight: 1.7 }}>
+          Search shared documents, compare policies across regions, and keep every answer tied to its sources.
+        </Typography>
+      </Box>
+      <Box sx={{ display: "grid", gap: 1.5 }}>
+        {["Document-grounded answers", "Traceable citations", "Evidence-aware web search"].map((item) => (
+          <Box key={item} sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+            <CheckCircleOutlined fontSize="small" />
+            <Typography variant="body2">{item}</Typography>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
 
 export default function AuthPage({ onAuthenticated, onNavigate }) {
   const [mode, setMode] = useState("login");
   const [loginType, setLoginType] = useState("user");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [role, setRole] = useState("user");
   const [secret, setSecret] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [developmentCode, setDevelopmentCode] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return undefined;
+    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
+
+  function resetFields() {
+    setUsername("");
+    setEmail("");
+    setPassword("");
+    setPasswordConfirmation("");
+    setVerificationCode("");
+    setRole("user");
+    setSecret("");
+    setAcceptedTerms(false);
+    setDevelopmentCode("");
+    setResendSeconds(0);
+  }
 
   function switchMode(next) {
     setMode(next);
     setError("");
     setNotice("");
-    setUsername("");
-    setPassword("");
-    setRole("user");
-    setSecret("");
-  }
-
-  function handleLoginTypeChange(_, next) {
-    if (!next) return;
-    setLoginType(next);
-    setError("");
+    resetFields();
   }
 
   async function handleLogin(event) {
@@ -50,15 +151,10 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     setBusy(true);
     setError("");
     try {
-      const auth = await login(username, password);
+      const auth = await login(username.trim(), password);
       saveAuth(auth);
       onAuthenticated(auth.user);
-      // Redirect based on actual role
-      if (auth.user.role === "admin") {
-        onNavigate("admin");
-      } else {
-        onNavigate("chat");
-      }
+      onNavigate(auth.user.role === "admin" ? "admin" : "chat");
     } catch (authError) {
       setError(authError.message);
     } finally {
@@ -66,185 +162,246 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     }
   }
 
-  async function handleRegister(event) {
-    event.preventDefault();
-    setBusy(true);
+  async function handleSendCode() {
     setError("");
     setNotice("");
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError("Enter a valid email address before requesting a code.");
+      return;
+    }
+    setCodeBusy(true);
     try {
-      await register(username, password, role, role === "admin" ? secret : undefined);
-      setNotice(`Account "${username}" registered. You can now log in.`);
-      setUsername("");
-      setPassword("");
-      setRole("user");
-      setSecret("");
-    } catch (regError) {
-      setError(regError.message);
+      const result = await requestRegistrationCode(email.trim());
+      setResendSeconds(result.retry_after || 60);
+      setDevelopmentCode(result.development_code || "");
+      setNotice(result.development_code ? "Development verification code created." : result.message);
+    } catch (codeError) {
+      setError(codeError.message);
+    } finally {
+      setCodeBusy(false);
+    }
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    if (password !== passwordConfirmation) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setError("Use at least 8 characters with at least one letter and one number.");
+      return;
+    }
+    if (!acceptedTerms) {
+      setError("Confirm that you agree to the acceptable use notice.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await register({
+        username: username.trim(),
+        email: email.trim(),
+        password,
+        passwordConfirmation,
+        verificationCode,
+        role,
+        secret: role === "admin" ? secret : undefined,
+      });
+      const registeredUsername = username.trim();
+      switchMode("login");
+      setUsername(registeredUsername);
+      setNotice(`Account “${registeredUsername}” created. You can now log in.`);
+    } catch (registrationError) {
+      setError(registrationError.message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Box
-      component="section"
-      sx={{ display: "flex", justifyContent: "center", pt: "60px", pb: "60px" }}
-    >
-      <Card sx={{ maxWidth: 440, width: "100%", p: 3 }}>
-        <CardContent sx={{ p: "0 !important" }}>
-          {mode === "login" ? (
-            <>
-              <Typography variant="subtitle2">Welcome back</Typography>
-              <Typography variant="h1" sx={{ fontSize: "clamp(32px, 5vw, 48px)" }}>
-                Log in
-              </Typography>
+    <Box component="section" sx={{ py: { xs: 3, md: 6 }, px: { xs: 1.5, sm: 3 } }}>
+      <Card
+        sx={{
+          width: "100%",
+          maxWidth: 1040,
+          mx: "auto",
+          overflow: "hidden",
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "0.9fr 1.1fr" },
+          border: "1px solid #dde4df",
+          boxShadow: "0 24px 70px rgba(24,60,51,0.13)",
+        }}
+      >
+        <BrandPanel />
+        <Box sx={{ p: { xs: 3, sm: 5 }, alignSelf: "center" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+            {mode === "login" ? <LockOutlined color="primary" /> : <AutoAwesomeOutlined color="primary" />}
+            <Typography variant="subtitle2">{mode === "login" ? "Welcome back" : "Join the library"}</Typography>
+          </Box>
+          <Typography variant="h1" sx={{ fontSize: { xs: 34, sm: 44 } }}>
+            {mode === "login" ? "Log in" : "Create your account"}
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1.2, color: "text.secondary" }}>
+            {mode === "login"
+              ? "Use your username or verified email to continue."
+              : "Verify your email, then create credentials for the research workspace."}
+          </Typography>
 
-              {/* User / Admin toggle */}
+          {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+          {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}
+          {developmentCode && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Local demo code: <strong>{developmentCode}</strong>. SMTP deployments send this by email instead.
+            </Alert>
+          )}
+
+          {mode === "login" ? (
+            <Box component="form" onSubmit={handleLogin} sx={{ mt: 3, display: "grid", gap: 2 }}>
               <ToggleButtonGroup
                 value={loginType}
                 exclusive
-                onChange={handleLoginTypeChange}
+                onChange={(_, next) => next && setLoginType(next)}
                 size="small"
-                sx={{ mt: 2 }}
+                fullWidth
               >
-                <ToggleButton value="user" sx={{ px: 2.5 }}>
-                  User Login
-                </ToggleButton>
-                <ToggleButton value="admin" sx={{ px: 2.5 }}>
-                  Admin Login
-                </ToggleButton>
+                <ToggleButton value="user">User</ToggleButton>
+                <ToggleButton value="admin">Administrator</ToggleButton>
               </ToggleButtonGroup>
-
-              <Typography variant="body2" sx={{ mt: 1.5, color: "text.secondary" }}>
-                {loginType === "admin"
-                  ? "Knowledge base management requires administrator credentials."
-                  : "Log in to access the policy Q&A chat."}
-              </Typography>
-
-              {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-
-              <Box component="form" onSubmit={handleLogin} sx={{ mt: 3, display: "grid", gap: 2 }}>
-                <Box sx={{ display: "grid", gap: 0.5 }}>
-                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Username
-                  </Typography>
-                  <TextField
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                    fullWidth
-                    size="small"
-                  />
-                </Box>
-                <Box sx={{ display: "grid", gap: 0.5 }}>
-                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Password
-                  </Typography>
-                  <TextField
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    type="password"
-                    autoComplete="current-password"
-                    fullWidth
-                    size="small"
-                  />
-                </Box>
-
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
-                  <Button variant="contained" disabled={busy} type="submit" fullWidth>
-                    {busy ? "Authenticating..." : "Log in"}
-                  </Button>
-                  <Button variant="outlined" type="button" onClick={() => switchMode("register")} fullWidth>
-                    Create an account
-                  </Button>
-                  <Button variant="text" type="button" onClick={() => onNavigate("library")} fullWidth>
-                    Browse library without logging in
-                  </Button>
-                </Box>
+              <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Label>Username or email</Label>
+                <TextField
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  placeholder="name or name@example.com"
+                  fullWidth
+                  size="small"
+                  required
+                />
               </Box>
-            </>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                visible={showPassword}
+                onToggle={() => setShowPassword((value) => !value)}
+              />
+              <Button variant="contained" disabled={busy} type="submit" fullWidth size="large">
+                {busy ? "Authenticating..." : `Log in as ${loginType === "admin" ? "administrator" : "user"}`}
+              </Button>
+              <Button variant="outlined" type="button" onClick={() => switchMode("register")} fullWidth>
+                Create an account
+              </Button>
+              <Button variant="text" type="button" onClick={() => onNavigate("library")} fullWidth>
+                Browse the public library
+              </Button>
+            </Box>
           ) : (
-            <>
-              <Typography variant="subtitle2">New account</Typography>
-              <Typography variant="h1" sx={{ fontSize: "clamp(32px, 5vw, 48px)" }}>
-                Register
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
-                Create an account to access the chat and document library.
-              </Typography>
-
-              {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-              {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}
-
-              <Box component="form" onSubmit={handleRegister} sx={{ mt: 3, display: "grid", gap: 2 }}>
-                <Box sx={{ display: "grid", gap: 0.5 }}>
-                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Username
-                  </Typography>
+            <Box component="form" onSubmit={handleRegister} sx={{ mt: 3, display: "grid", gap: 1.7 }}>
+              <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Label>Email</Label>
+                <TextField
+                  value={email}
+                  onChange={(event) => { setEmail(event.target.value); setDevelopmentCode(""); }}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  fullWidth
+                  size="small"
+                  required
+                />
+              </Box>
+              <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Label>Email verification code</Label>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1 }}>
                   <TextField
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                    fullWidth
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    inputProps={{ inputMode: "numeric", pattern: "[0-9]{6}" }}
+                    placeholder="6-digit code"
                     size="small"
+                    required
                   />
-                </Box>
-                <Box sx={{ display: "grid", gap: 0.5 }}>
-                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Password
-                  </Typography>
-                  <TextField
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                    fullWidth
-                    size="small"
-                  />
-                </Box>
-                <Box sx={{ display: "grid", gap: 0.5 }}>
-                  <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                    Account type
-                  </Typography>
-                  <FormControl size="small" fullWidth>
-                    <Select value={role} onChange={(e) => { setRole(e.target.value); setSecret(""); }}>
-                      <MenuItem value="user">User (Policy Researcher)</MenuItem>
-                      <MenuItem value="admin">Admin</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-
-                {role === "admin" && (
-                  <Box sx={{ display: "grid", gap: 0.5 }}>
-                    <Typography component="span" variant="body2" sx={{ fontWeight: 800 }}>
-                      Admin registration secret
-                    </Typography>
-                    <TextField
-                      value={secret}
-                      onChange={(e) => setSecret(e.target.value)}
-                      type="password"
-                      placeholder="Enter the secret issued by your administrator"
-                      fullWidth
-                      size="small"
-                    />
-                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                      Contact your system administrator to obtain this secret.
-                    </Typography>
-                  </Box>
-                )}
-
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
-                  <Button variant="contained" disabled={busy} type="submit" fullWidth>
-                    {busy ? "Registering..." : "Create account"}
-                  </Button>
-                  <Button variant="outlined" type="button" onClick={() => switchMode("login")} fullWidth>
-                    Back to login
+                  <Button
+                    variant="outlined"
+                    onClick={handleSendCode}
+                    disabled={codeBusy || resendSeconds > 0}
+                    sx={{ minWidth: 128 }}
+                  >
+                    {codeBusy ? "Sending..." : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Send code"}
                   </Button>
                 </Box>
               </Box>
-            </>
+              <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Label>Username</Label>
+                <TextField
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  inputProps={{ minLength: 3, maxLength: 80 }}
+                  fullWidth
+                  size="small"
+                  required
+                />
+              </Box>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="new-password"
+                visible={showPassword}
+                onToggle={() => setShowPassword((value) => !value)}
+                hint="At least 8 characters, including a letter and a number."
+              />
+              <PasswordField
+                label="Confirm password"
+                value={passwordConfirmation}
+                onChange={(event) => setPasswordConfirmation(event.target.value)}
+                autoComplete="new-password"
+                visible={showConfirmation}
+                onToggle={() => setShowConfirmation((value) => !value)}
+              />
+              <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Label>Account type</Label>
+                <FormControl size="small" fullWidth>
+                  <Select value={role} onChange={(event) => { setRole(event.target.value); setSecret(""); }}>
+                    <MenuItem value="user">User (Policy Researcher)</MenuItem>
+                    <MenuItem value="admin">Administrator</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              {role === "admin" && (
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  <Label>Admin registration secret (reserved)</Label>
+                  <TextField
+                    value={secret}
+                    onChange={(event) => setSecret(event.target.value)}
+                    type="password"
+                    placeholder="Reserved for a future deployment"
+                    fullWidth
+                    size="small"
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    This field is a placeholder in the current build and is not validated.
+                  </Typography>
+                </Box>
+              )}
+              <FormControlLabel
+                control={<Checkbox checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />}
+                label={<Typography variant="body2">I will use the workspace responsibly and verify important source claims.</Typography>}
+              />
+              <Button variant="contained" disabled={busy} type="submit" fullWidth size="large" sx={{ bgcolor: GREEN }}>
+                {busy ? "Creating account..." : "Create account"}
+              </Button>
+              <Button variant="text" type="button" onClick={() => switchMode("login")} fullWidth>
+                Already have an account? Log in
+              </Button>
+            </Box>
           )}
-        </CardContent>
+        </Box>
       </Card>
     </Box>
   );

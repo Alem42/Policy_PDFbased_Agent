@@ -115,8 +115,23 @@ export function login(username, password) {
   });
 }
 
-export function register(username, password, role, secret) {
-  const body = { username, password, role };
+export function requestRegistrationCode(email) {
+  return request("/auth/verification-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function register({ username, email, password, passwordConfirmation, verificationCode, role, secret }) {
+  const body = {
+    username,
+    email,
+    password,
+    password_confirmation: passwordConfirmation,
+    verification_code: verificationCode,
+    role,
+  };
   if (secret) body.secret = secret;
   return request("/auth/register", {
     method: "POST",
