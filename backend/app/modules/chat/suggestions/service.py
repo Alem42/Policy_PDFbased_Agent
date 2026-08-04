@@ -14,9 +14,6 @@ def update_config(partial: dict) -> SuggestionConfig:
     """Merge a partial update over the current config and persist it."""
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
-    # validation_distance is nullable: allow explicitly clearing it back to the gate default.
-    if "validation_distance" in partial:
-        merged["validation_distance"] = partial["validation_distance"]
     config = SuggestionConfig(**merged)
     suggestion_settings_repository.save(config)
     return config
