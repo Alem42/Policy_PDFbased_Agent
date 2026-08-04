@@ -10,6 +10,7 @@ from app.modules.chat.rag.prompts import (
     CITATION_INSTRUCTION,
     AnswerMode,
     ResponseMode,
+    final_style_reminder,
     get_system_prompt,
 )
 from app.modules.retrieval.formatting import format_context
@@ -59,7 +60,15 @@ def _generation_messages(
         or "(No relevant excerpts were retrieved from the selected documents.)",
         citation_instruction=_build_citation_instruction(citations or []),
     )
-    return _build_messages(system_prompt, history, question)
+    # Append the style reminder to the FINAL user message: the highest-weight
+    # position for DeepSeek-style models, and the strongest counter to earlier
+    # answers in the history acting as in-context formatting examples.
+    question = f"{question}\n\n{final_style_reminder(answer_mode)}"
+    return _build_messages(
+        system_prompt,
+        history,
+        question,
+    )
 
 
 def generate_answer(

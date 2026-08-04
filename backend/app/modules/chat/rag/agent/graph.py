@@ -24,7 +24,7 @@ from app.modules.chat.rag.agent.tools import (
 )
 from app.modules.chat.rag.checkpointer import get_checkpointer
 from app.modules.chat.rag.generation import create_chat_client, resolve_generation_target
-from app.modules.chat.rag.prompts import get_insufficient_evidence_message
+from app.modules.chat.rag.prompts import final_style_reminder, get_insufficient_evidence_message
 
 logger = logging.getLogger(__name__)
 
@@ -551,6 +551,10 @@ async def final_generation_node(state: AgentState) -> dict:
         SystemMessage(content=system_prompt),
         *_messages_for_current_turn(state["messages"]),
     ]
+    # Highest-weight position for the style instruction: the LAST message of the
+    # writer call. A plain user-message reminder right before generation beats
+    # both the earlier tool results and the answer plan's own formatting hints.
+    messages.append(HumanMessage(content=final_style_reminder(answer_mode)))
 
     response: AIMessage = await client.ainvoke(messages)
     return {"messages": [response], "resolved_model": f"{provider}/{selected_model}"}

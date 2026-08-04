@@ -85,6 +85,26 @@ STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
 - What can be learned from the similarities and differences in approach and outcome.
 """
 
+def final_style_reminder(answer_mode: AnswerMode = "analysis") -> str:
+    """Style reminder placed at the highest-weight position of the prompt.
+
+    DeepSeek-style models weight later instructions more heavily, and in-context
+    examples (earlier answers formatted differently) otherwise override the
+    system prompt's style guidance. The structure clause only applies in
+    Document Analysis mode, where prescribed headings exist.
+    """
+    base = (
+        "Final instruction: write this answer in the writing style requested at the "
+        "top of this prompt, for this message only. Ignore the formatting and style "
+        "of any earlier answers in this conversation."
+    )
+    if answer_mode != "analysis":
+        return base
+    return base + (
+        " Use exactly the prescribed markdown headings; do not rename, merge, or "
+        "add headings."
+    )
+
 ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
 - Answer using ONLY the supplied policy document excerpts below.
 - Do not use pretrained model knowledge, general common sense, industry norms,
@@ -181,6 +201,7 @@ def get_system_prompt(
             POLICYMAKER_STYLE_PROMPT,
             POLICYMAKER_BOUNDARY_PROMPT,
             CONTEXT_BLOCK,
+            final_style_reminder("analysis"),
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
@@ -194,7 +215,7 @@ def get_system_prompt(
         structure = STUDENT_STRUCTURE_PROMPT if is_student else RESEARCHER_STRUCTURE_PROMPT
         parts.append(structure)
 
-    parts.extend([boundary, CONTEXT_BLOCK])
+    parts.extend([boundary, CONTEXT_BLOCK, final_style_reminder(answer_mode)])
     return "\n".join(part.strip() for part in parts if part.strip())
 
 
