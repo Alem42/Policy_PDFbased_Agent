@@ -12,6 +12,7 @@ from app.modules.chat.rag.agent.policy import (
     EVIDENCE_TIER_TOOLS,
     NON_ADMIN_TOOLS,
     TOOL_CALL_LIMITS,
+    active_limits,
     tools_for,
 )
 from app.modules.chat.rag.agent.prompts import (
@@ -39,7 +40,7 @@ _tools_for = tools_for
 # like the agent had stopped calling prepare_final_answer at all. Flip back
 # to True to re-enable — _should_auto_finalize/auto_finalize_node below are
 # untouched, only route_after_tools' use of them is gated.
-AUTO_FINALIZE_ENABLED = True
+AUTO_FINALIZE_ENABLED = False
 
 # --- TEMPORARY code-level backstop -----------------------------------------
 # Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
@@ -70,7 +71,7 @@ _AUTO_FINALIZE_ANSWER_PLAN = (
 # AGENT_STRATEGY_PROMPT: that flow deliberately calls a search tool even
 # after an earlier tier was already sufficient, so the backstop must not
 # short-circuit before the model gets to run that intentional second call.
-_COMPARISON_TRIGGER_WORDS = (
+_WEB_CHECK_TRIGGER_TERMS = (
     "对比",
     "比对",
     "核实",
@@ -87,6 +88,52 @@ _COMPARISON_TRIGGER_WORDS = (
     "newest",
     "most recent",
     "newer",
+)
+
+_FRESHNESS_TRIGGER_TERMS = (
+    "up to date",
+    "up-to-date",
+    "still accurate",
+    "still current",
+    "latest",
+    "newest",
+    "most recent",
+    "newer",
+    "\u6700\u65b0",
+    "\u6700\u8fd1\u66f4\u65b0",
+    "\u662f\u5426\u4ecd\u7136\u6709\u6548",
+    "\u662f\u5426\u4ecd\u6709\u6548",
+    "\u662f\u5426\u4ecd\u7136\u9002\u7528",
+    "\u662f\u5426\u8fc7\u65f6",
+    "\u73b0\u884c",
+)
+_WEB_COMPARISON_TERMS = tuple(
+    term for term in _WEB_CHECK_TRIGGER_TERMS if term not in _FRESHNESS_TRIGGER_TERMS
+)
+_WEB_REFERENCE_TERMS = (
+    "web",
+    "online",
+    "internet",
+    "\u7f51\u9875",
+    "\u7f51\u7ad9",
+    "\u7f51\u4e0a",
+    "\u4e0a\u7f51",
+    "\u8054\u7f51",
+    "\u4e92\u8054\u7f51",
+)
+_WEB_OPT_OUT_TERMS = (
+    "do not search the web",
+    "don't search the web",
+    "no web search",
+    "without web search",
+    "offline only",
+    "\u4e0d\u8981\u641c\u7d22\u7f51\u9875",
+    "\u4e0d\u8981\u4e0a\u7f51",
+    "\u4e0d\u8981\u8054\u7f51",
+    "\u4e0d\u9700\u8981\u8054\u7f51",
+    "\u65e0\u9700\u8054\u7f51",
+    "\u4ec5\u4f7f\u7528\u6587\u6863",
+    "\u53ea\u4f7f\u7528\u6587\u6863",
 )
 
 
@@ -117,22 +164,25 @@ def _should_auto_finalize(state: AgentState) -> bool:
     if last.name == "search_web":
         return True
 
-    question = next(
-        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        "",
-    )
-    question = question if isinstance(question, str) else str(question)
-    return not any(word in question.lower() for word in _COMPARISON_TRIGGER_WORDS)
+    return not _question_requires_web_check(state)
 
 
 def _question_requires_web_check(state: AgentState) -> bool:
+    """Match the web-comparison/freshness exception described in the prompt."""
+
     question = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         "",
     )
     question = question if isinstance(question, str) else str(question)
     lowered = question.lower()
-    return any(word in lowered for word in _COMPARISON_TRIGGER_WORDS)
+    if any(term in lowered for term in _WEB_OPT_OUT_TERMS):
+        return False
+    if any(term in lowered for term in _FRESHNESS_TRIGGER_TERMS):
+        return True
+    asks_for_comparison = any(term in lowered for term in _WEB_COMPARISON_TERMS)
+    names_the_web = any(term in lowered for term in _WEB_REFERENCE_TERMS)
+    return asks_for_comparison and names_the_web
 
 
 def auto_finalize_node(state: AgentState) -> dict:
@@ -204,11 +254,7 @@ def _messages_for_current_turn(messages: list) -> list:
         message
         for message in messages[:latest_human_index]
         if isinstance(message, HumanMessage)
-        or (
-            isinstance(message, AIMessage)
-            and not message.tool_calls
-            and bool(message.content)
-        )
+        or (isinstance(message, AIMessage) and not message.tool_calls and bool(message.content))
     ]
     return [*conversational_history, *messages[latest_human_index:]]
 
@@ -222,7 +268,13 @@ async def agent_node(state: AgentState) -> dict:
 
     provider, selected_model, _config = resolve_generation_target(state.get("model"))
     client = create_chat_client(provider, selected_model)
-    available_tools = _tools_for(is_admin, answer_mode, state.get("tool_call_counts"))
+    tool_limits = active_limits()
+    available_tools = _tools_for(
+        is_admin,
+        answer_mode,
+        state.get("tool_call_counts"),
+        limits=tool_limits,
+    )
     last = state["messages"][-1]
     last_payload: dict = {}
     if isinstance(last, ToolMessage):
@@ -231,6 +283,16 @@ async def agent_node(state: AgentState) -> dict:
         except (TypeError, ValueError):
             last_payload = {}
     if (
+        answer_mode != "chat"
+        and isinstance(last, ToolMessage)
+        and last.name == "search_internal_documents"
+    ):
+        # Analysis has a deliberate two-step protocol: one selected-document
+        # search, then an explicit prepare_final_answer hand-off. Binding only
+        # the hand-off here makes the prompt contract executable even when the
+        # configured search budget is greater than one.
+        available_tools = [tool for tool in available_tools if tool.name == "prepare_final_answer"]
+    elif (
         answer_mode == "chat"
         and isinstance(last, ToolMessage)
         and last.name in EVIDENCE_TIER_TOOLS - {"search_web"}
@@ -269,7 +331,12 @@ async def agent_node(state: AgentState) -> dict:
         parallel_tool_calls=False,
     )
 
-    system_prompt = get_agent_system_prompt(response_mode, answer_mode, is_admin=is_admin)
+    system_prompt = get_agent_system_prompt(
+        response_mode,
+        answer_mode,
+        is_admin=is_admin,
+        tool_limits=tool_limits,
+    )
     messages = [
         SystemMessage(content=system_prompt),
         *_messages_for_current_turn(state["messages"]),
@@ -400,11 +467,7 @@ def _fallback_tool_action(state: AgentState, allowed_tool_names: set[str]) -> AI
 
     citations = state.get("citations", [])
     citation_numbers = sorted(
-        {
-            citation["number"]
-            for citation in citations
-            if isinstance(citation.get("number"), int)
-        }
+        {citation["number"] for citation in citations if isinstance(citation.get("number"), int)}
     )
     if action == "prepare_final_answer":
         reason = payload.get("reason") or state.get("last_evidence_reason")
@@ -491,14 +554,11 @@ def record_tool_call_node(state: AgentState) -> dict:
 def route_after_tools(state: AgentState) -> str:
     """The prepare tool is the only exit from the ReAct action loop.
 
-    Document Analysis mode has no full-corpus/web escalation (see
-    ANALYSIS_MODE_TOOLS) — search_internal_documents is its only evidence
-    tier, so if that never became sufficient this turn, the answer must be a
-    deterministic refusal identical to the Direct/linear graph's
-    (insufficient_evidence_node in rag/graph/nodes.py), not an LLM-written
-    one. Open Discussion mode keeps its existing general-knowledge fallback
-    inside AGENT_STRATEGY_PROMPT/final_generation, since evidence_sources can
-    legitimately stay empty there while the model still answers.
+    Document Analysis mode has no full-corpus/web escalation. After its one
+    selected-document search, the agent still executes the explicit
+    prepare_final_answer hand-off described by the prompt. If no evidence was
+    accepted, that hand-off then routes to the same deterministic refusal as
+    the Direct/linear graph rather than an LLM-written answer.
     """
     last = state["messages"][-1]
     if isinstance(last, ToolMessage) and last.name == "prepare_final_answer":
@@ -507,17 +567,6 @@ def route_after_tools(state: AgentState) -> str:
         return "final_generation"
     if AUTO_FINALIZE_ENABLED and _should_auto_finalize(state):
         return "auto_finalize"
-    if (
-        state.get("answer_mode", "analysis") != "chat"
-        and isinstance(last, ToolMessage)
-        and last.name == "search_internal_documents"
-    ):
-        try:
-            payload = json.loads(last.content)
-        except (TypeError, ValueError):
-            payload = {}
-        if not payload.get("evidence_sufficient"):
-            return "insufficient_evidence"
     return "agent"
 
 

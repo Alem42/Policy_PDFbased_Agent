@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from app.modules.chat.agent_limits.config import AgentToolLimitsConfig
 from app.modules.chat.rag.graph.state import AnswerMode, ResponseMode
 from app.modules.chat.rag.prompts import (
     ANALYSIS_BOUNDARY_PROMPT,
@@ -124,6 +127,9 @@ Whichever mode, the user can always type a free-form answer instead of
 picking a listed option — the returned text is not guaranteed to match any
 option you offered, so read it for intent rather than an exact string match.
 
+- An explicit instruction not to use the web overrides every web-search
+  rule below, including freshness wording. Respect that instruction and
+  continue with document evidence or clearly labelled general knowledge.
 - If the user's own message already explicitly asked you to search the web
   (phrases like "search the web", "look it up online", "check online"), you
   do not need to try search_internal_documents/search_full_corpus first, and
@@ -144,7 +150,8 @@ option you offered, so read it for intent rather than an exact string match.
     prepare_final_answer with a concise writing plan and the exact citation
     numbers. Do not search further just because more sources might exist.
   - If evidence_sufficient=false, you may retry search_internal_documents
-    with a materially different, focused query. Up to five calls are
+    with a materially different, focused query. Up to {search_internal_documents}
+    calls are
     available for distinct sub-topics, but never spend the remaining budget
     after a result is sufficient. A combined query can make documents that
     do have the answer look insufficient, so focused retries against the
@@ -156,7 +163,7 @@ option you offered, so read it for intent rather than an exact string match.
     - If that returns evidence_sufficient=true, call prepare_final_answer
       with a plan grounded in those sources and their exact citation
       numbers.
-    - You may use search_full_corpus at most five times for materially
+    - You may use search_full_corpus at most {search_full_corpus} times for materially
       different sub-topics or query reformulations. Stop immediately after
       sufficient evidence; do not spend the budget merely to collect more
       sources. If it is no longer offered, choose ask_user, search_web when
@@ -219,12 +226,56 @@ conversation.
 """
 
 
+def _resolved_tool_limits(tool_limits: Mapping[str, int] | None) -> dict[str, int]:
+    limits = AgentToolLimitsConfig().as_limits()
+    if tool_limits:
+        limits.update(tool_limits)
+    return limits
+
+
+def _tool_budget_prompt(
+    limits: Mapping[str, int],
+    *,
+    answer_mode: AnswerMode,
+    is_admin: bool,
+) -> str:
+    if answer_mode != "chat":
+        tool_names = ("search_internal_documents", "prepare_final_answer")
+    else:
+        tool_names = (
+            "search_internal_documents",
+            "search_full_corpus",
+            "ask_user",
+            "search_web",
+            *(("import_web_page",) if is_admin else ()),
+            "prepare_final_answer",
+        )
+    rows = "\n".join(f"- {name}: {limits[name]}" for name in tool_names)
+    return (
+        "Current maximum tool-call budgets for this user question "
+        "(loaded from Manage > Agent tool limits):\n"
+        f"{rows}\n"
+        "These are upper bounds, not targets. Stop earlier when the task is complete, "
+        "and never call a tool after it is no longer offered."
+    )
+
+
 def get_agent_system_prompt(
     response_mode: ResponseMode = "researcher",
     answer_mode: AnswerMode = "analysis",
     *,
     is_admin: bool = False,
+    tool_limits: Mapping[str, int] | None = None,
 ) -> str:
+    limits = _resolved_tool_limits(tool_limits)
+    effective_answer_mode: AnswerMode = (
+        "analysis" if response_mode == "policymaker" else answer_mode
+    )
+    budget_prompt = _tool_budget_prompt(
+        limits,
+        answer_mode=effective_answer_mode,
+        is_admin=is_admin,
+    )
     # Policymaker is always forced to answer_mode="analysis" upstream
     # (normalize_answer_mode) — strategy is hardcoded to match rather than
     # trusting the caller passed the already-normalized value.
@@ -236,6 +287,7 @@ def get_agent_system_prompt(
                 POLICYMAKER_STYLE_PROMPT,
                 POLICYMAKER_STRUCTURE_PROMPT,
                 POLICYMAKER_BOUNDARY_PROMPT,
+                budget_prompt,
                 ANALYSIS_STRATEGY_PROMPT,
             ]
             if part.strip()
@@ -244,14 +296,16 @@ def get_agent_system_prompt(
     style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     is_chat_mode = answer_mode == "chat"
     boundary = CHAT_BOUNDARY_PROMPT if is_chat_mode else ANALYSIS_BOUNDARY_PROMPT
-    strategy = AGENT_STRATEGY_PROMPT if is_chat_mode else ANALYSIS_STRATEGY_PROMPT
+    strategy = (
+        AGENT_STRATEGY_PROMPT.format_map(limits) if is_chat_mode else ANALYSIS_STRATEGY_PROMPT
+    )
     parts = [BASE_SYSTEM_PROMPT, style]
     if not is_chat_mode:
         structure = (
             STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
         )
         parts.append(structure)
-    parts.extend([boundary, strategy])
+    parts.extend([boundary, budget_prompt, strategy])
 
     if is_chat_mode and not is_admin:
         parts.append(

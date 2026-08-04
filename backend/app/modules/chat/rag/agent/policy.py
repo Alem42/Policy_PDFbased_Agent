@@ -24,6 +24,8 @@ def tools_for(
     is_admin: bool,
     answer_mode: str,
     tool_call_counts: dict[str, int] | None = None,
+    *,
+    limits: dict[str, int] | None = None,
 ) -> list:
     """Return only tools allowed by mode, role, and remaining budget."""
 
@@ -32,9 +34,13 @@ def tools_for(
     else:
         available = ALL_TOOLS if is_admin else NON_ADMIN_TOOLS
     counts = tool_call_counts or {}
-    limits = active_tool_limits().as_limits()
+    effective_limits = limits if limits is not None else active_limits()
     return [
-        tool
-        for tool in available
-        if counts.get(tool.name, 0) < limits.get(tool.name, 1)
+        tool for tool in available if counts.get(tool.name, 0) < effective_limits.get(tool.name, 1)
     ]
+
+
+def active_limits() -> dict[str, int]:
+    """Return the persisted per-tool budgets currently enforced by the agent."""
+
+    return active_tool_limits().as_limits()

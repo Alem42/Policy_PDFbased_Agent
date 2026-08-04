@@ -13,6 +13,7 @@ from app.modules.chat.rag.agent.graph import (
     NON_ADMIN_TOOLS,
     TOOL_CALL_LIMITS,
     _messages_for_current_turn,
+    _question_requires_web_check,
     _should_auto_finalize,
     _tools_for,
     agent_node,
@@ -20,8 +21,10 @@ from app.modules.chat.rag.agent.graph import (
     record_tool_call_node,
     route_after_tools,
 )
+from app.modules.chat.rag.agent.prompts import get_agent_system_prompt
 from app.modules.chat.rag.agent.state import add_citations
 from app.modules.chat.rag.agent.tools import (
+    SUFFICIENT_EVIDENCE_REMINDER,
     _cosine_distance,
     _number_citations,
     _results_with_evidence_text,
@@ -163,6 +166,52 @@ def test_search_and_confirmation_tools_require_display_reason() -> None:
     ):
         schema = tools_by_name[name].args_schema.model_json_schema()
         assert "decision_reason" in schema["required"]
+
+
+def test_sufficient_evidence_reminder_preserves_pending_web_check() -> None:
+    reminder = SUFFICIENT_EVIDENCE_REMINDER.lower()
+
+    assert "web comparison or freshness check" in reminder
+    assert "if" in reminder
+    assert "otherwise" in reminder
+
+
+def test_agent_prompt_uses_configured_tool_limits() -> None:
+    limits = {
+        **TOOL_CALL_LIMITS,
+        "search_internal_documents": 2,
+        "search_full_corpus": 7,
+    }
+
+    prompt = get_agent_system_prompt(
+        "researcher",
+        "chat",
+        is_admin=False,
+        tool_limits=limits,
+    )
+    normalized_prompt = " ".join(prompt.split())
+
+    assert "- search_internal_documents: 2" in prompt
+    assert "- search_full_corpus: 7" in prompt
+    assert "Up to 2 calls are" in normalized_prompt
+    assert "at most 7 times" in normalized_prompt
+    assert "at most five" not in prompt.lower()
+
+
+def test_tools_for_uses_the_same_supplied_limits_snapshot() -> None:
+    limits = {**TOOL_CALL_LIMITS, "search_internal_documents": 2}
+
+    names = {
+        tool.name
+        for tool in _tools_for(
+            False,
+            "chat",
+            {"search_internal_documents": 2},
+            limits=limits,
+        )
+    }
+
+    assert "search_internal_documents" not in names
 
 
 def test_exhausted_tool_is_removed_from_next_agent_turn() -> None:
@@ -509,7 +558,7 @@ def test_other_tool_results_return_to_agent_loop() -> None:
     assert route_after_tools(state) == "agent"
 
 
-def test_analysis_mode_insufficient_search_routes_to_deterministic_refusal() -> None:
+def test_analysis_mode_search_returns_to_agent_for_prepare_step() -> None:
     state = {
         "answer_mode": "analysis",
         "messages": [
@@ -521,7 +570,93 @@ def test_analysis_mode_insufficient_search_routes_to_deterministic_refusal() -> 
         ],
     }
 
+    assert route_after_tools(state) == "agent"
+
+
+def test_analysis_prepare_with_no_evidence_routes_to_deterministic_refusal() -> None:
+    state = {
+        "answer_mode": "analysis",
+        "evidence_sources": [],
+        "messages": [
+            ToolMessage(
+                content='{"ready": true}',
+                tool_call_id="call-2",
+                name="prepare_final_answer",
+            )
+        ],
+    }
+
     assert route_after_tools(state) == "insufficient_evidence"
+
+
+async def test_analysis_after_search_only_offers_prepare_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.modules.chat.rag.agent.graph as graph_module
+
+    class FakeClient:
+        def bind_tools(self, tools, **kwargs):
+            assert {tool.name for tool in tools} == {"prepare_final_answer"}
+            return self
+
+        async def ainvoke(self, messages):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "prepare_final_answer",
+                        "args": {
+                            "answer_plan": "Explain that selected evidence was insufficient.",
+                            "citation_numbers": [],
+                        },
+                        "id": "call-prepare",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(
+        graph_module,
+        "resolve_generation_target",
+        lambda model: ("fake", "model", {}),
+    )
+    monkeypatch.setattr(graph_module, "create_chat_client", lambda provider, model: FakeClient())
+    monkeypatch.setattr(graph_module, "active_limits", lambda: dict(TOOL_CALL_LIMITS))
+    monkeypatch.setattr(graph_module, "get_agent_system_prompt", lambda *args, **kwargs: "prompt")
+
+    result = await agent_node(
+        {
+            "messages": [
+                HumanMessage(content="What do the selected documents say?"),
+                ToolMessage(
+                    content='{"evidence_sufficient": false}',
+                    tool_call_id="call-search",
+                    name="search_internal_documents",
+                ),
+            ],
+            "answer_mode": "analysis",
+            "is_admin": False,
+        }
+    )
+
+    assert result["messages"][0].tool_calls[0]["name"] == "prepare_final_answer"
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("Compare policy A with policy B.", False),
+        ("Compare the selected documents against the web.", True),
+        ("What is the latest version of this policy?", True),
+        ("\u8fd9\u9879\u653f\u7b56\u7684\u6700\u65b0\u7248\u672c\u662f\u4ec0\u4e48\uff1f", True),
+        ("Use the latest selected document, but do not search the web.", False),
+        ("\u53ea\u4f7f\u7528\u6587\u6863\uff0c\u4e0d\u8981\u4e0a\u7f51\u6838\u5b9e\u3002", False),
+    ],
+)
+def test_web_check_trigger_matches_prompt_policy(question: str, expected: bool) -> None:
+    state = {"messages": [HumanMessage(content=question)]}
+
+    assert _question_requires_web_check(state) is expected
 
 
 def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:
@@ -642,6 +777,12 @@ def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
         },
     )
     assert route_after_tools(state) == "auto_finalize"
+
+
+def test_auto_finalize_is_disabled_by_default() -> None:
+    import app.modules.chat.rag.agent.graph as graph_module
+
+    assert graph_module.AUTO_FINALIZE_ENABLED is False
 
 
 def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled(
