@@ -35,8 +35,10 @@ _score_web_results = web_evidence.score_web_results
 # to — a reminder attached right next to the decision point measurably cuts
 # that down, where the same wording living only in the system prompt did not.
 SUFFICIENT_EVIDENCE_REMINDER = (
-    "This is enough to answer. Your next tool call should be "
-    "prepare_final_answer — do not search again just for more detail or "
+    "This is enough evidence for this retrieval step. If the user explicitly "
+    "requested a web comparison or freshness check and that web check is still "
+    "pending, perform it next. Otherwise, your next tool call should be "
+    "prepare_final_answer. Do not search again merely for more detail or "
     "corroboration."
 )
 
@@ -171,9 +173,10 @@ async def search_internal_documents(
     turn, also fill `reflection_on_previous_result` — see its own
     description for what goes there.
 
-    You may call this at most five times per turn for distinct sub-topics or
-    materially different query reformulations. Stop as soon as a call is
-    sufficient. In particular, split a query that bundled multiple
+    The current per-turn call budget is admin-configured and stated in the
+    system prompt. You may call this only while it remains available, for
+    distinct sub-topics or materially different query reformulations. Stop as
+    soon as a call is sufficient. In particular, split a query that bundled multiple
     sub-topics into one string, which dilutes the match and can make
     documents that do have the answer look insufficient.
     """
@@ -250,9 +253,10 @@ async def search_full_corpus(
     this conversation.
 
     Each result has a `number`: cite it with exactly that [N], never a
-    guessed or recomputed one. The ReAct loop allows at most five calls per
-    turn for distinct sub-topics or materially different reformulations;
-    stop as soon as a call is sufficient. Briefly state why you chose this
+    guessed or recomputed one. The current per-turn call budget is
+    admin-configured and stated in the system prompt; use this tool only while
+    it remains available, for distinct sub-topics or materially different
+    reformulations. Stop as soon as a call is sufficient. Briefly state why you chose this
     action in `decision_reason`. If this is not your first tool call this
     turn, also fill `reflection_on_previous_result` — see its own description
     for what goes there.
@@ -273,8 +277,7 @@ async def search_full_corpus(
     sufficient = result.evidence.sufficient
     reason = result.evidence.reason
     raw_citations = [
-        dict(citation, source_type="document", tier="full_corpus")
-        for citation in result.citations
+        dict(citation, source_type="document", tier="full_corpus") for citation in result.citations
     ]
     if sufficient:
         numbered_results, new_citations = _number_citations(citations, raw_citations)
@@ -369,7 +372,7 @@ def prepare_final_answer(
     headings.
     Do not put the final prose answer in this tool call: a separate
     generation node writes and streams it to the user. If this is not your
-    first tool call this turn, also fill `reflection_on_previous_result` — 
+    first tool call this turn, also fill `reflection_on_previous_result` —
     see its own description for what goes there.
     """
     payload = {

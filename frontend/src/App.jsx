@@ -118,7 +118,12 @@ export default function App() {
     await loadDocuments();
   }
 
-  function handleAddSource(documentId) {
+  function handleAddSource(documentId, document = null) {
+    if (document) {
+      setDocuments((current) =>
+        current.some((item) => item.id === documentId) ? current : [document, ...current]
+      );
+    }
     setContextSourceIds((prev) =>
       prev.includes(documentId) ? prev : [...prev, documentId]
     );

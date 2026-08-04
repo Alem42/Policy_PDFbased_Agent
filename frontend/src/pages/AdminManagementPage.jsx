@@ -70,7 +70,7 @@ function loadOrder() {
   }
 }
 
-export default function AdminManagementPage({ user, onNavigate }) {
+export default function AdminManagementPage({ user, onNavigate, onDocumentsChanged }) {
   const [order, setOrder] = useState(loadOrder);
   // Entering /manage shows the top (default) section.
   const [activeId, setActiveId] = useState(() => loadOrder()[0]);
@@ -258,6 +258,7 @@ export default function AdminManagementPage({ user, onNavigate }) {
                 <SectionComponent
                   user={user}
                   onNavigate={handleChildNavigate}
+                  onDocumentsChanged={onDocumentsChanged}
                   configurationVersion={configurationVersion}
                   onConfigurationChanged={() =>
                     setConfigurationVersion((version) => version + 1)
