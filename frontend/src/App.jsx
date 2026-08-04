@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Box, Container, Alert } from "@mui/material";
 import { clearAuth, getCurrentUser, getDocuments, getProcessingStatus, getStoredUser, rescanDocuments } from "./api";
 import AppHeader from "./components/AppHeader";
-import { getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
+import { chatSessionPath, getViewFromPath, ROUTES, VIEW_PATHS } from "./routes";
 
 export default function App() {
   const location = useLocation();
@@ -14,11 +14,26 @@ export default function App() {
   const [error, setError] = useState("");
 
   const [contextSourceIds, setContextSourceIds] = useState([]);
+  // The most recently visited chat URL (bare /chat or /chat/<sessionId>).
+  // Lets "Go to chat" and the header's Chat nav return to the conversation
+  // the user left, instead of always starting a blank one.
+  const [lastChatPath, setLastChatPath] = useState(ROUTES.chat);
 
   const documentCount = useMemo(() => documents.length, [documents]);
   const activeView = getViewFromPath(location.pathname);
 
+  useEffect(() => {
+    if (location.pathname === ROUTES.chat || location.pathname.startsWith(`${ROUTES.chat}/`)) {
+      setLastChatPath(location.pathname);
+    }
+  }, [location.pathname]);
+
   function navigateToView(view, options) {
+    if (view === "chat") {
+      const path = options?.sessionId ? chatSessionPath(options.sessionId) : lastChatPath;
+      navigate(path, options?.replace ? { replace: true } : undefined);
+      return;
+    }
     navigate(VIEW_PATHS[view] || ROUTES.chat, options);
   }
 
@@ -115,7 +130,9 @@ export default function App() {
     clearAuth();
     setUser(null);
     setContextSourceIds([]);
-    navigateToView("chat", { replace: true });
+    // A logged-out visitor shouldn't land back on someone's private session.
+    setLastChatPath(ROUTES.chat);
+    navigate(ROUTES.chat, { replace: true });
   }
 
   function handleAuthenticated(nextUser) {

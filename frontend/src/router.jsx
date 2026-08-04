@@ -112,6 +112,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to={ROUTES.chat} replace /> },
       //{ path: ROUTES.home.slice(1), element: <HomeRoute /> },
       { path: ROUTES.chat.slice(1), element: <ChatRoute /> },
+      { path: `${ROUTES.chat.slice(1)}/:sessionId`, element: <ChatRoute /> },
       { path: ROUTES.history.slice(1), element: <HistoryRoute /> },
       { path: ROUTES.library.slice(1), element: <LibraryRoute /> },
       { path: ROUTES.admin.slice(1), element: <AdminRoute /> },
