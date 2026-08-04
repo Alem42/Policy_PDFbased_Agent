@@ -554,7 +554,7 @@ async def final_generation_node(state: AgentState) -> dict:
     # Highest-weight position for the style instruction: the LAST message of the
     # writer call. A plain user-message reminder right before generation beats
     # both the earlier tool results and the answer plan's own formatting hints.
-    messages.append(HumanMessage(content=final_style_reminder(answer_mode)))
+    messages.append(HumanMessage(content=final_style_reminder(response_mode, answer_mode)))
 
     response: AIMessage = await client.ainvoke(messages)
     return {"messages": [response], "resolved_model": f"{provider}/{selected_model}"}

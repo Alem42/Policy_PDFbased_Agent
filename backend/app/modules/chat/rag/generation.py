@@ -63,7 +63,7 @@ def _generation_messages(
     # Append the style reminder to the FINAL user message: the highest-weight
     # position for DeepSeek-style models, and the strongest counter to earlier
     # answers in the history acting as in-context formatting examples.
-    question = f"{question}\n\n{final_style_reminder(answer_mode)}"
+    question = f"{question}\n\n{final_style_reminder(response_mode, answer_mode)}"
     return _build_messages(
         system_prompt,
         history,

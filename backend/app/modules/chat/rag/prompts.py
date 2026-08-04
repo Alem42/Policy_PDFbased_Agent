@@ -85,7 +85,10 @@ STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
 - What can be learned from the similarities and differences in approach and outcome.
 """
 
-def final_style_reminder(answer_mode: AnswerMode = "analysis") -> str:
+def final_style_reminder(
+    response_mode: ResponseMode = "researcher",
+    answer_mode: AnswerMode = "analysis",
+) -> str:
     """Style reminder placed at the highest-weight position of the prompt.
 
     DeepSeek-style models weight later instructions more heavily, and in-context
@@ -93,6 +96,17 @@ def final_style_reminder(answer_mode: AnswerMode = "analysis") -> str:
     system prompt's style guidance. The structure clause only applies in
     Document Analysis mode, where prescribed headings exist.
     """
+    if response_mode == "policymaker":
+        # Policymaker has no prescribed heading template (it is a concise brief),
+        # so a generic "use the prescribed headings" reminder is vacuous and the
+        # previous answer's report-style headings win. Make the instruction
+        # explicitly negative instead.
+        return (
+            "Final instruction: write this answer as a concise policy brief in plain "
+            "professional paragraphs. Do NOT use report-style markdown headings (such as "
+            "## Context, ## Relevant Cases, or ## Policy Approach), and do not imitate "
+            "the formatting or style of any earlier answers in this conversation."
+        )
     base = (
         "Final instruction: write this answer in the writing style requested at the "
         "top of this prompt, for this message only. Ignore the formatting and style "
@@ -201,7 +215,7 @@ def get_system_prompt(
             POLICYMAKER_STYLE_PROMPT,
             POLICYMAKER_BOUNDARY_PROMPT,
             CONTEXT_BLOCK,
-            final_style_reminder("analysis"),
+            final_style_reminder("policymaker", "analysis"),
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
@@ -215,7 +229,7 @@ def get_system_prompt(
         structure = STUDENT_STRUCTURE_PROMPT if is_student else RESEARCHER_STRUCTURE_PROMPT
         parts.append(structure)
 
-    parts.extend([boundary, CONTEXT_BLOCK, final_style_reminder(answer_mode)])
+    parts.extend([boundary, CONTEXT_BLOCK, final_style_reminder(response_mode, answer_mode)])
     return "\n".join(part.strip() for part in parts if part.strip())
 
 

@@ -272,7 +272,7 @@ def get_final_answer_system_prompt(
             POLICYMAKER_BOUNDARY_PROMPT,
             FINAL_ANSWER_WRITER_PROMPT,
             CITATION_NUMBERING_RULE,
-            final_style_reminder("analysis"),
+            final_style_reminder("policymaker", "analysis"),
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
@@ -290,7 +290,7 @@ def get_final_answer_system_prompt(
             boundary,
             FINAL_ANSWER_WRITER_PROMPT,
             CITATION_NUMBERING_RULE,
-            final_style_reminder(answer_mode),
+            final_style_reminder(response_mode, answer_mode),
         ]
     )
     return "\n".join(part.strip() for part in parts if part.strip())
