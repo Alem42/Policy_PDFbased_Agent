@@ -18,8 +18,6 @@ import {
 } from "@mui/material";
 import {
   AutoAwesomeOutlined,
-  CheckCircleOutlined,
-  DescriptionOutlined,
   LockOutlined,
   VisibilityOffOutlined,
   VisibilityOutlined,
@@ -37,9 +35,9 @@ function Label({ children }) {
   );
 }
 
-function PasswordField({ label, value, onChange, autoComplete, visible, onToggle, hint }) {
+function PasswordField({ label, value, onChange, autoComplete, visible, onToggle, hint, sx }) {
   return (
-    <Box sx={{ display: "grid", gap: 0.5 }}>
+    <Box sx={{ display: "grid", gap: 0.5, ...sx }}>
       <Label>{label}</Label>
       <TextField
         value={value}
@@ -59,43 +57,6 @@ function PasswordField({ label, value, onChange, autoComplete, visible, onToggle
         }}
       />
       {hint && <Typography variant="caption" color="text.secondary">{hint}</Typography>}
-    </Box>
-  );
-}
-
-function BrandPanel() {
-  return (
-    <Box
-      sx={{
-        display: { xs: "none", md: "flex" },
-        flexDirection: "column",
-        justifyContent: "space-between",
-        color: "white",
-        p: 5,
-        minHeight: 610,
-        background: "linear-gradient(145deg, #183c33 0%, #286755 62%, #c58a3a 160%)",
-      }}
-    >
-      <Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, mb: 6 }}>
-          <DescriptionOutlined />
-          <Typography sx={{ fontWeight: 900, letterSpacing: 0.2 }}>Policy in Action</Typography>
-        </Box>
-        <Typography variant="h2" sx={{ color: "white", fontSize: 38, lineHeight: 1.18, mb: 2 }}>
-          Research policy with evidence you can inspect.
-        </Typography>
-        <Typography sx={{ color: "rgba(255,255,255,0.78)", lineHeight: 1.7 }}>
-          Search shared documents, compare policies across regions, and keep every answer tied to its sources.
-        </Typography>
-      </Box>
-      <Box sx={{ display: "grid", gap: 1.5 }}>
-        {["Document-grounded answers", "Traceable citations", "Evidence-aware web search"].map((item) => (
-          <Box key={item} sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
-            <CheckCircleOutlined fontSize="small" />
-            <Typography variant="body2">{item}</Typography>
-          </Box>
-        ))}
-      </Box>
     </Box>
   );
 }
@@ -221,29 +182,27 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
   }
 
   return (
-    <Box component="section" sx={{ py: { xs: 3, md: 6 }, px: { xs: 1.5, sm: 3 } }}>
+    <Box component="section" sx={{ py: { xs: 3, md: 5 }, px: { xs: 1.5, sm: 3 } }}>
       <Card
         sx={{
           width: "100%",
-          maxWidth: 1040,
+          maxWidth: mode === "login" ? 520 : 720,
           mx: "auto",
           overflow: "hidden",
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "0.9fr 1.1fr" },
           border: "1px solid #dde4df",
-          boxShadow: "0 24px 70px rgba(24,60,51,0.13)",
+          boxShadow: "0 18px 55px rgba(24,60,51,0.11)",
+          transition: "max-width 180ms ease",
         }}
       >
-        <BrandPanel />
-        <Box sx={{ p: { xs: 3, sm: 5 }, alignSelf: "center" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+        <Box sx={{ p: { xs: 3, sm: 4.5 } }}>
+          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mb: 1 }}>
             {mode === "login" ? <LockOutlined color="primary" /> : <AutoAwesomeOutlined color="primary" />}
             <Typography variant="subtitle2">{mode === "login" ? "Welcome back" : "Join the library"}</Typography>
           </Box>
-          <Typography variant="h1" sx={{ fontSize: { xs: 34, sm: 44 } }}>
+          <Typography variant="h1" align="center" sx={{ fontSize: { xs: 34, sm: 42 } }}>
             {mode === "login" ? "Log in" : "Create your account"}
           </Typography>
-          <Typography variant="body2" sx={{ mt: 1.2, color: "text.secondary" }}>
+          <Typography variant="body2" align="center" sx={{ mt: 1.2, color: "text.secondary" }}>
             {mode === "login"
               ? "Use your username or verified email to continue."
               : "Verify your email, then create credentials for the research workspace."}
@@ -300,8 +259,17 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
               </Button>
             </Box>
           ) : (
-            <Box component="form" onSubmit={handleRegister} sx={{ mt: 3, display: "grid", gap: 1.7 }}>
-              <Box sx={{ display: "grid", gap: 0.5 }}>
+            <Box
+              component="form"
+              onSubmit={handleRegister}
+              sx={{
+                mt: 3,
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                gap: 1.7,
+              }}
+            >
+              <Box sx={{ display: "grid", gap: 0.5, gridColumn: "1 / -1" }}>
                 <Label>Email</Label>
                 <TextField
                   value={email}
@@ -314,7 +282,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   required
                 />
               </Box>
-              <Box sx={{ display: "grid", gap: 0.5 }}>
+              <Box sx={{ display: "grid", gap: 0.5, gridColumn: "1 / -1" }}>
                 <Label>Email verification code</Label>
                 <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1 }}>
                   <TextField
@@ -374,7 +342,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 </FormControl>
               </Box>
               {role === "admin" && (
-                <Box sx={{ display: "grid", gap: 0.5 }}>
+                <Box sx={{ display: "grid", gap: 0.5, gridColumn: "1 / -1" }}>
                   <Label>Admin registration secret (reserved)</Label>
                   <TextField
                     value={secret}
@@ -390,13 +358,14 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 </Box>
               )}
               <FormControlLabel
+                sx={{ gridColumn: "1 / -1", alignItems: "flex-start" }}
                 control={<Checkbox checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />}
                 label={<Typography variant="body2">I will use the workspace responsibly and verify important source claims.</Typography>}
               />
-              <Button variant="contained" disabled={busy} type="submit" fullWidth size="large" sx={{ bgcolor: GREEN }}>
+              <Button variant="contained" disabled={busy} type="submit" fullWidth size="large" sx={{ bgcolor: GREEN, gridColumn: "1 / -1" }}>
                 {busy ? "Creating account..." : "Create account"}
               </Button>
-              <Button variant="text" type="button" onClick={() => switchMode("login")} fullWidth>
+              <Button variant="text" type="button" onClick={() => switchMode("login")} fullWidth sx={{ gridColumn: "1 / -1" }}>
                 Already have an account? Log in
               </Button>
             </Box>
