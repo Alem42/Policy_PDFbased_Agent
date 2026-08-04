@@ -174,7 +174,7 @@ _catalog_cache_lock = Lock()
 
 
 def invalidate_catalog_cache() -> None:
-    """Clear cached catalog rows after an admin/crawler write."""
+    """Clear cached catalog rows after an administrator writes an endpoint."""
     global _catalog_cache
     with _catalog_cache_lock:
         _catalog_cache = None

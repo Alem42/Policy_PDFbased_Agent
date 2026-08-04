@@ -438,11 +438,6 @@ export default function LlmProvidersSection({
             <Button size="small" variant="outlined" onClick={() => setShowCatalog((v) => !v)}>
               {showCatalog ? "Hide endpoints" : "Show all endpoints"}
             </Button>
-            {/* TODO(crawler): auto-populate the catalog by scanning provider docs.
-                Wire to a backend crawler / web-search job later; POST /admin/catalog. */}
-            <Button size="small" variant="text" disabled title="Coming soon">
-              Rescan (crawler)
-            </Button>
           </Box>
 
           <Collapse in={showCatalog}>
@@ -528,7 +523,7 @@ export default function LlmProvidersSection({
                 </Typography>
               )}
 
-              {/* Add an endpoint manually (crawler will do this in bulk later) */}
+              {/* Administrators can register endpoints that are not in the built-in catalog. */}
               <Box sx={{ mt: 1, p: 1.5, border: "1px solid #e2e5df", borderRadius: 2, display: "grid", gap: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 800 }}>Add an endpoint</Typography>
                 {catalogError && <Alert severity="error">{catalogError}</Alert>}

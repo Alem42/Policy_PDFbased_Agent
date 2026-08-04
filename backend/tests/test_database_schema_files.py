@@ -20,3 +20,18 @@ def test_email_verification_schema_and_migration_are_available() -> None:
     assert '"email_verification_codes"' in init_sql
     assert '"email_verified_at"' in init_sql
     assert "021_add_email_verification.sql" in compose
+
+
+def test_legacy_crawling_schema_is_removed() -> None:
+    init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
+    compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    legacy_tables = (
+        "crawl_sources",
+        "crawl_jobs",
+        "crawl_errors",
+        "crawled_documents",
+        "crawled_document_versions",
+        "crawled_document_assets",
+    )
+    assert all(f'"{table}"' not in init_sql for table in legacy_tables)
+    assert "022_remove_legacy_crawling.sql" in compose

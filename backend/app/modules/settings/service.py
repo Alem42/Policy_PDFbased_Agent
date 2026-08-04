@@ -56,9 +56,7 @@ def get_web_search_provider_api_key(provider: str | None = None) -> str | None:
     key = settings_repository.load().web_search_provider_api_keys.get(provider_id)
     if key:
         return key
-    # Fall back to the env var the crawling module already reads, so an
-    # operator who configured FIRECRAWL_API_KEY for crawling doesn't have to
-    # duplicate it in the runtime settings store.
+    # The environment variable is a deployment-level fallback for web search.
     if provider_id == "firecrawl":
         return get_settings().firecrawl_api_key
     return None

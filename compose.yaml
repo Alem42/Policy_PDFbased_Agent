@@ -34,6 +34,7 @@ services:
       - ./backend/database/migrations/019_add_documents_canonical_url.sql:/docker-entrypoint-initdb.d/20_migration_019.sql:ro
       - ./backend/database/migrations/020_add_web_document_governance.sql:/docker-entrypoint-initdb.d/21_migration_020.sql:ro
       - ./backend/database/migrations/021_add_email_verification.sql:/docker-entrypoint-initdb.d/22_migration_021.sql:ro
+      - ./backend/database/migrations/022_remove_legacy_crawling.sql:/docker-entrypoint-initdb.d/23_migration_022.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

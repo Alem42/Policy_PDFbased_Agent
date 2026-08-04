@@ -9,7 +9,6 @@ description = "Configurable policy website ingestion backend for agents and RAG.
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "beautifulsoup4>=4.12,<5",
   "fastapi>=0.115,<1",
   "fastembed>=0.8,<1",
   "httpx>=0.27,<1",
@@ -36,9 +35,8 @@ dependencies = [
 database = [
   "asyncpg>=0.30,<1",
 ]
-crawlers = [
+web-search = [
   "firecrawl-py>=2,<5",
-  "playwright>=1.49,<2",
 ]
 dev = [
   "mypy>=1.13,<2",
@@ -50,7 +48,6 @@ dev = [
 all = [
   "asyncpg>=0.30,<1",
   "firecrawl-py>=2,<5",
-  "playwright>=1.49,<2",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -35,6 +35,6 @@ Example update:
 ## Deliberately deferred
 
 Migration 020 provides scheduling and lifecycle state, but does not run an
-automatic crawler. A refresh worker still needs an explicit policy for HTTP
+automatic refresh. A refresh worker still needs an explicit policy for HTTP
 failures, changed content, version retention, re-index rollback, and admin
 notifications before it is safe to automate overwrites.
