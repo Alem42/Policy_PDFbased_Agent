@@ -14,15 +14,20 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import database
 from app.modules.chat.rag.checkpointer import close_checkpointer, init_checkpointer
+from app.modules.documents.processing_queue import document_processing_queue
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await database.connect()
     await init_checkpointer()
-    yield
-    await close_checkpointer()
-    await database.disconnect()
+    await document_processing_queue.start()
+    try:
+        yield
+    finally:
+        await document_processing_queue.stop()
+        await close_checkpointer()
+        await database.disconnect()
 
 
 settings = get_settings()
