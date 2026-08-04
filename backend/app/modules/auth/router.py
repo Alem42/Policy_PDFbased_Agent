@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from psycopg.errors import UndefinedColumn, UndefinedTable
 
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import (
@@ -24,6 +25,11 @@ from app.modules.auth.verification import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+AUTH_SCHEMA_ERRORS = (UndefinedTable, UndefinedColumn)
+AUTH_MIGRATION_MESSAGE = (
+    "Authentication database schema is out of date. Apply migration "
+    "021_add_email_verification.sql to the database used by this backend."
+)
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
@@ -39,6 +45,8 @@ async def register(payload: RegistrationRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AUTH_SCHEMA_ERRORS as exc:
+        raise HTTPException(status_code=503, detail=AUTH_MIGRATION_MESSAGE) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=400, detail="Username or email is already registered."
@@ -67,3 +75,5 @@ async def verification_code(payload: VerificationCodeRequest) -> dict:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except EmailDeliveryError as exc:
         raise HTTPException(status_code=503, detail="Email delivery is not configured.") from exc
+    except AUTH_SCHEMA_ERRORS as exc:
+        raise HTTPException(status_code=503, detail=AUTH_MIGRATION_MESSAGE) from exc

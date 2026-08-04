@@ -5,10 +5,12 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
+from psycopg.errors import UndefinedTable
 from pydantic import ValidationError
 
-from app.modules.auth import service, verification
-from app.modules.auth.schemas import RegistrationRequest
+from app.modules.auth import router, service, verification
+from app.modules.auth.schemas import RegistrationRequest, VerificationCodeRequest
 
 
 class FakeVerificationRepository:
@@ -135,6 +137,19 @@ def test_delivery_failure_revokes_unusable_code(monkeypatch):
     with pytest.raises(verification.EmailDeliveryError):
         verification.issue_verification_code("user@example.com")
     assert repository.row is None
+
+
+@pytest.mark.asyncio
+async def test_missing_auth_migration_returns_actionable_503(monkeypatch):
+    def missing_table(email):
+        raise UndefinedTable("email_verification_codes does not exist")
+
+    monkeypatch.setattr(router, "issue_verification_code", missing_table)
+    with pytest.raises(HTTPException) as caught:
+        await router.verification_code(VerificationCodeRequest(email="user@example.com"))
+
+    assert caught.value.status_code == 503
+    assert "021_add_email_verification.sql" in caught.value.detail
 
 
 def test_admin_secret_remains_a_non_enforced_placeholder(monkeypatch):
