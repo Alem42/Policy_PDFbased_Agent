@@ -18,6 +18,12 @@ export default function App() {
   // Lets "Go to chat" and the header's Chat nav return to the conversation
   // the user left, instead of always starting a blank one.
   const [lastChatPath, setLastChatPath] = useState(ROUTES.chat);
+  // The chat session ChatPage currently has open, if any. Lets ChatPage tell
+  // a same-session remount (e.g. Library -> "Go to chat" round trip) apart
+  // from switching to a different saved conversation: on a same-session
+  // return, sources just added in Library must survive, not be clobbered by
+  // that session's last-persisted document_ids.
+  const [activeChatSessionId, setActiveChatSessionId] = useState(null);
 
   const documentCount = useMemo(() => documents.length, [documents]);
   const activeView = getViewFromPath(location.pathname);
@@ -132,6 +138,7 @@ export default function App() {
     setContextSourceIds([]);
     // A logged-out visitor shouldn't land back on someone's private session.
     setLastChatPath(ROUTES.chat);
+    setActiveChatSessionId(null);
     navigate(ROUTES.chat, { replace: true });
   }
 
@@ -178,12 +185,14 @@ export default function App() {
             loading,
             user,
             contextSourceIds,
+            activeChatSessionId,
             loadDocuments,
             handleDocumentsChanged,
             handleRescanDocuments,
             handleAddSource,
             handleRemoveSource,
             handleSetSources,
+            handleActiveChatSessionChange: setActiveChatSessionId,
             handleAuthenticated,
             navigateToView,
           }}

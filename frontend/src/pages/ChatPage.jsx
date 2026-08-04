@@ -525,9 +525,11 @@ export default function ChatPage({
   user,
   onNavigate,
   contextSourceIds = [],
+  activeSessionId = null,
   onAddSource,
   onRemoveSource,
   onSetSources,
+  onActiveSessionChange,
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -810,7 +812,15 @@ export default function ChatPage({
         missing.push(docId);
       }
     }
-    if (onSetSources) onSetSources(found);
+    // Only replace the working source set when actually switching to a
+    // different conversation. Re-landing on the session that was already
+    // active (e.g. add a source in Library, then "Go to chat") must keep
+    // whatever was just added -- it isn't in this session's persisted
+    // document_ids yet because no message has carried it there.
+    const isSameActiveSession =
+      activeSessionId != null && String(activeSessionId) === String(detail.id);
+    if (onSetSources && !isSameActiveSession) onSetSources(found);
+    onActiveSessionChange?.(String(detail.id));
     if (missing.length > 0) {
       const noun = missing.length === 1 ? "document" : "documents";
       setSnackbar({
@@ -834,6 +844,7 @@ export default function ChatPage({
     setMessages([]);
     setSessionId(null);
     setError("");
+    onActiveSessionChange?.(null);
     navigate(ROUTES.chat);
   }
 
@@ -1082,6 +1093,7 @@ export default function ChatPage({
         });
         if (evt.session_id && !sessionId) {
           setSessionId(String(evt.session_id));
+          onActiveSessionChange?.(String(evt.session_id));
           loadSessions();
         }
       } else if (evt.type === "answer_done") {

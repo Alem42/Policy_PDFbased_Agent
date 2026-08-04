@@ -34,9 +34,11 @@ function ChatRoute() {
     documents,
     user,
     contextSourceIds,
+    activeChatSessionId,
     handleAddSource,
     handleRemoveSource,
     handleSetSources,
+    handleActiveChatSessionChange,
     navigateToView,
   } = useOutletContext();
   return (
@@ -45,9 +47,11 @@ function ChatRoute() {
       user={user}
       onNavigate={navigateToView}
       contextSourceIds={contextSourceIds}
+      activeSessionId={activeChatSessionId}
       onAddSource={handleAddSource}
       onRemoveSource={handleRemoveSource}
       onSetSources={handleSetSources}
+      onActiveSessionChange={handleActiveChatSessionChange}
     />
   );
 }
