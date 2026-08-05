@@ -141,8 +141,8 @@ def test_turn_token_usage_sums_only_this_turns_ai_messages() -> None:
 
 
 def test_turn_token_usage_skips_messages_without_usage_metadata() -> None:
-    # auto_finalize_node's synthetic AIMessage (see agent/graph.py) never
-    # called an LLM, so it carries no usage_metadata at all.
+    # A synthetic AIMessage (e.g. the deterministic fallback action in
+    # agent/graph.py) never called an LLM, so it carries no usage_metadata.
     messages = [
         HumanMessage(content="q"),
         AIMessage(
