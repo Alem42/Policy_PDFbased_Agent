@@ -12,7 +12,9 @@ from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
     NON_ADMIN_TOOLS,
     TOOL_CALL_LIMITS,
+    _enforce_tier_order,
     _messages_for_current_turn,
+    _question_requests_web_search,
     _question_requires_web_check,
     _tools_for,
     agent_node,
@@ -191,8 +193,8 @@ def test_agent_prompt_uses_configured_tool_limits() -> None:
 
     assert "- search_internal_documents: 2" in prompt
     assert "- search_full_corpus: 7" in prompt
-    assert "Up to 2 calls are" in normalized_prompt
-    assert "at most 7 times" in normalized_prompt
+    assert "up to 2 calls are available" in normalized_prompt
+    assert "Up to 7 calls for materially different" in normalized_prompt
     assert "at most five" not in prompt.lower()
 
 
@@ -655,6 +657,69 @@ def test_web_check_trigger_matches_prompt_policy(question: str, expected: bool) 
     state = {"messages": [HumanMessage(content=question)]}
 
     assert _question_requires_web_check(state) is expected
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("What does the policy say about privacy?", False),
+        ("Please search the web for the newest AI act.", True),
+        ("帮我上网搜一下新加坡的AI政策。", True),
+        ("Search online, but actually no web search please.", False),
+    ],
+)
+def test_explicit_web_request_detection(question: str, expected: bool) -> None:
+    state = {"messages": [HumanMessage(content=question)]}
+
+    assert _question_requests_web_search(state) is expected
+
+
+def _chat_tools(counts: dict[str, int]) -> set[str]:
+    state = {
+        "answer_mode": "chat",
+        "tool_call_counts": counts,
+        "messages": [HumanMessage(content="What is the EU AI Act about?")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "chat", counts), state)
+    return {tool.name for tool in available}
+
+
+def test_tier_order_hides_escalation_tiers_before_internal_search_ran() -> None:
+    names = _chat_tools({})
+    assert "search_internal_documents" in names
+    assert "search_full_corpus" not in names
+    assert "search_web" not in names
+
+
+def test_tier_order_offers_escalation_after_internal_search_ran() -> None:
+    names = _chat_tools({"search_internal_documents": 1})
+    assert "search_full_corpus" in names
+    assert "search_web" in names
+
+
+def test_tier_order_allows_web_immediately_on_explicit_user_request() -> None:
+    state = {
+        "answer_mode": "chat",
+        "tool_call_counts": {},
+        "messages": [HumanMessage(content="Please search the web for this.")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "chat", {}), state)
+    names = {tool.name for tool in available}
+    assert "search_web" in names
+    assert "search_full_corpus" not in names
+
+
+def test_tier_order_does_not_gate_analysis_mode() -> None:
+    state = {
+        "answer_mode": "analysis",
+        "tool_call_counts": {},
+        "messages": [HumanMessage(content="Summarise the document.")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "analysis", {}), state)
+    assert {tool.name for tool in available} == {
+        "search_internal_documents",
+        "prepare_final_answer",
+    }
 
 
 def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:

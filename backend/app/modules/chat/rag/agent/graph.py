@@ -102,16 +102,42 @@ _WEB_OPT_OUT_TERMS = (
     "\u53ea\u4f7f\u7528\u6587\u6863",
 )
 
+# Phrases that count as the user EXPLICITLY asking for a web search \u2014 the
+# one case where Tier 3 (search_web) may run before Tiers 1/2, because the
+# request is itself the authorisation (see AGENT_STRATEGY_PROMPT).
+_EXPLICIT_WEB_REQUEST_TERMS = (
+    "search the web",
+    "search the internet",
+    "search online",
+    "look it up online",
+    "look this up online",
+    "check online",
+    "check the web",
+    "google",
+    "\u4e0a\u7f51\u641c",
+    "\u4e0a\u7f51\u67e5",
+    "\u7f51\u4e0a\u641c",
+    "\u7f51\u4e0a\u67e5",
+    "\u8054\u7f51\u641c\u7d22",
+    "\u8054\u7f51\u67e5",
+    "\u641c\u7d22\u7f51\u9875",
+    "\u641c\u4e00\u4e0b\u7f51",
+    "\u5e2e\u6211\u4e0a\u7f51",
+)
 
-def _question_requires_web_check(state: AgentState) -> bool:
-    """Match the web-comparison/freshness exception described in the prompt."""
 
+def _latest_question(state: AgentState) -> str:
     question = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         "",
     )
-    question = question if isinstance(question, str) else str(question)
-    lowered = question.lower()
+    return question if isinstance(question, str) else str(question)
+
+
+def _question_requires_web_check(state: AgentState) -> bool:
+    """Match the web-comparison/freshness exception described in the prompt."""
+
+    lowered = _latest_question(state).lower()
     if any(term in lowered for term in _WEB_OPT_OUT_TERMS):
         return False
     if any(term in lowered for term in _FRESHNESS_TRIGGER_TERMS):
@@ -119,6 +145,41 @@ def _question_requires_web_check(state: AgentState) -> bool:
     asks_for_comparison = any(term in lowered for term in _WEB_COMPARISON_TERMS)
     names_the_web = any(term in lowered for term in _WEB_REFERENCE_TERMS)
     return asks_for_comparison and names_the_web
+
+
+def _question_requests_web_search(state: AgentState) -> bool:
+    """True when the user's own message explicitly asked for a web search."""
+
+    lowered = _latest_question(state).lower()
+    if any(term in lowered for term in _WEB_OPT_OUT_TERMS):
+        return False
+    return any(term in lowered for term in _EXPLICIT_WEB_REQUEST_TERMS)
+
+
+def _enforce_tier_order(available_tools: list, state: AgentState) -> list:
+    """Code-level guarantee of the Tier 1 \u2192 2 \u2192 3 escalation ladder.
+
+    Prompt wording alone does not reliably stop models from jumping straight
+    to the wider library or the web. Until search_internal_documents has
+    actually run this turn, the escalation tiers simply are not bound \u2014
+    except search_web when the user's own message explicitly requested it,
+    which the prompt documents as the one legitimate shortcut.
+    """
+    if state.get("answer_mode", "analysis") != "chat":
+        return available_tools
+    counts = state.get("tool_call_counts") or {}
+    if counts.get("search_internal_documents", 0) >= 1:
+        return available_tools
+    if not any(tool.name == "search_internal_documents" for tool in available_tools):
+        # Tier 1 is exhausted/unavailable (e.g. a zero budget): the ladder
+        # must still be able to progress.
+        return available_tools
+    allow_web = _question_requests_web_search(state)
+    return [
+        tool
+        for tool in available_tools
+        if tool.name != "search_full_corpus" and (allow_web or tool.name != "search_web")
+    ]
 
 
 def _messages_for_current_turn(messages: list) -> list:
@@ -166,6 +227,7 @@ async def agent_node(state: AgentState) -> dict:
         state.get("tool_call_counts"),
         limits=tool_limits,
     )
+    available_tools = _enforce_tier_order(available_tools, state)
     last = state["messages"][-1]
     last_payload: dict = {}
     if isinstance(last, ToolMessage):
