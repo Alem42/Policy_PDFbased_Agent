@@ -292,6 +292,33 @@ class EmbeddingRepository:
             for row in rows
         ]
 
+    def distances_for_chunks(
+        self, query_vector: str, chunk_ids: list[str]
+    ) -> dict[str, float]:
+        """Cosine distance of specific chunks to the query, keyed by chunk id.
+
+        Backfills real distances for BM25-only hybrid candidates so the
+        downstream distance-based evidence gates keep their semantics.
+        Chunks without a vector in the active model's table are simply
+        absent from the result (callers treat that as worst-case).
+        """
+        if not chunk_ids:
+            return {}
+        table, dim = _active_table_dim()
+        cast = _vector_type(dim)
+        with get_connection() as connection:
+            if not _table_exists(connection, table):
+                return {}
+            rows = connection.execute(
+                f"""
+                SELECT chunk_id, embedding <=> %s::{cast} AS distance
+                FROM "{table}"
+                WHERE chunk_id = ANY(%s::uuid[])
+                """,
+                (query_vector, chunk_ids),
+            ).fetchall()
+        return {str(row["chunk_id"]): float(row["distance"]) for row in rows}
+
     def retrieve_many(
         self,
         query_vectors: list[str],

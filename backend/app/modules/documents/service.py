@@ -24,6 +24,7 @@ from app.modules.documents.repositories.processing_jobs import processing_job_re
 from app.modules.embedding import service as embedding
 from app.modules.reranking.service import enabled as reranker_enabled
 from app.modules.reranking.service import rerank as rerank_chunks
+from app.modules.retrieval import keyword_search
 
 logger = logging.getLogger(__name__)
 
@@ -556,6 +557,43 @@ def resolve_document_ids(
     ]
 
 
+def _hybrid_candidates(
+    question: str,
+    dense: list[dict],
+    *,
+    query_vector: str,
+    candidate_limit: int,
+    document_ids: list[str] | None = None,
+    include_restricted: bool = False,
+) -> list[dict]:
+    """Fuse BM25 keyword candidates into the dense pool via RRF.
+
+    Only runs when dense retrieval produced candidates: an empty dense pool
+    means the active model has no vectors for this scope, and the caller's
+    page-fallback semantics must be preserved. BM25-only rows get a real
+    cosine distance backfilled (worst-case 1.0 when the chunk has no vector)
+    so every downstream distance gate keeps its meaning.
+    """
+    if not dense:
+        return dense
+    sparse = keyword_search.bm25_search(
+        question,
+        document_ids=document_ids,
+        include_restricted=include_restricted,
+        limit=candidate_limit,
+    )
+    if not sparse:
+        return dense
+    fused = keyword_search.rrf_merge(dense, sparse, limit=candidate_limit)
+    missing = [c["chunk_id"] for c in fused if "distance" not in c]
+    if missing:
+        distances = embedding_repository.distances_for_chunks(query_vector, missing)
+        for candidate in fused:
+            if "distance" not in candidate:
+                candidate["distance"] = distances.get(str(candidate["chunk_id"]), 1.0)
+    return fused
+
+
 def retrieve_relevant_chunks(
     question: str,
     identifiers: list[str],
@@ -571,6 +609,14 @@ def retrieve_relevant_chunks(
         document_ids,
         limit=candidate_limit,
     )
+    candidates = _hybrid_candidates(
+        question,
+        candidates,
+        query_vector=query_vector,
+        candidate_limit=candidate_limit,
+        document_ids=document_ids,
+        include_restricted=include_restricted,
+    )
     return _rerank_or_dense(question, candidates, limit)
 
 
@@ -579,7 +625,7 @@ def search_full_corpus(
     limit: int = 8,
     include_restricted: bool = False,
 ) -> list[dict]:
-    """Vector search across the ENTIRE indexed corpus, not just selected documents.
+    """Hybrid (vector + BM25) search across the ENTIRE indexed corpus.
 
     Used by the agent's search_full_corpus tool when the caller's selected
     documents don't have enough evidence to answer from.
@@ -589,6 +635,13 @@ def search_full_corpus(
     candidates = embedding_repository.retrieve_all(
         query_vector,
         limit=candidate_limit,
+        include_restricted=include_restricted,
+    )
+    candidates = _hybrid_candidates(
+        question,
+        candidates,
+        query_vector=query_vector,
+        candidate_limit=candidate_limit,
         include_restricted=include_restricted,
     )
     return _rerank_or_dense(question, candidates, limit)
