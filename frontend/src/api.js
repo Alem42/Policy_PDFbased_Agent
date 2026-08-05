@@ -249,47 +249,9 @@ export function updateDocument(documentId, updates) {
   });
 }
 
-export function getDocumentPages(documentId) {
-  return request(`/documents/${encodeURIComponent(documentId)}/pages`);
-}
-
 // Maximum number of prior conversation turns to send to the backend.
 // Each turn = one user message + one assistant reply.
 const MAX_HISTORY_TURNS = 5;
-
-export function askQuestion(
-  question,
-  documentIds,
-  responseMode = "researcher",
-  answerMode = "analysis",
-  history = [],
-  sessionId = null,
-  model = null,
-) {
-  const body = {
-    question,
-    document_ids: documentIds,
-    response_mode: responseMode,
-    answer_mode: answerMode,
-    session_id: sessionId,
-  };
-  if (model) body.model = model;
-
-  // When no session_id, still send history inline for backwards compat.
-  // When session_id is set the server reads history from DB — inline is ignored.
-  if (!sessionId) {
-    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-  }
-
-  return request("/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
 
 async function postForSSE(path, body, signal) {
   const token = localStorage.getItem("authToken");
