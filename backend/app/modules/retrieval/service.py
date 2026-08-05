@@ -291,30 +291,26 @@ class RetrievalService:
                 : request.max_results
             ]
 
+        # Gate candidates concurrently for both providers: onnxruntime releases
+        # the GIL during inference, so the local cross-encoder also benefits —
+        # a sequential per-candidate loop here was the dominant latency of
+        # follow-up suggestion generation.
         passed_indices: set[int] = set()
-        reranker_provider = reranking.active_config().provider
-        if reranker_provider == "local":
-            for index, question, chunks in distance_survivors:
-                if self._passes_reranker_gate(question, chunks, request.top_k):
-                    passed_indices.add(index)
-                if len(passed_indices) >= request.max_results:
-                    break
-        else:
-            workers = min(3, len(distance_survivors))
-            if workers:
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = {
-                        index: executor.submit(
-                            self._passes_reranker_gate,
-                            question,
-                            chunks,
-                            request.top_k,
-                        )
-                        for index, question, chunks in distance_survivors
-                    }
-                    for index, future in futures.items():
-                        if future.result():
-                            passed_indices.add(index)
+        workers = min(3, len(distance_survivors))
+        if workers:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    index: executor.submit(
+                        self._passes_reranker_gate,
+                        question,
+                        chunks,
+                        request.top_k,
+                    )
+                    for index, question, chunks in distance_survivors
+                }
+                for index, future in futures.items():
+                    if future.result():
+                        passed_indices.add(index)
 
         return [
             question

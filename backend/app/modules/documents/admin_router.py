@@ -32,9 +32,11 @@ from app.modules.documents.service import (
 )
 from app.modules.documents.service import (
     get_document_detail,
+    mark_document_queued,
+    prepare_full_rescan,
+    prepare_reembed,
     process_document,
-    reembed_library,
-    rescan_library,
+    reembed_and_mark,
     save_upload,
 )
 from app.modules.documents.service import (
@@ -204,26 +206,48 @@ async def update_web_governance(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/rescan")
+@router.post("/rescan", status_code=status.HTTP_202_ACCEPTED)
 async def rescan_documents(_: AdminUser) -> dict:
+    """Queue a full-library rescan through the shared processing queue.
+
+    Every document is flipped to 'queued' up front (so the library shows the
+    same upload-style lifecycle per row), then reprocessed by the workers —
+    the request returns immediately instead of blocking on the whole library.
+    """
     try:
-        logger.info("Rescan requested, running in thread pool")
-        result = await asyncio.to_thread(rescan_library, reprocess_existing=True)
-        return result
+        logger.info("Full library rescan requested; queueing every document")
+        document_ids = await asyncio.to_thread(prepare_full_rescan)
+        for document_id in document_ids:
+            await document_processing_queue.enqueue(document_id, _run_process_document)
+        return {"rescanned": True, "queued": len(document_ids)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.post("/reembed")
+def _run_reembed_document(document_id: str) -> None:
+    """Re-embed one document inside a queue worker thread."""
+    try:
+        reembed_and_mark(document_id)
+    except Exception as exc:
+        logger.error("Background re-embed failed for %s: %s", document_id, exc)
+
+
+@router.post("/reembed", status_code=status.HTTP_202_ACCEPTED)
 async def reembed_documents(_: AdminUser) -> dict:
     """Re-embed existing chunks into the active model's table (after a model switch).
 
-    Reuses stored chunks (no re-extract / re-chunk), so other models' vectors are
-    preserved and switching back stays instant.
+    Reuses stored chunks (no re-extract / re-chunk), so other models' vectors
+    are preserved and switching back stays instant. Runs through the shared
+    processing queue: every ready document flips to the embedding state
+    immediately and returns to 'ready' as its job completes, so the library
+    UI can watch the progress per row.
     """
     try:
-        logger.info("Re-embed requested, running in thread pool")
-        return await asyncio.to_thread(reembed_library)
+        logger.info("Library re-embed requested; queueing per-document jobs")
+        document_ids, model = await asyncio.to_thread(prepare_reembed)
+        for document_id in document_ids:
+            await document_processing_queue.enqueue(document_id, _run_reembed_document)
+        return {"documents": len(document_ids), "model": model, "queued": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -234,6 +258,12 @@ async def rescan_document(
     _: AdminUser,
 ) -> dict:
     """Reprocess ONE document (re-extract, re-chunk, re-metadata, re-embed active model)."""
+    try:
+        await asyncio.to_thread(get_document_detail, str(document_id), True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Same lifecycle as a fresh upload: queued -> extracting -> ... -> ready.
+    await asyncio.to_thread(mark_document_queued, str(document_id))
     await document_processing_queue.enqueue(str(document_id), _run_process_document)
     logger.info("Single-document rescan queued: %s", document_id)
     return {"id": str(document_id), "processing_status": "queued"}

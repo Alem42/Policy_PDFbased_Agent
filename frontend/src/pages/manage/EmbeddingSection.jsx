@@ -301,7 +301,10 @@ export default function EmbeddingSection({
     setError("");
     try {
       const result = await rescanDocuments();
-      setNotice(`Rescan started: ${result.reprocessed ?? 0} document(s) reprocessed.`);
+      setNotice(
+        `Rescan started: ${result.queued ?? 0} document(s) queued. ` +
+          "Watch per-document progress in the Document Library.",
+      );
     } catch (rescanError) {
       setError(rescanError.message);
     } finally {
@@ -344,8 +347,9 @@ export default function EmbeddingSection({
     try {
       const result = await reembedLibrary();
       setNotice(
-        `Re-embedded ${result.chunks ?? 0} chunk(s) across ${result.documents ?? 0} document(s) ` +
-          `into "${result.model ?? "active model"}".`,
+        `Re-embed started for ${result.documents ?? 0} document(s) into ` +
+          `"${result.model ?? "the active model"}". ` +
+          "Watch per-document progress in the Document Library.",
       );
     } catch (reembedError) {
       setError(reembedError.message);

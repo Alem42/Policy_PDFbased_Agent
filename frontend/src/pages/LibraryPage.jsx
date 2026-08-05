@@ -90,7 +90,7 @@ function processingColor(status) {
 // polls only this document's status until it settles — updating just this cell,
 // with no whole-table refetch or flicker. On completion it pulls fresh
 // pages/chunks once.
-function ProcessingCell({ document, rescanSignal }) {
+function ProcessingCell({ document, rescanSignal, canPoll }) {
   const [live, setLive] = useState({
     status: document.status,
     pages: document.page_count || 0,
@@ -106,11 +106,16 @@ function ProcessingCell({ document, rescanSignal }) {
     });
   }, [document.status, document.page_count, document.chunk_count]);
 
+  // Poll when a rescan was explicitly triggered for this row, or when the row
+  // arrives in a non-terminal state (e.g. a library-wide rescan/re-embed was
+  // started from Manage > Embedding). canPoll gates the admin-only status
+  // endpoint away from regular users.
+  const rowInFlight = canPoll && !TERMINAL_PROCESSING.has(document.status);
   useEffect(() => {
-    if (!rescanSignal) return undefined;
+    if (!rescanSignal && !rowInFlight) return undefined;
     let cancelled = false;
     let timer = null;
-    setLive((prev) => ({ ...prev, status: "processing" }));
+    if (rescanSignal) setLive((prev) => ({ ...prev, status: "processing" }));
     async function tick() {
       try {
         const result = await getProcessingStatus(document.id);
@@ -141,7 +146,8 @@ function ProcessingCell({ document, rescanSignal }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [rescanSignal, document.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rescanSignal, rowInFlight, document.id]);
 
   return (
     <>
@@ -796,6 +802,7 @@ export default function LibraryPage({
                 <ProcessingCell
                   document={document}
                   rescanSignal={rescanSignals[document.id] || 0}
+                  canPoll={user?.role === "admin"}
                 />
                 {user?.role === "admin" && (
                   <Typography variant="body2" sx={{ color: "text.secondary" }}>

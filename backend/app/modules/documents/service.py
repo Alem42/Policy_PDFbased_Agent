@@ -314,7 +314,13 @@ async def save_web_import(
         raise
 
 
-def sync_existing_documents() -> None:
+def sync_existing_documents() -> list[str]:
+    """Register files on disk that are missing from the DB.
+
+    Returns the newly-registered ids; callers queue them for processing
+    (this no longer processes inline, so registration stays fast).
+    """
+    new_ids: list[str] = []
     known_paths = document_repository.known_file_paths()
     for path in document_file_store.discover():
         relative_path = document_file_store.relative_path(path)
@@ -339,20 +345,54 @@ def sync_existing_documents() -> None:
             )
         except DuplicateDocumentError:
             continue
-        try:
-            process_document(document_id)
-        except Exception:
-            continue
+        new_ids.append(document_id)
+    return new_ids
 
 
-def rescan_library(reprocess_existing: bool = True) -> dict:
+def mark_document_queued(document_id: str) -> None:
+    """Flip a row back to the 'uploaded' (queued) state so the library UI
+    shows the full upload-style processing lifecycle for a rescan."""
+    document_repository.set_status(document_id, "uploaded")
+
+
+def prepare_full_rescan() -> list[str]:
+    """Sync new files from disk, then flip every document to the queued state.
+
+    Returns the ids to enqueue — the HTTP layer owns the worker queue, so a
+    full rescan returns immediately instead of reprocessing the whole library
+    inside one request.
+    """
     sync_existing_documents()
-    if not reprocess_existing:
-        return {"rescanned": True, "reprocessed": 0}
     document_ids = document_repository.all_document_ids()
     for document_id in document_ids:
-        process_document(document_id)
-    return {"rescanned": True, "reprocessed": len(document_ids)}
+        mark_document_queued(document_id)
+    return document_ids
+
+
+def prepare_reembed() -> tuple[list[str], str]:
+    """Flip every fully-ingested document into the embedding state.
+
+    Returns (ids to enqueue, active embedding model id). Only 'ready'
+    documents participate: failed/incomplete ones have no chunks to re-embed
+    and must keep their real status.
+    """
+    rows = document_repository.list_records(include_restricted=True)
+    document_ids = [str(row["id"]) for row in rows if row.get("status") == "ready"]
+    for document_id in document_ids:
+        document_repository.set_status(document_id, "annotated")
+    return document_ids, embedding.active_model_id()
+
+
+def reembed_and_mark(document_id: str) -> int:
+    """Re-embed one document's chunks, mirroring the status lifecycle the
+    library UI polls ('annotated' while embedding, then 'ready'/'failed')."""
+    try:
+        count = reembed_document(document_id)
+    except Exception as exc:
+        document_repository.set_status(document_id, "failed", str(exc))
+        raise
+    document_repository.set_status(document_id, "ready")
+    return count
 
 
 def reembed_document(document_id: str) -> int:

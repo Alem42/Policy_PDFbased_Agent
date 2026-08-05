@@ -668,7 +668,7 @@ export default function ChatPage({
         if (cancelled) return;
         restoreSession(detail);
       } catch {
-        // Non-fatal
+        if (!cancelled) setError("Failed to load this conversation's history.");
       }
     })();
     return () => { cancelled = true; };
@@ -797,12 +797,15 @@ export default function ChatPage({
     );
     setSessionId(String(detail.id));
     if (detail.response_mode) setResponseMode(detail.response_mode);
+    const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
     if (detail.response_mode === "policymaker") {
       setAnswerMode("analysis");
-    } else {
-      const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
-      if (lastAssistant?.answer_mode) setAnswerMode(lastAssistant.answer_mode);
+    } else if (lastAssistant?.answer_mode) {
+      setAnswerMode(lastAssistant.answer_mode);
     }
+    // Also restore the reasoning mode, so continuing a Direct conversation
+    // doesn't silently switch it back to the ReAct agent.
+    if (lastAssistant?.agent_mode) setAgentMode(lastAssistant.agent_mode);
 
     // Cross-reference stored document_ids against currently available documents
     const sessionDocIds = detail.document_ids || [];
@@ -834,13 +837,18 @@ export default function ChatPage({
   }
 
   async function handleLoadSession(id) {
-    try {
-      const detail = await getChatSession(id);
-      navigate(chatSessionPath(id));
-      restoreSession(detail);
-    } catch {
-      setError("Failed to load session.");
+    // Navigating changes routeSessionId, and the URL effect below loads the
+    // session — fetching here too double-loaded every sidebar click. Only a
+    // re-click on the already-open session needs an explicit refetch.
+    if (String(resumeSessionId) === String(id)) {
+      try {
+        restoreSession(await getChatSession(id));
+      } catch {
+        setError("Failed to load session.");
+      }
+      return;
     }
+    navigate(chatSessionPath(id));
   }
 
   function handleNewChat() {
@@ -1209,7 +1217,11 @@ export default function ChatPage({
     } catch (chatError) {
       if (chatError.name !== "AbortError") {
         setError(chatError.message);
-        setMessages((current) => current.filter((m) => !m.streaming));
+        // Keep any partially streamed answer (the backend persists it too);
+        // only drop a placeholder that never received content.
+        setMessages((current) =>
+          current.filter((m) => !m.streaming || m.content || m.steps?.length),
+        );
       }
     } finally {
       streamControllerRef.current = null;
@@ -1243,7 +1255,9 @@ export default function ChatPage({
     } catch (chatError) {
       if (chatError.name !== "AbortError") {
         setError(chatError.message);
-        setMessages((current) => current.filter((m) => !m.streaming));
+        setMessages((current) =>
+          current.filter((m) => !m.streaming || m.content || m.steps?.length),
+        );
       }
     } finally {
       streamControllerRef.current = null;
@@ -1590,9 +1604,16 @@ export default function ChatPage({
                           <IconButton
                             size="small"
                             onClick={() => {
-                              navigator.clipboard.writeText(message.content);
-                              setCopiedIdx(index);
-                              setTimeout(() => setCopiedIdx((prev) => (prev === index ? null : prev)), 2000);
+                              navigator.clipboard
+                                .writeText(message.content)
+                                .then(() => {
+                                  setCopiedIdx(index);
+                                  setTimeout(
+                                    () => setCopiedIdx((prev) => (prev === index ? null : prev)),
+                                    2000,
+                                  );
+                                })
+                                .catch(() => setSnackbar({ open: true, message: "Copy failed." }));
                             }}
                             sx={{ color: "#888", p: 0.5 }}
                           >
@@ -1827,7 +1848,11 @@ export default function ChatPage({
                   ))}
                 </Box>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  Searching documents...
+                  {(() => {
+                    const steps = messages[messages.length - 1]?.steps;
+                    const running = steps?.findLast?.((s) => s.status === "running");
+                    return running?.label || "Working on it...";
+                  })()}
                 </Typography>
               </Box>
             )}

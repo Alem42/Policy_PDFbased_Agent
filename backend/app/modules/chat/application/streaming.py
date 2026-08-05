@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Any
@@ -77,6 +78,7 @@ async def stream_suggestion_events(
 
     if suggestions_pending and sug_cfg is not None:
         suggestions: list[str] = []
+        started_at = time.monotonic()
         try:
             suggestions = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -94,8 +96,16 @@ async def stream_suggestion_events(
                 ),
                 timeout=45.0,
             )
+            logger.info(
+                "Follow-up suggestions: %d generated in %.1fs",
+                len(suggestions),
+                time.monotonic() - started_at,
+            )
         except Exception:
-            logger.exception("Follow-up generation timed out or failed")
+            logger.exception(
+                "Follow-up generation timed out or failed after %.1fs",
+                time.monotonic() - started_at,
+            )
 
         try:
             await chat_turn_service.update_suggestions(assistant_message_id, suggestions)
