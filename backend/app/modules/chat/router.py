@@ -271,6 +271,14 @@ async def chat_stream(
     # own message history via the checkpointer, so only the new question is
     # appended — the DB history is not-reloaded there to avoid duplicating it.
     existing_state = await graph.aget_state(config)
+    if existing_state.next:
+        # A previous turn is still paused on an ask_user/confirm_import
+        # interrupt. The new question supersedes it (the graph restarts from
+        # START with the new input), but the superseded turn's pending
+        # assistant row would otherwise stay status='streaming' forever.
+        stale_message_id = existing_state.values.get("assistant_message_id")
+        if stale_message_id and stale_message_id != assistant_message_id:
+            await chat_turn_service.fail(str(stale_message_id))
     if existing_state.values.get("messages"):
         input_messages = [HumanMessage(content=payload.question)]
     else:

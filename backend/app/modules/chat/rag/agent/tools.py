@@ -99,15 +99,17 @@ def _results_with_evidence_text(
         if item.get("chunk_id")
     }
     by_url = {
-        item.get("url") or item.get("source_url"): item.get("text", "")
+        url: item.get("text", "")
         for item in evidence_items
-        if item.get("url") or item.get("source_url")
+        if (url := item.get("url") or item.get("source_url"))
     }
     return [
         {
             **result,
             "text": by_chunk.get(str(result.get("chunk_id")))
-            or by_url.get(result.get("source_url"))
+            # Guard the key: a page-level citation has neither chunk_id nor
+            # source_url, and by_url.get(None) must not return random text.
+            or (by_url.get(result["source_url"]) if result.get("source_url") else None)
             or result.get("quote", ""),
         }
         for result in numbered_results

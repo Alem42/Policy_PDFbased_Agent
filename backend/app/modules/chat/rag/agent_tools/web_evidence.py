@@ -79,13 +79,18 @@ def score_web_results(
     if reranker_enabled():
         try:
             reranked = rerank_chunks(query, relevant, limit=len(relevant))
-            best_score = max(
-                candidate.get("reranker_score", min_reranker_score())
+            # Filter per result, and fail closed on a missing score: a
+            # reranker that returned no score for a result must not be
+            # indistinguishable from one that passed it.
+            scored = [
+                candidate
                 for candidate in reranked
-            )
-            if best_score < min_reranker_score():
+                if candidate.get("reranker_score") is not None
+                and candidate["reranker_score"] >= min_reranker_score()
+            ]
+            if not scored:
                 return False, "No web result passed the relevance reranker.", candidates
-            relevant = reranked
+            relevant = scored
         except Exception:
             logger.exception("Reranking web search results failed; using cosine ranking only.")
 

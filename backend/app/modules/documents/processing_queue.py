@@ -45,10 +45,21 @@ class DocumentProcessingQueue:
         ]
         logger.info("Document processing queue started with %d workers", self.max_concurrent)
 
+    # Give in-flight jobs a bounded grace period on shutdown; a single stuck
+    # OCR job must not block application shutdown indefinitely.
+    STOP_DRAIN_TIMEOUT_SECONDS = 30.0
+
     async def stop(self) -> None:
         if not self._workers:
             return
-        await self.join()
+        try:
+            await asyncio.wait_for(self.join(), timeout=self.STOP_DRAIN_TIMEOUT_SECONDS)
+        except TimeoutError:
+            logger.warning(
+                "Document queue did not drain within %.0fs; cancelling workers with "
+                "jobs still pending",
+                self.STOP_DRAIN_TIMEOUT_SECONDS,
+            )
         workers, self._workers = self._workers, []
         for worker in workers:
             worker.cancel()

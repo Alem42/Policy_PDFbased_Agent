@@ -82,7 +82,7 @@ def rerank(question: str, chunks: list[dict], *, limit: int) -> list[dict]:
     if config.provider == "local":
         from app.modules.documents.reranker import rerank_chunks as local_rerank
 
-        return local_rerank(question, chunks, limit=limit)
+        return local_rerank(question, chunks, limit=limit, model_name=config.local_model)
 
     if not chunks:
         return []
@@ -136,6 +136,7 @@ def test_connection(partial: dict) -> dict:
             "What is the capital of France?",
             [{"text": "Paris is the capital of France."}, {"text": "Bananas are a fruit."}],
             limit=2,
+            model_name=config.local_model,
         )
         return {
             "model": config.local_model,

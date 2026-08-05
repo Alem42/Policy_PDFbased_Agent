@@ -29,7 +29,7 @@ def test_rerank_chunks_orders_by_cross_encoder_score(
     monkeypatch.setattr(
         reranker,
         "_load_reranker",
-        lambda: fake_model,
+        lambda model_name=reranker.RERANKER_MODEL_NAME: fake_model,
     )
 
     chunks = [
@@ -109,7 +109,7 @@ def test_rerank_chunks_rejects_score_count_mismatch(
     monkeypatch.setattr(
         reranker,
         "_load_reranker",
-        lambda: FakeReranker([1.0]),
+        lambda model_name=reranker.RERANKER_MODEL_NAME: FakeReranker([1.0]),
     )
 
     with pytest.raises(

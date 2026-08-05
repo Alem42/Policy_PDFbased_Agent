@@ -152,6 +152,25 @@ class ChatHistoryRepository:
             )
             conn.commit()
 
+    def mark_message_failed(self, message_id: str, partial_content: str = "") -> None:
+        """Mark a pending message as errored, keeping any streamed text.
+
+        Deliberately narrower than finalize_message: a failure must never
+        blank out columns (citations, evidence, model, token usage) that an
+        earlier successful finalize already wrote for this row.
+        """
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE chat_messages
+                SET status = 'error',
+                    content = CASE WHEN %s <> '' THEN %s ELSE content END
+                WHERE id = %s
+                """,
+                (partial_content, partial_content, message_id),
+            )
+            conn.commit()
+
     def touch_session(self, session_id: str) -> None:
         with get_connection() as conn:
             conn.execute(

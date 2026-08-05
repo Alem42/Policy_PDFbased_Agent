@@ -1,7 +1,5 @@
-import asyncio
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import (
@@ -11,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.core.config import BACKEND_ROOT, get_settings
+from app.core.config import get_settings
 
 
 class Database:
@@ -57,18 +55,6 @@ class Database:
 
 
 database = Database()
-
-
-async def init_db() -> None:
-    schema_path = BACKEND_ROOT / "supabase" / "local_schema.sql"
-    if schema_path.exists():
-        await asyncio.to_thread(_init_db_sync, schema_path)
-
-
-def _init_db_sync(schema_path: Path) -> None:
-    with get_connection() as connection:
-        connection.execute(schema_path.read_text(encoding="utf-8"))
-        connection.commit()
 
 
 def normalise_database_url(database_url: str) -> str:

@@ -32,7 +32,12 @@ def get_optional_user(
 ) -> dict | None:
     if not authorization or not authorization.startswith("Bearer "):
         return None
-    return get_current_user(authorization)
+    try:
+        return get_current_user(authorization)
+    except HTTPException:
+        # A stale/invalid token on an endpoint that allows anonymous access
+        # degrades to anonymous instead of failing the whole request.
+        return None
 
 
 def require_admin(user: Annotated[dict, Depends(get_current_user)]) -> dict:

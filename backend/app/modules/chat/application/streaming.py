@@ -121,6 +121,7 @@ async def stream_agent_events(
     full_tokens: list[str] = []
     steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
     interrupted = False
+    finalized = False
     # Re-derive the filter warning from steps persisted before an interrupt,
     # so a resumed turn doesn't lose a fallback that happened pre-interrupt.
     # Same set/reset rules as the live loop below.
@@ -221,6 +222,7 @@ async def stream_agent_events(
             filter_fallback=bool(fallback_notice),
             filter_notice=fallback_notice,
         )
+        finalized = True
         await chat_turn_service.touch(session_id)
 
         yield encode_sse(
@@ -265,14 +267,26 @@ async def stream_agent_events(
         ):
             yield event
 
+    except GeneratorExit:
+        # Client disconnected mid-stream: without this, the pending row would
+        # stay status='streaming' forever (GeneratorExit is a BaseException
+        # and never reaches the handlers below).
+        if not finalized and not interrupted:
+            await _finalize_as_error(assistant_message_id, full_tokens)
+        raise
     except TimeoutError:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        # A failure after the successful finalize (e.g. in the suggestion
+        # tail) must not retroactively mark a completed answer as errored.
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})
 
 
@@ -295,6 +309,7 @@ async def stream_direct_events(
     """Drive the fixed one-retrieval Direct path and emit the same SSE protocol."""
 
     full_tokens: list[str] = []
+    finalized = False
     try:
         state = await asyncio.wait_for(
             asyncio.to_thread(
@@ -356,6 +371,7 @@ async def stream_direct_events(
             filter_fallback=filter_fallback,
             filter_notice=filter_notice,
         )
+        finalized = True
         await chat_turn_service.touch(session_id)
 
         yield encode_sse(
@@ -391,12 +407,19 @@ async def stream_direct_events(
         ):
             yield event
 
+    except GeneratorExit:
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
+        raise
     except TimeoutError:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})
