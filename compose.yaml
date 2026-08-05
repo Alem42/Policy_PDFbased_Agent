@@ -36,6 +36,7 @@ services:
       - ./backend/database/migrations/021_add_email_verification.sql:/docker-entrypoint-initdb.d/22_migration_021.sql:ro
       - ./backend/database/migrations/022_remove_legacy_crawling.sql:/docker-entrypoint-initdb.d/23_migration_022.sql:ro
       - ./backend/database/migrations/023_add_agent_tool_limits.sql:/docker-entrypoint-initdb.d/24_migration_023.sql:ro
+      - ./backend/database/migrations/024_add_filter_notice_to_chat_messages.sql:/docker-entrypoint-initdb.d/25_migration_024.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

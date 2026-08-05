@@ -66,6 +66,8 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             status=m.get("status") or "complete",
             suggestions=_parse_suggestions(m.get("suggestions_json")),
             token_usage=_parse_token_usage(m.get("token_usage")),
+            filter_fallback=bool(m.get("filter_fallback")),
+            filter_notice=m.get("filter_notice"),
             created_at=m["created_at"],
         )
         for m in msgs

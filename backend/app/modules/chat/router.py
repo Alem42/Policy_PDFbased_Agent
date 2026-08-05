@@ -294,8 +294,6 @@ async def chat_stream(
         "is_admin": is_admin,
         "user_id": user_id,
         "metadata_filters": metadata_filters.as_dict(),
-        "filter_fallback": False,
-        "filter_notice": None,
         # Non-empty reset marker guarantees the persisted LastValue channel is
         # overwritten for every new user question. Resume requests do not pass
         # graph_input, so the same question keeps its counts across interrupt().
