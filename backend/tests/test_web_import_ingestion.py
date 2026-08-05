@@ -13,7 +13,7 @@ async def test_save_web_import_maps_byte_duplicate_to_success(monkeypatch) -> No
     async def duplicate_upload(*args, **kwargs):
         raise DuplicateDocumentError("existing-1", "existing.md")
 
-    monkeypatch.setattr(service, "save_upload", duplicate_upload)
+    monkeypatch.setattr(service.pipeline, "save_upload", duplicate_upload)
     monkeypatch.setattr(
         service.document_content_repository,
         "get_detail_record",
@@ -37,10 +37,10 @@ async def test_save_web_import_persists_title_after_processing(monkeypatch) -> N
     async def save_upload(*args, **kwargs):
         return {"id": "new-1"}
 
-    monkeypatch.setattr(service, "save_upload", save_upload)
-    monkeypatch.setattr(service, "process_document", lambda _: None)
+    monkeypatch.setattr(service.pipeline, "save_upload", save_upload)
+    monkeypatch.setattr(service.pipeline, "process_document", lambda _: None)
     monkeypatch.setattr(service.document_repository, "find_by_content_hash", lambda *a, **k: None)
-    monkeypatch.setattr(service, "_find_near_duplicate", lambda *args: None)
+    monkeypatch.setattr(service.pipeline, "_find_near_duplicate", lambda *args: None)
     captured: dict = {}
 
     def update_metadata(identifier: str, payload: dict):
@@ -70,14 +70,14 @@ async def test_save_web_import_cleans_up_failed_processing(monkeypatch) -> None:
     async def save_upload(*args, **kwargs):
         return {"id": "new-1"}
 
-    monkeypatch.setattr(service, "save_upload", save_upload)
+    monkeypatch.setattr(service.pipeline, "save_upload", save_upload)
 
     def fail_processing(_: str) -> None:
         raise RuntimeError("embedding failed")
 
-    monkeypatch.setattr(service, "process_document", fail_processing)
+    monkeypatch.setattr(service.pipeline, "process_document", fail_processing)
     deleted: list[str] = []
-    monkeypatch.setattr(service, "delete_document", deleted.append)
+    monkeypatch.setattr(service.library, "delete_document", deleted.append)
 
     with pytest.raises(RuntimeError, match="embedding failed"):
         await service.save_web_import(

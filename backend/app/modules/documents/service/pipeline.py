@@ -1,3 +1,15 @@
+"""Ingestion pipeline: get a document from raw bytes to a searchable index.
+
+Black box: upload/register -> extract -> enrich metadata -> chunk -> embed,
+plus the operations that re-run pieces of that pipeline (rescan, re-embed)
+and the permanent web-page import path (which reuses the same pipeline via
+a synthetic upload). Owns L1 (checksum) / L2 (normalised text) / L3
+(embedding similarity) duplicate detection, since that only makes sense in
+the context of ingesting new content.
+
+Depends on `library.py` for document lookup/cleanup; never the reverse.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,13 +34,10 @@ from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.repositories.helpers import row_to_metadata
 from app.modules.documents.repositories.processing_jobs import processing_job_repository
 from app.modules.embedding import service as embedding
-from app.modules.reranking.service import enabled as reranker_enabled
-from app.modules.reranking.service import rerank as rerank_chunks
-from app.modules.retrieval import keyword_search
+
+from . import library
 
 logger = logging.getLogger(__name__)
-
-_LOSSY_TITLE = re.compile(r"[?？]{3,}")
 
 
 def process_document(document_id: str) -> None:
@@ -289,7 +298,7 @@ async def save_web_import(
             duplicate = await asyncio.to_thread(_find_near_duplicate, document_id, markdown)
 
         if duplicate is not None:
-            await asyncio.to_thread(delete_document, document_id)
+            await asyncio.to_thread(library.delete_document, document_id)
             return (
                 document_content_repository.get_detail_record(
                     duplicate["id"], include_restricted=True
@@ -309,7 +318,7 @@ async def save_web_import(
         # regular upload workflow keeps failed rows for status inspection, but
         # this synchronous operation has no useful document id to return.
         try:
-            await asyncio.to_thread(delete_document, document_id)
+            await asyncio.to_thread(library.delete_document, document_id)
         except Exception:
             logger.exception("Failed to clean up web import %s", document_id)
         raise
@@ -413,238 +422,6 @@ def reembed_document(document_id: str) -> int:
     literals = [embedding.vector_literal(vector) for vector in embedding.embed_documents(inputs)]
     embedding_repository.store_vectors([row["chunk_id"] for row in rows], literals)
     return len(rows)
-
-
-def reembed_library() -> dict:
-    """Re-embed every document's existing chunks for the active model."""
-    document_ids = document_repository.all_document_ids()
-    chunk_total = 0
-    for document_id in document_ids:
-        try:
-            chunk_total += reembed_document(document_id)
-        except Exception:
-            logger.exception("Re-embed failed for document %s", document_id)
-    return {
-        "documents": len(document_ids),
-        "chunks": chunk_total,
-        "model": embedding.active_model_id(),
-    }
-
-
-def list_documents(
-    include_restricted: bool = False,
-    policy_area: str | None = None,
-    country_or_region: str | None = None,
-    source_organisation: str | None = None,
-    tag: str | None = None,
-) -> list[dict]:
-    rows = document_repository.list_records(
-        include_restricted=include_restricted,
-        policy_area=policy_area,
-        country_or_region=country_or_region,
-        source_organisation=source_organisation,
-        tag=tag,
-    )
-    return [row_to_metadata(row) for row in rows]
-
-
-def get_document(identifier: str, include_restricted: bool = True) -> dict:
-    return document_repository.get_record(identifier, include_restricted=include_restricted)
-
-
-def get_document_detail(identifier: str, include_restricted: bool = False) -> dict:
-    return document_content_repository.get_detail_record(
-        identifier,
-        include_restricted=include_restricted,
-    )
-
-
-def get_document_chunks(identifier: str, include_restricted: bool = False) -> list[dict]:
-    return document_content_repository.list_chunk_records(
-        identifier,
-        include_restricted=include_restricted,
-    )
-
-
-def resolve_document_file(identifier: str, include_restricted: bool = False) -> Path:
-    document = document_repository.get_record(identifier, include_restricted=include_restricted)
-    return document_file_store.resolve(document["file_path"])
-
-
-def delete_document(identifier: str) -> None:
-    document = document_repository.delete(identifier)
-    document_file_store.delete(document_file_store.path(document["file_path"]))
-
-
-def update_document_governance(
-    identifier: str,
-    approved: bool | None = None,
-    access_level: str | None = None,
-) -> dict:
-    document_repository.update_governance(identifier, approved=approved, access_level=access_level)
-    return document_content_repository.get_detail_record(identifier, include_restricted=True)
-
-
-def update_document_metadata(identifier: str, payload: dict) -> dict:
-    title = payload.get("title")
-    if isinstance(title, str) and _LOSSY_TITLE.search(title):
-        raise ValueError(
-            "The title appears to contain encoding-damaged text (a run of question marks). "
-            "Submit UTF-8 text or keep the automatically generated English title."
-        )
-    return document_content_repository.update_metadata(identifier, payload)
-
-
-def extract_pages(identifier: str, include_restricted: bool = False) -> list[dict]:
-    pages = document_content_repository.get_pages(
-        identifier,
-        include_restricted=include_restricted,
-    )
-    if pages:
-        return pages
-    document = document_repository.get_record(identifier, include_restricted=include_restricted)
-    pages = extract_document(document_file_store.resolve(document["file_path"]))
-    document_content_repository.replace_pages(str(document["id"]), pages)
-    return pages
-
-
-def read_documents(identifiers: list[str], include_restricted: bool = False) -> list[dict]:
-    pages: list[dict] = []
-    for identifier in identifiers:
-        pages.extend(extract_pages(identifier, include_restricted=include_restricted))
-    return pages
-
-
-def documents_have_embeddings(identifiers: list[str]) -> bool:
-    """Return True when at least one of the given documents has been indexed with embeddings."""
-    if not identifiers:
-        return False
-    try:
-        documents = [
-            document_repository.get_record(identifier, include_restricted=True)
-            for identifier in identifiers
-        ]
-        return embedding_repository.has_embeddings([str(doc["id"]) for doc in documents])
-    except Exception:
-        return False
-
-
-def _rerank_or_dense(question: str, candidates: list[dict], limit: int) -> list[dict]:
-    """Apply the admin-toggleable reranker to vector candidates, or fall back
-    to dense-vector ranking when reranking is off or fails."""
-    if not reranker_enabled():
-        return candidates[:limit]
-    try:
-        return rerank_chunks(question, candidates, limit=limit)
-    except Exception:
-        logger.exception("Reranking failed; returning dense-vector ranking instead.")
-        return candidates[:limit]
-
-
-def resolve_document_ids(
-    identifiers: list[str],
-    include_restricted: bool = False,
-) -> list[str]:
-    """Resolve filenames/UUIDs once while enforcing the caller's access level."""
-    return [
-        str(
-            document_repository.get_record(
-                identifier,
-                include_restricted=include_restricted,
-            )["id"]
-        )
-        for identifier in identifiers
-    ]
-
-
-def _hybrid_candidates(
-    question: str,
-    dense: list[dict],
-    *,
-    query_vector: str,
-    candidate_limit: int,
-    document_ids: list[str] | None = None,
-    include_restricted: bool = False,
-) -> list[dict]:
-    """Fuse BM25 keyword candidates into the dense pool via RRF.
-
-    Only runs when dense retrieval produced candidates: an empty dense pool
-    means the active model has no vectors for this scope, and the caller's
-    page-fallback semantics must be preserved. BM25-only rows get a real
-    cosine distance backfilled (worst-case 1.0 when the chunk has no vector)
-    so every downstream distance gate keeps its meaning.
-    """
-    if not dense:
-        return dense
-    sparse = keyword_search.bm25_search(
-        question,
-        document_ids=document_ids,
-        include_restricted=include_restricted,
-        limit=candidate_limit,
-    )
-    if not sparse:
-        return dense
-    fused = keyword_search.rrf_merge(dense, sparse, limit=candidate_limit)
-    missing = [c["chunk_id"] for c in fused if "distance" not in c]
-    if missing:
-        distances = embedding_repository.distances_for_chunks(query_vector, missing)
-        for candidate in fused:
-            if "distance" not in candidate:
-                candidate["distance"] = distances.get(str(candidate["chunk_id"]), 1.0)
-    return fused
-
-
-def retrieve_relevant_chunks(
-    question: str,
-    identifiers: list[str],
-    limit: int = 8,
-    include_restricted: bool = False,
-) -> list[dict]:
-    document_ids = resolve_document_ids(identifiers, include_restricted)
-    query_vector = embedding.vector_literal(embedding.embed_query(question))
-
-    candidate_limit = max(limit * 3, 20)
-    candidates = embedding_repository.retrieve(
-        query_vector,
-        document_ids,
-        limit=candidate_limit,
-    )
-    candidates = _hybrid_candidates(
-        question,
-        candidates,
-        query_vector=query_vector,
-        candidate_limit=candidate_limit,
-        document_ids=document_ids,
-        include_restricted=include_restricted,
-    )
-    return _rerank_or_dense(question, candidates, limit)
-
-
-def search_full_corpus(
-    question: str,
-    limit: int = 8,
-    include_restricted: bool = False,
-) -> list[dict]:
-    """Hybrid (vector + BM25) search across the ENTIRE indexed corpus.
-
-    Used by the agent's search_full_corpus tool when the caller's selected
-    documents don't have enough evidence to answer from.
-    """
-    query_vector = embedding.vector_literal(embedding.embed_query(question))
-    candidate_limit = max(limit * 3, 20)
-    candidates = embedding_repository.retrieve_all(
-        query_vector,
-        limit=candidate_limit,
-        include_restricted=include_restricted,
-    )
-    candidates = _hybrid_candidates(
-        question,
-        candidates,
-        query_vector=query_vector,
-        candidate_limit=candidate_limit,
-        include_restricted=include_restricted,
-    )
-    return _rerank_or_dense(question, candidates, limit)
 
 
 def copy_file_into_library(source_path: Path) -> str:

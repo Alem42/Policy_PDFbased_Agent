@@ -216,7 +216,7 @@ def test_bm25_search_disabled_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert bm25_search("anything", limit=5) == []
 
 
-# ── hybrid wiring in documents/service.py ────────────────────────────────────
+# ── hybrid wiring in documents/service/retrieval.py ─────────────────────────
 
 
 def test_hybrid_candidates_backfills_real_distance(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -235,7 +235,7 @@ def test_hybrid_candidates_backfills_real_distance(monkeypatch: pytest.MonkeyPat
         lambda _query_vector, _ids: {"s1": 0.42},
     )
     dense = [{"chunk_id": "d1", "text": "dense hit", "distance": 0.2}]
-    fused = documents_service._hybrid_candidates(
+    fused = documents_service.retrieval._hybrid_candidates(
         "q", dense, query_vector="[0.1]", candidate_limit=10
     )
     by_id = {candidate["chunk_id"]: candidate for candidate in fused}
@@ -261,7 +261,7 @@ def test_hybrid_candidates_defaults_to_worst_distance_when_unembedded(
         lambda _query_vector, _ids: {},
     )
     dense = [{"chunk_id": "d1", "text": "dense hit", "distance": 0.2}]
-    fused = documents_service._hybrid_candidates(
+    fused = documents_service.retrieval._hybrid_candidates(
         "q", dense, query_vector="[0.1]", candidate_limit=10
     )
     by_id = {candidate["chunk_id"]: candidate for candidate in fused}
@@ -276,7 +276,7 @@ def test_hybrid_candidates_keeps_dense_when_sparse_empty(
     monkeypatch.setattr(keyword_search, "bm25_search", lambda *_args, **_kwargs: [])
     dense = [{"chunk_id": "d1", "text": "dense hit", "distance": 0.2}]
     assert (
-        documents_service._hybrid_candidates(
+        documents_service.retrieval._hybrid_candidates(
             "q", dense, query_vector="[0.1]", candidate_limit=10
         )
         == dense
@@ -293,7 +293,7 @@ def test_hybrid_candidates_preserves_page_fallback_when_dense_empty(
 
     monkeypatch.setattr(keyword_search, "bm25_search", fail_bm25)
     assert (
-        documents_service._hybrid_candidates(
+        documents_service.retrieval._hybrid_candidates(
             "q", [], query_vector="[0.1]", candidate_limit=10
         )
         == []
