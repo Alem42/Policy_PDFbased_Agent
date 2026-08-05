@@ -9,9 +9,17 @@ def test_token_usage_is_present_in_fresh_database_schema() -> None:
     assert '"token_usage"' in init_sql
 
 
-def test_latest_migration_is_mounted_by_compose() -> None:
+def test_every_migration_file_is_mounted_by_compose() -> None:
+    """Every migration under database/migrations/ must be mounted in
+    compose.yaml, or a fresh volume silently skips it. Checks the whole
+    directory (not a hardcoded filename) so this stays correct as new
+    migrations are added."""
     compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
-    assert "018_add_token_usage_to_chat_messages.sql" in compose
+    migrations_dir = BACKEND_ROOT / "database" / "migrations"
+    migration_files = sorted(p.name for p in migrations_dir.glob("*.sql"))
+    assert migration_files, "Expected at least one migration file."
+    missing = [name for name in migration_files if name not in compose]
+    assert not missing, f"Migrations not mounted in compose.yaml: {missing}"
 
 
 def test_email_verification_schema_and_migration_are_available() -> None:
