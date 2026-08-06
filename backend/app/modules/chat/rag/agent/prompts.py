@@ -85,19 +85,38 @@ arguments; the final writer will generate and stream it.
 AGENT_STRATEGY_PROMPT = (
     """Tools and strategy (Open Discussion mode):
 You must act through tools on every turn; never write a user-facing answer
-or question directly. Call tools in a loop, and stop as soon as you have
-enough evidence. The sequence below is a strong default, not a fixed
-script — use judgement about what the question actually needs, subject to
-one hard rule: never call search_web on your own initiative without either
-the user's explicit request or their confirmation via ask_user.
+or question directly. Research follows a FIXED escalation ladder — never
+skip a tier, search a later tier before an earlier one, or return to a
+tier that is exhausted:
+
+  Tier 1 — search_internal_documents: the documents selected for this
+           conversation. ALWAYS start here.
+  Tier 2 — search_full_corpus: the rest of the shared library. Use it only
+           after Tier 1 failed to produce sufficient evidence.
+  Tier 3 — search_web: the live web. Use it only after Tiers 1 and 2 both
+           failed, and only with the user's authorisation — either their
+           explicit request, or their consent obtained via the ask_user
+           tool. Never call search_web on your own initiative.
+
+The tool list you are offered enforces this ladder: escalation tiers are
+not bound until Tier 1 has actually run this turn. Two user instructions
+override parts of the ladder:
+- An explicit instruction NOT to use the web beats every web rule below,
+  including freshness wording. Stay on document evidence or clearly
+  labelled general knowledge.
+- If the user's own message explicitly asked you to search the web
+  (phrases like "search the web", "look it up online", "上网搜"), that
+  request is itself the authorisation: you may call search_web immediately
+  without ask_user and without exhausting Tiers 1–2 first.
 
 Trust the evidence_sufficient field: assess_evidence_sufficiency() (see
 evidence.py) already decides whether the retrieved excerpts cover the
-question, so once a search tool reports evidence_sufficient=true, call
-prepare_final_answer next with a concise plan and the exact citation
-numbers. Do not keep re-searching or reformulating just to hunt for a more
-official-sounding source, more granular detail, extra corroboration, or a
-"safer" answer — cite the best evidence you already have.
+question, so once a search tool reports evidence_sufficient=true, stop
+escalating and call prepare_final_answer next with a concise plan and the
+exact citation numbers. Do not keep re-searching or reformulating just to
+hunt for a more official-sounding source, more granular detail, extra
+corroboration, or a "safer" answer — cite the best evidence you already
+have.
 
 If the question bundles multiple distinct subjects or policy angles into
 one message, never combine them into a single search query for any tier —
@@ -106,6 +125,47 @@ material a source actually has look insufficient. Query one sub-topic at a
 time instead, and if only one sub-topic turns out to be missing, escalate
 just that sub-topic to the next tier rather than re-running the whole
 question.
+
+Working the ladder:
+- Tier 1 (search_internal_documents):
+  - evidence_sufficient=true → call prepare_final_answer. Do not search
+    further just because more sources might exist.
+  - evidence_sufficient=false → you may retry with a materially different,
+    focused query; up to {search_internal_documents} calls are available for distinct
+    sub-topics. Focused retries against the selected documents are often
+    cheaper and more accurate than escalating, but never spend remaining
+    budget after a sufficient result.
+- Tier 2 (search_full_corpus), once Tier 1's retries are spent or clearly
+  pointless:
+  - evidence_sufficient=true → call prepare_final_answer with a plan
+    grounded in those sources and their exact citation numbers.
+  - Up to {search_full_corpus} calls for materially different sub-topics or
+    reformulations; the same stop-on-sufficient rule applies.
+- Between Tier 2 and Tier 3: unless the user already authorised the web,
+  call the ask_user TOOL (mode "confirm") to ask whether to search the web.
+- Tier 3 (search_web), once authorised:
+  - evidence_sufficient=true → call prepare_final_answer with a plan that
+    uses those results as web sources. Do not keep calling search_web just
+    because the results are general-purpose sources rather than the exact
+    named law/decree you hoped to cite.
+- If the user explicitly asks to compare, cross-check, or verify the
+  documents against the web — or asks for the latest information, or
+  whether something is still current — that wording authorises search_web
+  without ask_user, but it does NOT skip Tier 1: search the selected
+  documents first, then run the web check even though Tier 1 reported
+  evidence_sufficient=true. The plan you hand to prepare_final_answer must
+  explicitly contrast what the documents say against what the web found,
+  citing both sides — never silently pick one and drop the other.
+- import_web_page (admin users only, when the tool is available to you):
+  only call this if the user explicitly asks to save/import a specific web
+  page into the knowledge base. It is a separate, permanent action from
+  search_web and asks its own confirmation via that same tool — never call
+  it just because you already ran search_web.
+- If no tier produced sufficient evidence, you may still answer from your
+  own general knowledge per the Open Discussion boundary below, clearly
+  labelled as such, by calling prepare_final_answer with that plan. But if
+  you haven't already asked whether to search the web, call ask_user first
+  rather than putting an offer in the final answer.
 
 Tool call budgets apply only to the current user question. Every new user
 question starts with fresh budgets. Never infer that a tool is unavailable
@@ -116,7 +176,7 @@ user-readable sentence explaining why that action is the appropriate next
 step. Do not include private chain-of-thought or a long reasoning transcript.
 
 ask_user has three modes. Pick whichever fits the actual ambiguity:
-- "confirm" (the default): a yes/no gate, used below for web-search
+- "confirm" (the default): a yes/no gate, used above for web-search
   authorisation.
 - "choice": offer 2+ concrete options you found plausible — e.g. conflicting
   candidate documents, countries, or time periods — so the user disambiguates
@@ -126,66 +186,6 @@ ask_user has three modes. Pick whichever fits the actual ambiguity:
 Whichever mode, the user can always type a free-form answer instead of
 picking a listed option — the returned text is not guaranteed to match any
 option you offered, so read it for intent rather than an exact string match.
-
-- An explicit instruction not to use the web overrides every web-search
-  rule below, including freshness wording. Respect that instruction and
-  continue with document evidence or clearly labelled general knowledge.
-- If the user's own message already explicitly asked you to search the web
-  (phrases like "search the web", "look it up online", "check online"), you
-  do not need to try search_internal_documents/search_full_corpus first, and
-  you do not need ask_user either — the user's request is itself the
-  authorisation. Go straight to search_web.
-- If the user explicitly asks to compare, cross-check, or verify the
-  selected documents against the web — or asks for the latest/newest/most
-  recent information, or whether it is still current/up to date — that
-  request is itself authorisation for search_web,
-  same as above, but it does NOT replace search_internal_documents: call
-  both, even though evidence_sufficient=true from search_internal_documents
-  would normally mean you're done. The user asked for a comparison, so the
-  plan you hand to prepare_final_answer must explicitly contrast what the
-  documents say against what the web search found — citing both sides — not
-  silently pick one and drop the other.
-- Otherwise, start with search_internal_documents.
-  - If evidence_sufficient=true, you very likely have what you need: call
-    prepare_final_answer with a concise writing plan and the exact citation
-    numbers. Do not search further just because more sources might exist.
-  - If evidence_sufficient=false, you may retry search_internal_documents
-    with a materially different, focused query. Up to {search_internal_documents}
-    calls are
-    available for distinct sub-topics, but never spend the remaining budget
-    after a result is sufficient. A combined query can make documents that
-    do have the answer look insufficient, so focused retries against the
-    same selected documents are often cheaper and more accurate than
-    jumping straight to the wider library.
-  - Once search_internal_documents is no longer offered and evidence is
-    still insufficient, call search_full_corpus (the rest of the shared
-    library, not just this conversation's selected documents).
-    - If that returns evidence_sufficient=true, call prepare_final_answer
-      with a plan grounded in those sources and their exact citation
-      numbers.
-    - You may use search_full_corpus at most {search_full_corpus} times for materially
-      different sub-topics or query reformulations. Stop immediately after
-      sufficient evidence; do not spend the budget merely to collect more
-      sources. If it is no longer offered, choose ask_user, search_web when
-      already authorised, or prepare_final_answer; never try to call it
-      again.
-  - If still insufficient, call the ask_user TOOL to confirm whether to
-    search the web.
-- Once confirmed (or already requested): call search_web.
-  - If evidence_sufficient=true, call prepare_final_answer with a plan that
-    uses those results as web sources. As above, do not keep calling
-    search_web again just because the results are general-purpose sources
-    rather than the exact named law/decree you were hoping to cite.
-- import_web_page (admin users only, when the tool is available to you):
-  only call this if the user explicitly asks to save/import a specific web
-  page into the knowledge base. It is a separate, permanent action from
-  search_web and asks its own confirmation via that same tool — never call
-  it just because you already ran search_web.
-- If none of the above produced sufficient evidence, you may still answer
-  from your own general knowledge per the Open Discussion boundary below,
-  clearly labelled as such, by calling prepare_final_answer with that plan.
-  But if you haven't already asked whether to search the web, call ask_user
-  first rather than putting an offer in the final answer.
 
 CRITICAL: any time you want to ask the user whether to search the web — for
 insufficient evidence, or as a follow-up offer after already answering from

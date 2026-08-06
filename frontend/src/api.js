@@ -4,16 +4,7 @@ function apiPath(path) {
   return `${API_PREFIX}${path}`;
 }
 
-async function request(path, options = {}) {
-  const token = localStorage.getItem("authToken");
-  const headers = new Headers(options.headers || {});
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(apiPath(path), { ...options, headers });
-  if (response.ok) {
-    if (response.status === 204) return null;
-    return response.json();
-  }
-
+async function errorMessageFrom(response) {
   let message = `Request failed with status ${response.status}`;
   try {
     const body = await response.json();
@@ -29,7 +20,19 @@ async function request(path, options = {}) {
   } catch {
     // Keep the HTTP fallback message.
   }
-  throw new Error(message);
+  return message;
+}
+
+async function request(path, options = {}) {
+  const token = localStorage.getItem("authToken");
+  const headers = new Headers(options.headers || {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(apiPath(path), { ...options, headers });
+  if (response.ok) {
+    if (response.status === 204) return null;
+    return response.json();
+  }
+  throw new Error(await errorMessageFrom(response));
 }
 
 function normaliseDocument(document) {
@@ -246,47 +249,9 @@ export function updateDocument(documentId, updates) {
   });
 }
 
-export function getDocumentPages(documentId) {
-  return request(`/documents/${encodeURIComponent(documentId)}/pages`);
-}
-
 // Maximum number of prior conversation turns to send to the backend.
 // Each turn = one user message + one assistant reply.
 const MAX_HISTORY_TURNS = 5;
-
-export function askQuestion(
-  question,
-  documentIds,
-  responseMode = "researcher",
-  answerMode = "analysis",
-  history = [],
-  sessionId = null,
-  model = null,
-) {
-  const body = {
-    question,
-    document_ids: documentIds,
-    response_mode: responseMode,
-    answer_mode: answerMode,
-    session_id: sessionId,
-  };
-  if (model) body.model = model;
-
-  // When no session_id, still send history inline for backwards compat.
-  // When session_id is set the server reads history from DB — inline is ignored.
-  if (!sessionId) {
-    body.history = history.slice(-(MAX_HISTORY_TURNS * 2)).map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-  }
-
-  return request("/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
 
 async function postForSSE(path, body, signal) {
   const token = localStorage.getItem("authToken");
@@ -301,40 +266,43 @@ async function postForSSE(path, body, signal) {
   });
 
   if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-    try {
-      const errBody = await response.json();
-      message = errBody.detail || message;
-    } catch { /* keep HTTP fallback */ }
-    throw new Error(message);
+    throw new Error(await errorMessageFrom(response));
   }
   return response;
 }
 
 async function* readSSEFrames(response) {
+  if (!response.body) {
+    throw new Error("The server returned an empty stream.");
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true });
 
-    // SSE frames are separated by \n\n
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop(); // keep any incomplete trailing fragment
+      // SSE frames are separated by \n\n
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop(); // keep any incomplete trailing fragment
 
-    for (const part of parts) {
-      const line = part.trim();
-      if (!line.startsWith("data: ")) continue;
-      const payload = line.slice(6).trim();
-      if (payload === "[DONE]") return;
-      try {
-        yield JSON.parse(payload);
-      } catch { /* skip malformed frames */ }
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6).trim();
+        try {
+          yield JSON.parse(payload);
+        } catch { /* skip malformed frames */ }
+      }
     }
+  } finally {
+    // Release the connection even when the consumer exits early (e.g. the
+    // stream pauses on an ask_user interrupt and the generator is closed).
+    reader.cancel().catch(() => {});
   }
 }
 

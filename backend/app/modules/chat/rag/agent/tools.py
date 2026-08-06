@@ -99,15 +99,17 @@ def _results_with_evidence_text(
         if item.get("chunk_id")
     }
     by_url = {
-        item.get("url") or item.get("source_url"): item.get("text", "")
+        url: item.get("text", "")
         for item in evidence_items
-        if item.get("url") or item.get("source_url")
+        if (url := item.get("url") or item.get("source_url"))
     }
     return [
         {
             **result,
             "text": by_chunk.get(str(result.get("chunk_id")))
-            or by_url.get(result.get("source_url"))
+            # Guard the key: a page-level citation has neither chunk_id nor
+            # source_url, and by_url.get(None) must not return random text.
+            or (by_url.get(result["source_url"]) if result.get("source_url") else None)
             or result.get("quote", ""),
         }
         for result in numbered_results
@@ -221,8 +223,6 @@ async def search_internal_documents(
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
         "last_evidence_reason": result.get("evidence_reason"),
-        "filter_fallback": result.get("filter_fallback", False),
-        "filter_notice": result.get("filter_notice"),
     }
     # Only credit this tier if it actually surfaced evidence no other tier
     # already claimed THIS turn — a full_corpus/web call that just re-finds a
@@ -298,8 +298,6 @@ async def search_full_corpus(
         "messages": [_tool_message(tool_call_id, payload)],
         "citations": new_citations,
         "last_evidence_reason": reason,
-        "filter_fallback": result.filter_fallback,
-        "filter_notice": result.filter_notice,
     }
     # See search_internal_documents above: only credit this tier when it
     # contributed a citation no other tier already claimed this turn.

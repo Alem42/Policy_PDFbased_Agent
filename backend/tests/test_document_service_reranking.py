@@ -71,7 +71,7 @@ def test_retrieve_relevant_chunks_uses_reranker(
         return list(reversed(chunks))[:limit]
 
     monkeypatch.setattr(
-        service,
+        service.retrieval,
         "rerank_chunks",
         fake_rerank,
     )
@@ -103,7 +103,7 @@ def test_retrieve_relevant_chunks_falls_back_when_reranker_fails(
         raise RuntimeError("Reranker unavailable")
 
     monkeypatch.setattr(
-        service,
+        service.retrieval,
         "rerank_chunks",
         failing_reranker,
     )

@@ -33,44 +33,10 @@ __all__ = ["NON_ADMIN_TOOLS", "TOOL_CALL_LIMITS"]
 
 _tools_for = tools_for
 
-# DISABLED (2026-08-01) at the user's request while testing: skipping the
-# model's own turn also skips the visible "Preparing the final answer…" trace
-# step (auto_finalize_node bypasses record_tool_call/tools, the two nodes
-# router.py turns into tool_call/tool_result SSE events), which made it look
-# like the agent had stopped calling prepare_final_answer at all. Flip back
-# to True to re-enable — _should_auto_finalize/auto_finalize_node below are
-# untouched, only route_after_tools' use of them is gated.
-AUTO_FINALIZE_ENABLED = False
-
-# --- TEMPORARY code-level backstop -----------------------------------------
-# Prompt wording alone (see AGENT_STRATEGY_PROMPT / SUFFICIENT_EVIDENCE_REMINDER
-# in prompts.py / tools.py) does not reliably stop some models from
-# re-searching "for more detail" even when evidence_sufficient=true —
-# verified against deepseek-chat, the default provider (DEFAULT_PROVIDER in
-# llm_providers.py). Rather than trust the model's own stop/continue
-# judgement on the very first sufficient result, skip its turn outright and
-# finalize immediately.
-#
-# This trusts evidence_sufficient at face value with no topical/entity check
-# of its own. assess_evidence_sufficiency() (see evidence.py) is planned to
-# become keyword/entity-aware itself, at which point evidence_sufficient=true
-# will already mean "and it covers what the question named" — an earlier
-# version of this function additionally cross-checked question entities
-# against the retrieved text in Python, which became redundant work once
-# that lands there instead, so it was deliberately dropped here. Until the
-# keyword-aware gate ships, this can auto-finalize on evidence that is
-# topically close but silent on a specific country/org/date the question
-# named (e.g. EU-level content answering a Germany-specific question) — a
-# known, accepted gap, not an oversight.
-_AUTO_FINALIZE_ANSWER_PLAN = (
-    "Answer using the evidence already retrieved this turn — the retrieval "
-    "gate already confirmed it covers the question."
-)
-
 # Mirrors the "compare/verify against the web" exception in
 # AGENT_STRATEGY_PROMPT: that flow deliberately calls a search tool even
-# after an earlier tier was already sufficient, so the backstop must not
-# short-circuit before the model gets to run that intentional second call.
+# after an earlier tier was already sufficient, so tool gating in agent_node
+# must keep search_web available for that intentional second call.
 _WEB_CHECK_TRIGGER_TERMS = (
     "对比",
     "比对",
@@ -136,46 +102,42 @@ _WEB_OPT_OUT_TERMS = (
     "\u53ea\u4f7f\u7528\u6587\u6863",
 )
 
+# Phrases that count as the user EXPLICITLY asking for a web search \u2014 the
+# one case where Tier 3 (search_web) may run before Tiers 1/2, because the
+# request is itself the authorisation (see AGENT_STRATEGY_PROMPT).
+_EXPLICIT_WEB_REQUEST_TERMS = (
+    "search the web",
+    "search the internet",
+    "search online",
+    "look it up online",
+    "look this up online",
+    "check online",
+    "check the web",
+    "google",
+    "\u4e0a\u7f51\u641c",
+    "\u4e0a\u7f51\u67e5",
+    "\u7f51\u4e0a\u641c",
+    "\u7f51\u4e0a\u67e5",
+    "\u8054\u7f51\u641c\u7d22",
+    "\u8054\u7f51\u67e5",
+    "\u641c\u7d22\u7f51\u9875",
+    "\u641c\u4e00\u4e0b\u7f51",
+    "\u5e2e\u6211\u4e0a\u7f51",
+)
 
-def _should_auto_finalize(state: AgentState) -> bool:
-    """True if the just-received tool result is the first sufficient
-    evidence-tier result this turn, in Open Discussion mode, for a question
-    that isn't asking for a web comparison."""
-    last = state["messages"][-1]
-    if not (isinstance(last, ToolMessage) and last.name in EVIDENCE_TIER_TOOLS):
-        return False
-    try:
-        payload = json.loads(last.content)
-    except (TypeError, ValueError):
-        return False
-    if not payload.get("evidence_sufficient"):
-        return False
 
-    # Document Analysis has no escalation beyond the selected scope. Once
-    # that deterministic gate succeeds, another model decision can only add
-    # latency/cost or violate the tool protocol; synthesize the required
-    # prepare step immediately.
-    if state.get("answer_mode", "analysis") != "chat":
-        return True
-
-    # A live-web result completes a freshness/comparison request. The
-    # comparison wording should delay finalisation before the web check, not
-    # cause the agent to search the web repeatedly after it has succeeded.
-    if last.name == "search_web":
-        return True
-
-    return not _question_requires_web_check(state)
+def _latest_question(state: AgentState) -> str:
+    question = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "",
+    )
+    return question if isinstance(question, str) else str(question)
 
 
 def _question_requires_web_check(state: AgentState) -> bool:
     """Match the web-comparison/freshness exception described in the prompt."""
 
-    question = next(
-        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        "",
-    )
-    question = question if isinstance(question, str) else str(question)
-    lowered = question.lower()
+    lowered = _latest_question(state).lower()
     if any(term in lowered for term in _WEB_OPT_OUT_TERMS):
         return False
     if any(term in lowered for term in _FRESHNESS_TRIGGER_TERMS):
@@ -185,49 +147,39 @@ def _question_requires_web_check(state: AgentState) -> bool:
     return asks_for_comparison and names_the_web
 
 
-def auto_finalize_node(state: AgentState) -> dict:
-    """TEMPORARY: synthesize the prepare_final_answer step the model would
-    presumably have taken anyway, instead of giving it another turn to
-    second-guess sufficient evidence (see _should_auto_finalize above). The
-    synthetic messages keep final_generation_node's input shape identical to
-    the normal path — it always expects the transcript to end with a
-    prepare_final_answer tool result."""
-    citations = state.get("citations", [])
-    numbers = sorted({c["number"] for c in citations if isinstance(c.get("number"), int)})
-    call_id = f"auto-finalize-{len(state['messages'])}"
-    return {
-        "messages": [
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "name": "prepare_final_answer",
-                        "args": {
-                            "answer_plan": _AUTO_FINALIZE_ANSWER_PLAN,
-                            "citation_numbers": numbers,
-                        },
-                        "id": call_id,
-                        "type": "tool_call",
-                    }
-                ],
-            ),
-            ToolMessage(
-                content=json.dumps(
-                    {
-                        "ready": True,
-                        "answer_plan": _AUTO_FINALIZE_ANSWER_PLAN,
-                        "citation_numbers": numbers,
-                        "auto_finalized": True,
-                    }
-                ),
-                tool_call_id=call_id,
-                name="prepare_final_answer",
-            ),
-        ]
-    }
+def _question_requests_web_search(state: AgentState) -> bool:
+    """True when the user's own message explicitly asked for a web search."""
+
+    lowered = _latest_question(state).lower()
+    if any(term in lowered for term in _WEB_OPT_OUT_TERMS):
+        return False
+    return any(term in lowered for term in _EXPLICIT_WEB_REQUEST_TERMS)
 
 
-# --- end TEMPORARY code-level backstop --------------------------------------
+def _enforce_tier_order(available_tools: list, state: AgentState) -> list:
+    """Code-level guarantee of the Tier 1 \u2192 2 \u2192 3 escalation ladder.
+
+    Prompt wording alone does not reliably stop models from jumping straight
+    to the wider library or the web. Until search_internal_documents has
+    actually run this turn, the escalation tiers simply are not bound \u2014
+    except search_web when the user's own message explicitly requested it,
+    which the prompt documents as the one legitimate shortcut.
+    """
+    if state.get("answer_mode", "analysis") != "chat":
+        return available_tools
+    counts = state.get("tool_call_counts") or {}
+    if counts.get("search_internal_documents", 0) >= 1:
+        return available_tools
+    if not any(tool.name == "search_internal_documents" for tool in available_tools):
+        # Tier 1 is exhausted/unavailable (e.g. a zero budget): the ladder
+        # must still be able to progress.
+        return available_tools
+    allow_web = _question_requests_web_search(state)
+    return [
+        tool
+        for tool in available_tools
+        if tool.name != "search_full_corpus" and (allow_web or tool.name != "search_web")
+    ]
 
 
 def _messages_for_current_turn(messages: list) -> list:
@@ -275,6 +227,7 @@ async def agent_node(state: AgentState) -> dict:
         state.get("tool_call_counts"),
         limits=tool_limits,
     )
+    available_tools = _enforce_tier_order(available_tools, state)
     last = state["messages"][-1]
     last_payload: dict = {}
     if isinstance(last, ToolMessage):
@@ -565,8 +518,6 @@ def route_after_tools(state: AgentState) -> str:
         if state.get("answer_mode", "analysis") != "chat" and not state.get("evidence_sources"):
             return "insufficient_evidence"
         return "final_generation"
-    if AUTO_FINALIZE_ENABLED and _should_auto_finalize(state):
-        return "auto_finalize"
     return "agent"
 
 
@@ -625,7 +576,6 @@ def build_agent_graph():
     builder.add_node("tools", ToolNode(ALL_TOOLS))
     builder.add_node("final_generation", final_generation_node)
     builder.add_node("insufficient_evidence", insufficient_evidence_node)
-    builder.add_node("auto_finalize", auto_finalize_node)
     builder.add_edge(START, "agent")
     builder.add_conditional_edges(
         "agent", route_after_agent, {"record_tool_call": "record_tool_call"}
@@ -638,12 +588,10 @@ def build_agent_graph():
             "agent": "agent",
             "final_generation": "final_generation",
             "insufficient_evidence": "insufficient_evidence",
-            "auto_finalize": "auto_finalize",
         },
     )
     builder.add_edge("final_generation", END)
     builder.add_edge("insufficient_evidence", END)
-    builder.add_edge("auto_finalize", "final_generation")
     return builder.compile(checkpointer=get_checkpointer())
 
 

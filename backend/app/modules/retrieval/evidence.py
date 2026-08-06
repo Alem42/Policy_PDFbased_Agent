@@ -193,9 +193,5 @@ def assess_evidence_sufficiency(
             f'instrument "{unsupported_name}".',
         )
     if len(clean_context) < MIN_CONTEXT_CHARACTERS:
-        if pages:
-            return True, None
-        return False, REASON_NO_TEXT
-    if len(clean_context) >= MIN_CONTEXT_CHARACTERS:
-        return True, None
-    return False, REASON_SHORT_CONTEXT
+        return (True, None) if pages else (False, REASON_NO_TEXT)
+    return True, None

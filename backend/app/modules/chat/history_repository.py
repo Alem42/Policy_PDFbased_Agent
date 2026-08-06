@@ -120,6 +120,8 @@ class ChatHistoryRepository:
         status: str = "complete",
         evidence_sources: list[str] | None = None,
         token_usage: dict | None = None,
+        filter_fallback: bool = False,
+        filter_notice: str | None = None,
     ) -> None:
         """Fill in a pending message's final answer, closing out the turn
         started by create_pending_message."""
@@ -129,7 +131,8 @@ class ChatHistoryRepository:
                 UPDATE chat_messages
                 SET content = %s, citations_json = %s::jsonb, evidence_sufficient = %s,
                     response_mode = %s, answer_mode = %s, model = %s, status = %s,
-                    evidence_sources = %s::jsonb, token_usage = %s::jsonb
+                    evidence_sources = %s::jsonb, token_usage = %s::jsonb,
+                    filter_fallback = %s, filter_notice = %s
                 WHERE id = %s
                 """,
                 (
@@ -142,8 +145,29 @@ class ChatHistoryRepository:
                     status,
                     json.dumps(evidence_sources or []),
                     json.dumps(token_usage or {}),
+                    filter_fallback,
+                    filter_notice if filter_fallback else None,
                     message_id,
                 ),
+            )
+            conn.commit()
+
+    def mark_message_failed(self, message_id: str, partial_content: str = "") -> None:
+        """Mark a pending message as errored, keeping any streamed text.
+
+        Deliberately narrower than finalize_message: a failure must never
+        blank out columns (citations, evidence, model, token usage) that an
+        earlier successful finalize already wrote for this row.
+        """
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE chat_messages
+                SET status = 'error',
+                    content = CASE WHEN %s <> '' THEN %s ELSE content END
+                WHERE id = %s
+                """,
+                (partial_content, partial_content, message_id),
             )
             conn.commit()
 
@@ -263,7 +287,8 @@ class ChatHistoryRepository:
                 SELECT id, session_id, role, content, citations_json,
                        evidence_sufficient, response_mode, answer_mode, model,
                        reasoning_steps, status, agent_mode, evidence_sources,
-                       suggestions_json, token_usage, created_at
+                       suggestions_json, token_usage, filter_fallback,
+                       filter_notice, created_at
                 FROM chat_messages
                 WHERE session_id = %s
                 ORDER BY created_at ASC

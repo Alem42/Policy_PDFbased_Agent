@@ -12,12 +12,12 @@ from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
     NON_ADMIN_TOOLS,
     TOOL_CALL_LIMITS,
+    _enforce_tier_order,
     _messages_for_current_turn,
+    _question_requests_web_search,
     _question_requires_web_check,
-    _should_auto_finalize,
     _tools_for,
     agent_node,
-    auto_finalize_node,
     record_tool_call_node,
     route_after_tools,
 )
@@ -193,8 +193,8 @@ def test_agent_prompt_uses_configured_tool_limits() -> None:
 
     assert "- search_internal_documents: 2" in prompt
     assert "- search_full_corpus: 7" in prompt
-    assert "Up to 2 calls are" in normalized_prompt
-    assert "at most 7 times" in normalized_prompt
+    assert "up to 2 calls are available" in normalized_prompt
+    assert "Up to 7 calls for materially different" in normalized_prompt
     assert "at most five" not in prompt.lower()
 
 
@@ -659,6 +659,69 @@ def test_web_check_trigger_matches_prompt_policy(question: str, expected: bool) 
     assert _question_requires_web_check(state) is expected
 
 
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("What does the policy say about privacy?", False),
+        ("Please search the web for the newest AI act.", True),
+        ("帮我上网搜一下新加坡的AI政策。", True),
+        ("Search online, but actually no web search please.", False),
+    ],
+)
+def test_explicit_web_request_detection(question: str, expected: bool) -> None:
+    state = {"messages": [HumanMessage(content=question)]}
+
+    assert _question_requests_web_search(state) is expected
+
+
+def _chat_tools(counts: dict[str, int]) -> set[str]:
+    state = {
+        "answer_mode": "chat",
+        "tool_call_counts": counts,
+        "messages": [HumanMessage(content="What is the EU AI Act about?")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "chat", counts), state)
+    return {tool.name for tool in available}
+
+
+def test_tier_order_hides_escalation_tiers_before_internal_search_ran() -> None:
+    names = _chat_tools({})
+    assert "search_internal_documents" in names
+    assert "search_full_corpus" not in names
+    assert "search_web" not in names
+
+
+def test_tier_order_offers_escalation_after_internal_search_ran() -> None:
+    names = _chat_tools({"search_internal_documents": 1})
+    assert "search_full_corpus" in names
+    assert "search_web" in names
+
+
+def test_tier_order_allows_web_immediately_on_explicit_user_request() -> None:
+    state = {
+        "answer_mode": "chat",
+        "tool_call_counts": {},
+        "messages": [HumanMessage(content="Please search the web for this.")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "chat", {}), state)
+    names = {tool.name for tool in available}
+    assert "search_web" in names
+    assert "search_full_corpus" not in names
+
+
+def test_tier_order_does_not_gate_analysis_mode() -> None:
+    state = {
+        "answer_mode": "analysis",
+        "tool_call_counts": {},
+        "messages": [HumanMessage(content="Summarise the document.")],
+    }
+    available = _enforce_tier_order(_tools_for(False, "analysis", {}), state)
+    assert {tool.name for tool in available} == {
+        "search_internal_documents",
+        "prepare_final_answer",
+    }
+
+
 def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:
     numbered, new = _number_citations(
         [],
@@ -671,18 +734,11 @@ def test_number_citations_assigns_sequential_numbers_to_new_citations() -> None:
     assert new == numbered
 
 
-def _auto_finalize_state(
-    question: str,
-    payload: dict,
-    *,
-    answer_mode: str = "chat",
-    search_calls_this_turn: int = 1,
-    citations: list[dict] | None = None,
-) -> dict:
+def _post_search_state(question: str, payload: dict, *, answer_mode: str = "chat") -> dict:
     return {
         "answer_mode": answer_mode,
-        "tool_call_counts": {"search_internal_documents": search_calls_this_turn},
-        "citations": citations or [],
+        "tool_call_counts": {"search_internal_documents": 1},
+        "citations": [],
         "messages": [
             HumanMessage(content=question),
             ToolMessage(
@@ -694,104 +750,11 @@ def _auto_finalize_state(
     }
 
 
-def test_should_auto_finalize_true_when_evidence_sufficient() -> None:
-    # No entity/coverage check of its own (see graph.py block comment above
-    # _should_auto_finalize) — trusts evidence_sufficient at face value until
-    # assess_evidence_sufficiency() becomes keyword/entity-aware itself.
-    state = _auto_finalize_state(
-        "德国的人工智能战略对高风险系统有什么具体规定？",
-        {
-            "evidence_sufficient": True,
-            "results": [
-                {
-                    "number": 1,
-                    "title": "EU AI Act Overview",
-                    "quote": "The EU AI Act classifies certain AI systems as high-risk.",
-                }
-            ],
-        },
-    )
-    assert _should_auto_finalize(state) is True
-
-
-def test_should_auto_finalize_false_for_comparison_request() -> None:
-    # A user request to cross-check against the web is an intentional
-    # exception in AGENT_STRATEGY_PROMPT — the backstop must not pre-empt it.
-    state = _auto_finalize_state(
-        "这份文件的说法现在还准确吗，能否上网核实一下？",
-        {
-            "evidence_sufficient": True,
-            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
-        },
-    )
-    assert _should_auto_finalize(state) is False
-
-
-def test_should_auto_finalize_true_after_successful_escalation() -> None:
-    state = _auto_finalize_state(
-        "生成式人工智能对就业市场有什么影响？",
-        {
-            "evidence_sufficient": True,
-            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
-        },
-        search_calls_this_turn=2,
-    )
-    assert _should_auto_finalize(state) is True
-
-
-def test_should_auto_finalize_false_when_evidence_insufficient() -> None:
-    state = _auto_finalize_state(
-        "德国的AI政策是什么？",
-        {"evidence_sufficient": False, "results": []},
-    )
-    assert _should_auto_finalize(state) is False
-
-
-def test_should_auto_finalize_true_in_document_analysis_mode() -> None:
-    # Analysis mode has no escalation tools, so a successful deterministic
-    # gate should skip a redundant second model decision.
-    state = _auto_finalize_state(
-        "生成式人工智能对就业市场有什么影响？",
-        {
-            "evidence_sufficient": True,
-            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
-        },
-        answer_mode="analysis",
-    )
-    assert _should_auto_finalize(state) is True
-
-
-def test_route_after_tools_returns_auto_finalize_when_enabled_and_eligible(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Keep the feature flag explicit so this test covers route wiring rather
-    # than depending on the deployment default.
-    import app.modules.chat.rag.agent.graph as graph_module
-
-    monkeypatch.setattr(graph_module, "AUTO_FINALIZE_ENABLED", True)
-    state = _auto_finalize_state(
-        "生成式人工智能对就业市场有什么影响？",
-        {
-            "evidence_sufficient": True,
-            "results": [{"number": 1, "title": "Doc", "quote": "On topic."}],
-        },
-    )
-    assert route_after_tools(state) == "auto_finalize"
-
-
-def test_auto_finalize_is_disabled_by_default() -> None:
-    import app.modules.chat.rag.agent.graph as graph_module
-
-    assert graph_module.AUTO_FINALIZE_ENABLED is False
-
-
-def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import app.modules.chat.rag.agent.graph as graph_module
-
-    monkeypatch.setattr(graph_module, "AUTO_FINALIZE_ENABLED", False)
-    state = _auto_finalize_state(
+def test_route_after_tools_returns_to_agent_even_when_evidence_sufficient() -> None:
+    # There is no auto-finalize shortcut: a sufficient search result still
+    # hands the turn back to the model, which must explicitly call
+    # prepare_final_answer before anything streams to the user.
+    state = _post_search_state(
         "生成式人工智能对就业市场有什么影响？",
         {
             "evidence_sufficient": True,
@@ -801,20 +764,19 @@ def test_route_after_tools_stays_on_agent_while_auto_finalize_disabled(
     assert route_after_tools(state) == "agent"
 
 
-def test_auto_finalize_node_synthesizes_prepare_final_answer_pair() -> None:
+def test_route_after_tools_finalizes_only_after_prepare_final_answer() -> None:
     state = {
-        "citations": [{"number": 1, "title": "Doc"}, {"number": 2, "title": "Doc 2"}],
+        "answer_mode": "chat",
         "messages": [
             HumanMessage(content="q"),
-            ToolMessage(content="{}", tool_call_id="c1", name="x"),
+            ToolMessage(
+                content=json.dumps({"ready": True}),
+                tool_call_id="call-2",
+                name="prepare_final_answer",
+            ),
         ],
     }
-    update = auto_finalize_node(state)
-    ai_message, tool_message = update["messages"]
-    assert ai_message.tool_calls[0]["name"] == "prepare_final_answer"
-    assert ai_message.tool_calls[0]["args"]["citation_numbers"] == [1, 2]
-    assert tool_message.name == "prepare_final_answer"
-    assert json.loads(tool_message.content)["ready"] is True
+    assert route_after_tools(state) == "final_generation"
 
 
 def test_number_citations_reuses_number_for_duplicate_across_tool_calls() -> None:

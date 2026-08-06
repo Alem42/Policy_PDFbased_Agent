@@ -37,6 +37,7 @@ import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import FilterAltOffOutlinedIcon from "@mui/icons-material/FilterAltOffOutlined";
 import PublicIcon from "@mui/icons-material/Public";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -667,7 +668,7 @@ export default function ChatPage({
         if (cancelled) return;
         restoreSession(detail);
       } catch {
-        // Non-fatal
+        if (!cancelled) setError("Failed to load this conversation's history.");
       }
     })();
     return () => { cancelled = true; };
@@ -790,16 +791,21 @@ export default function ChatPage({
           ? m.steps.map((s) => ({ ...s, label: TOOL_STATUS_LABEL[s.tool] || s.tool }))
           : [],
         suggestions: Array.isArray(m.suggestions) ? m.suggestions : [],
+        filterFallback: m.filter_fallback === true,
+        filterNotice: m.filter_fallback === true ? m.filter_notice || null : null,
       })),
     );
     setSessionId(String(detail.id));
     if (detail.response_mode) setResponseMode(detail.response_mode);
+    const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
     if (detail.response_mode === "policymaker") {
       setAnswerMode("analysis");
-    } else {
-      const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
-      if (lastAssistant?.answer_mode) setAnswerMode(lastAssistant.answer_mode);
+    } else if (lastAssistant?.answer_mode) {
+      setAnswerMode(lastAssistant.answer_mode);
     }
+    // Also restore the reasoning mode, so continuing a Direct conversation
+    // doesn't silently switch it back to the ReAct agent.
+    if (lastAssistant?.agent_mode) setAgentMode(lastAssistant.agent_mode);
 
     // Cross-reference stored document_ids against currently available documents
     const sessionDocIds = detail.document_ids || [];
@@ -831,13 +837,18 @@ export default function ChatPage({
   }
 
   async function handleLoadSession(id) {
-    try {
-      const detail = await getChatSession(id);
-      navigate(chatSessionPath(id));
-      restoreSession(detail);
-    } catch {
-      setError("Failed to load session.");
+    // Navigating changes routeSessionId, and the URL effect below loads the
+    // session — fetching here too double-loaded every sidebar click. Only a
+    // re-click on the already-open session needs an explicit refetch.
+    if (String(resumeSessionId) === String(id)) {
+      try {
+        restoreSession(await getChatSession(id));
+      } catch {
+        setError("Failed to load session.");
+      }
+      return;
     }
+    navigate(chatSessionPath(id));
   }
 
   function handleNewChat() {
@@ -991,7 +1002,18 @@ export default function ChatPage({
     if (last?.role === "assistant" && last.streaming) return [...current];
     return [
       ...current,
-      { role: "assistant", content: "", streaming: true, responseMode, answerMode, agentMode, steps: [], showSteps: true },
+      {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        responseMode,
+        answerMode,
+        agentMode,
+        steps: [],
+        showSteps: true,
+        filterFallback: false,
+        filterNotice: null,
+      },
     ];
   }
 
@@ -1034,8 +1056,19 @@ export default function ChatPage({
       } else if (evt.type === "tool_result") {
         setMessages((current) => {
           const last = current[current.length - 1];
-          if (!last?.steps?.length) return current;
-          const steps = [...last.steps];
+          if (last?.role !== "assistant") return current;
+          // Metadata-filter warning: set on a fallback, cleared when a later
+          // tier satisfies the constraint without relaxing it — mirrors the
+          // backend's fallback_notice rules in application/streaming.py.
+          let { filterFallback, filterNotice } = last;
+          if (evt.filter_fallback && evt.filter_notice) {
+            filterFallback = true;
+            filterNotice = evt.filter_notice;
+          } else if (evt.filter_applied && evt.evidence_sufficient) {
+            filterFallback = false;
+            filterNotice = null;
+          }
+          const steps = [...(last.steps || [])];
           for (let i = steps.length - 1; i >= 0; i -= 1) {
             if (steps[i].tool === evt.tool && steps[i].status === "running") {
               steps[i] = {
@@ -1052,7 +1085,7 @@ export default function ChatPage({
             }
           }
           const next = [...current];
-          next[next.length - 1] = { ...last, steps };
+          next[next.length - 1] = { ...last, steps, filterFallback, filterNotice };
           return next;
         });
       } else if (evt.type === "token") {
@@ -1075,7 +1108,9 @@ export default function ChatPage({
         return true;
       } else if (evt.type === "citations") {
         setMessages((current) => {
-          const next = [...current];
+          // The turn may have produced no token/tool_call yet (e.g. an error
+          // path) — never merge assistant metadata onto a user message.
+          const next = ensureStreamingPlaceholder(current);
           const last = next[next.length - 1];
           next[next.length - 1] = {
             ...last,
@@ -1088,6 +1123,10 @@ export default function ChatPage({
             answerMode: evt.answer_mode || answerMode,
             agentMode: evt.agent_mode || last.agentMode || agentMode,
             model: evt.model || null,
+            // Authoritative end-of-turn value (Direct mode emits no
+            // tool_result events, so this is its only source).
+            filterFallback: evt.filter_fallback === true,
+            filterNotice: evt.filter_fallback === true ? evt.filter_notice || null : null,
           };
           return next;
         });
@@ -1178,7 +1217,11 @@ export default function ChatPage({
     } catch (chatError) {
       if (chatError.name !== "AbortError") {
         setError(chatError.message);
-        setMessages((current) => current.filter((m) => !m.streaming));
+        // Keep any partially streamed answer (the backend persists it too);
+        // only drop a placeholder that never received content.
+        setMessages((current) =>
+          current.filter((m) => !m.streaming || m.content || m.steps?.length),
+        );
       }
     } finally {
       streamControllerRef.current = null;
@@ -1212,7 +1255,9 @@ export default function ChatPage({
     } catch (chatError) {
       if (chatError.name !== "AbortError") {
         setError(chatError.message);
-        setMessages((current) => current.filter((m) => !m.streaming));
+        setMessages((current) =>
+          current.filter((m) => !m.streaming || m.content || m.steps?.length),
+        );
       }
     } finally {
       streamControllerRef.current = null;
@@ -1559,9 +1604,16 @@ export default function ChatPage({
                           <IconButton
                             size="small"
                             onClick={() => {
-                              navigator.clipboard.writeText(message.content);
-                              setCopiedIdx(index);
-                              setTimeout(() => setCopiedIdx((prev) => (prev === index ? null : prev)), 2000);
+                              navigator.clipboard
+                                .writeText(message.content)
+                                .then(() => {
+                                  setCopiedIdx(index);
+                                  setTimeout(
+                                    () => setCopiedIdx((prev) => (prev === index ? null : prev)),
+                                    2000,
+                                  );
+                                })
+                                .catch(() => setSnackbar({ open: true, message: "Copy failed." }));
                             }}
                             sx={{ color: "#888", p: 0.5 }}
                           >
@@ -1603,6 +1655,20 @@ export default function ChatPage({
                       <strong>From the wider library</strong> — {message.evidenceSources.includes("internal")
                         ? "This answer compares your selected documents against the full document library."
                         : "Your selected documents did not have enough relevant material, so this answer draws on the full document library instead."}
+                    </Alert>
+                  )}
+
+                  {/* Metadata-filter mismatch: the requested filters could not be
+                      satisfied, so retrieval fell back to the original document
+                      scope. Shown while the answer still streams normally below. */}
+                  {message.role === "assistant" && message.filterFallback && (
+                    <Alert
+                      severity="warning"
+                      icon={<FilterAltOffOutlinedIcon fontSize="inherit" />}
+                      sx={{ mb: 1.5, py: 0.75, fontSize: 13 }}
+                    >
+                      <strong>No exact metadata match</strong> — {message.filterNotice ||
+                        "No documents matched the requested metadata filters. The search was expanded to the original document scope, so some sources may not satisfy every requested constraint."}
                     </Alert>
                   )}
 
@@ -1782,7 +1848,11 @@ export default function ChatPage({
                   ))}
                 </Box>
                 <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  Searching documents...
+                  {(() => {
+                    const steps = messages[messages.length - 1]?.steps;
+                    const running = steps?.findLast?.((s) => s.status === "running");
+                    return running?.label || "Working on it...";
+                  })()}
                 </Typography>
               </Box>
             )}

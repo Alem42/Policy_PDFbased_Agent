@@ -1,12 +1,12 @@
-from app.modules.chat.rag.evidence import (
-    REASON_LOW_RELEVANCE,
-    REASON_NO_TEXT,
-    assess_evidence_sufficiency,
-)
 from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.prompts import (
     get_insufficient_evidence_message,
     get_system_prompt,
+)
+from app.modules.retrieval.evidence import (
+    REASON_LOW_RELEVANCE,
+    REASON_NO_TEXT,
+    assess_evidence_sufficiency,
 )
 
 
@@ -82,7 +82,7 @@ def test_assess_evidence_rejects_low_similarity_chunks() -> None:
 def test_assess_evidence_rejects_low_reranker_score() -> None:
     # The reranker floor is admin-tunable / provider-aware, so score just below the
     # LIVE floor rather than assuming the old -7.0 constant.
-    from app.modules.chat.rag.evidence import min_reranker_score
+    from app.modules.retrieval.evidence import min_reranker_score
 
     below_floor = min_reranker_score() - 1.0
     sufficient, reason = assess_evidence_sufficiency(
@@ -103,7 +103,7 @@ def test_assess_evidence_rejects_low_reranker_score() -> None:
 
 
 def test_assess_evidence_accepts_strong_chunks() -> None:
-    from app.modules.chat.rag.evidence import min_reranker_score
+    from app.modules.retrieval.evidence import min_reranker_score
 
     sufficient, reason = assess_evidence_sufficiency(
         question="housing policy reform",

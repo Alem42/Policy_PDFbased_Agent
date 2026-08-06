@@ -131,6 +131,11 @@ class SessionMessage(BaseModel):
     # The tool-call trace recorded while this message was generated (empty
     # for user messages and for turns that predate this field).
     steps: list[dict] = Field(default_factory=list)
+    # True when the requested metadata filters could not be satisfied and
+    # retrieval fell back to the original document scope; filter_notice is
+    # the user-facing explanation shown as a warning banner.
+    filter_fallback: bool = False
+    filter_notice: str | None = None
     # 'streaming' if the turn never finished (crashed / interrupted and never
     # resumed), 'error' if it failed, 'complete' otherwise.
     status: str = "complete"

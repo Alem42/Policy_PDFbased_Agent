@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Any
@@ -77,6 +78,7 @@ async def stream_suggestion_events(
 
     if suggestions_pending and sug_cfg is not None:
         suggestions: list[str] = []
+        started_at = time.monotonic()
         try:
             suggestions = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -94,8 +96,16 @@ async def stream_suggestion_events(
                 ),
                 timeout=45.0,
             )
+            logger.info(
+                "Follow-up suggestions: %d generated in %.1fs",
+                len(suggestions),
+                time.monotonic() - started_at,
+            )
         except Exception:
-            logger.exception("Follow-up generation timed out or failed")
+            logger.exception(
+                "Follow-up generation timed out or failed after %.1fs",
+                time.monotonic() - started_at,
+            )
 
         try:
             await chat_turn_service.update_suggestions(assistant_message_id, suggestions)
@@ -121,8 +131,16 @@ async def stream_agent_events(
     full_tokens: list[str] = []
     steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
     interrupted = False
+    finalized = False
+    # Re-derive the filter warning from steps persisted before an interrupt,
+    # so a resumed turn doesn't lose a fallback that happened pre-interrupt.
+    # Same set/reset rules as the live loop below.
     fallback_notice: str | None = None
-    fallback_notice_emitted = False
+    for prior_step in steps:
+        if prior_step.get("filterFallback") and prior_step.get("filterNotice"):
+            fallback_notice = prior_step["filterNotice"]
+        elif prior_step.get("filterApplied") and prior_step.get("evidenceSufficient"):
+            fallback_notice = None
 
     try:
         async with aclosing(
@@ -134,11 +152,6 @@ async def stream_agent_events(
                     if meta.get("langgraph_node") == "final_generation" and getattr(
                         message, "content", None
                     ):
-                        if fallback_notice and not fallback_notice_emitted:
-                            prefix = f"Note: {fallback_notice}\n\n"
-                            full_tokens.append(prefix)
-                            yield encode_sse({"type": "token", "value": prefix})
-                            fallback_notice_emitted = True
                         full_tokens.append(message.content)
                         yield encode_sse({"type": "token", "value": message.content})
                     continue
@@ -183,11 +196,6 @@ async def stream_agent_events(
                         yield encode_sse(result_event)
 
                 if "insufficient_evidence" in chunk:
-                    if fallback_notice and not fallback_notice_emitted:
-                        prefix = f"Note: {fallback_notice}\n\n"
-                        full_tokens.append(prefix)
-                        yield encode_sse({"type": "token", "value": prefix})
-                        fallback_notice_emitted = True
                     for message in chunk["insufficient_evidence"].get("messages", []):
                         content = getattr(message, "content", "") or ""
                         full_tokens.append(content)
@@ -221,7 +229,10 @@ async def stream_agent_events(
             resolved_model,
             evidence_sources=reported_sources,
             token_usage=token_usage,
+            filter_fallback=bool(fallback_notice),
+            filter_notice=fallback_notice,
         )
+        finalized = True
         await chat_turn_service.touch(session_id)
 
         yield encode_sse(
@@ -237,8 +248,12 @@ async def stream_agent_events(
                 "agent_mode": "react",
                 "session_id": session_id,
                 "model": resolved_model,
-                "filter_fallback": bool(values.get("filter_fallback", False)),
-                "filter_notice": values.get("filter_notice"),
+                # The tracked notice (set on a filter fallback, cleared when a
+                # later tier satisfies the constraint without relaxing it) is
+                # the source of truth — NOT the graph state's filter_fallback
+                # channel, whose last writer may be an unrelated later search.
+                "filter_fallback": bool(fallback_notice),
+                "filter_notice": fallback_notice,
             }
         )
 
@@ -262,14 +277,26 @@ async def stream_agent_events(
         ):
             yield event
 
+    except GeneratorExit:
+        # Client disconnected mid-stream: without this, the pending row would
+        # stay status='streaming' forever (GeneratorExit is a BaseException
+        # and never reaches the handlers below).
+        if not finalized and not interrupted:
+            await _finalize_as_error(assistant_message_id, full_tokens)
+        raise
     except TimeoutError:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        # A failure after the successful finalize (e.g. in the suggestion
+        # tail) must not retroactively mark a completed answer as errored.
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})
 
 
@@ -292,6 +319,7 @@ async def stream_direct_events(
     """Drive the fixed one-retrieval Direct path and emit the same SSE protocol."""
 
     full_tokens: list[str] = []
+    finalized = False
     try:
         state = await asyncio.wait_for(
             asyncio.to_thread(
@@ -313,11 +341,8 @@ async def stream_direct_events(
         citations = state.get("citations", [])
         provider, selected_model, _config = resolve_generation_target(model)
         resolved_model = f"{provider}/{selected_model}"
-
-        if state.get("filter_fallback") and state.get("filter_notice"):
-            notice = f"Note: {state['filter_notice']}\n\n"
-            full_tokens.append(notice)
-            yield encode_sse({"type": "token", "value": notice})
+        filter_fallback = bool(state.get("filter_fallback") and state.get("filter_notice"))
+        filter_notice = state.get("filter_notice") if filter_fallback else None
 
         if route_after_evidence_check(state) == "insufficient_evidence":
             answer = get_insufficient_evidence_message(
@@ -353,7 +378,10 @@ async def stream_direct_events(
             answer_mode,
             resolved_model,
             evidence_sources=evidence_sources,
+            filter_fallback=filter_fallback,
+            filter_notice=filter_notice,
         )
+        finalized = True
         await chat_turn_service.touch(session_id)
 
         yield encode_sse(
@@ -369,8 +397,8 @@ async def stream_direct_events(
                 "session_id": session_id,
                 "model": resolved_model,
                 "filter_applied": state.get("filter_applied", False),
-                "filter_fallback": state.get("filter_fallback", False),
-                "filter_notice": state.get("filter_notice"),
+                "filter_fallback": filter_fallback,
+                "filter_notice": filter_notice,
             }
         )
 
@@ -389,12 +417,19 @@ async def stream_direct_events(
         ):
             yield event
 
+    except GeneratorExit:
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
+        raise
     except TimeoutError:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
-        await _finalize_as_error(assistant_message_id, full_tokens)
+        if not finalized:
+            await _finalize_as_error(assistant_message_id, full_tokens)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})

@@ -75,10 +75,9 @@ class ChatTurnService:
 
     async def fail(self, message_id: str, partial_answer: str = "") -> None:
         await asyncio.to_thread(
-            self.repository.finalize_message,
+            self.repository.mark_message_failed,
             message_id,
             partial_answer,
-            status="error",
         )
 
     async def add_message(self, *args, **kwargs):

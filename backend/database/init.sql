@@ -520,6 +520,8 @@ CREATE TABLE IF NOT EXISTS "public"."chat_messages" (
   "evidence_sources"    jsonb       NOT NULL DEFAULT '[]',
   "suggestions_json"    jsonb       NOT NULL DEFAULT '[]',
   "token_usage"         jsonb       NOT NULL DEFAULT '{}',
+  "filter_fallback"     bool        NOT NULL DEFAULT false,
+  "filter_notice"       text        COLLATE "pg_catalog"."default",
   "created_at"          timestamptz(6) NOT NULL DEFAULT now()
 );
 

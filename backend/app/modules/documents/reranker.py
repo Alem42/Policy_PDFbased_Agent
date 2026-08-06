@@ -9,12 +9,13 @@ from app.core.config import get_settings, resolve_backend_path
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-base"
 
 
-@lru_cache(maxsize=1)
-def _load_reranker() -> TextCrossEncoder:
-    """Load and cache the cross-encoder reranker."""
+@lru_cache(maxsize=2)
+def _load_reranker(model_name: str = RERANKER_MODEL_NAME) -> TextCrossEncoder:
+    """Load and cache the cross-encoder reranker (per model name, so the
+    admin-configured local model actually takes effect on change)."""
     cache_dir = resolve_backend_path(get_settings().model_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return TextCrossEncoder(model_name=RERANKER_MODEL_NAME, cache_dir=str(cache_dir))
+    return TextCrossEncoder(model_name=model_name, cache_dir=str(cache_dir))
 
 
 def rerank_chunks(
@@ -22,6 +23,7 @@ def rerank_chunks(
     chunks: list[dict],
     *,
     limit: int,
+    model_name: str | None = None,
 ) -> list[dict]:
     """Rerank retrieved chunks by cross-encoder relevance score."""
     if not question.strip():
@@ -43,7 +45,8 @@ def rerank_chunks(
 
         texts.append(text)
 
-    scores = [float(score) for score in _load_reranker().rerank(question, texts)]
+    reranker = _load_reranker(model_name or RERANKER_MODEL_NAME)
+    scores = [float(score) for score in reranker.rerank(question, texts)]
 
     if len(scores) != len(chunks):
         raise RuntimeError("Reranker returned a different number of scores than chunks.")
