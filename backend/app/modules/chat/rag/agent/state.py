@@ -31,7 +31,7 @@ def citation_key(citation: dict) -> tuple:
 
 
 def add_citations(existing: list[dict] | None, new: list[dict] | None) -> list[dict]:
-    """Reducer: append newly-surfaced citations, de-duplicated by identity."""
+    """Merge current-turn citations, de-duplicated by identity."""
     existing = existing or []
     merged = list(existing)
     seen = {citation_key(c) for c in existing}
@@ -64,6 +64,39 @@ def add_evidence_sources(
     for source in new or []:
         if source not in merged:
             merged.append(source)
+    return merged
+
+
+# Upper bound on AgentState.web_pages_seen so a very long-running session
+# doesn't grow the checkpointed state without limit. Oldest entries are
+# dropped first — import_web_page's turn_hint/reference_hint resolution is
+# about recent context, not full-session archaeology.
+_MAX_WEB_PAGES_SEEN = 50
+
+
+def add_web_pages_seen(existing: list[dict] | None, new: list[dict] | None) -> list[dict]:
+    """Append newly-surfaced web pages, de-duplicated by source_url, capped
+    at _MAX_WEB_PAGES_SEEN.
+
+    Unlike add_citations (per-turn, reset every question — see
+    AgentState.citations), this accumulates for the ENTIRE session: it is
+    what import_web_page reads to resolve "the page you used earlier in
+    this conversation", potentially many turns after that search happened.
+    Identity here is just the URL (not citation_key()'s document/chunk
+    tuple) — a page is either the same URL or a different page, there is no
+    chunk-level granularity to distinguish.
+    """
+    existing = existing or []
+    merged = list(existing)
+    seen = {item.get("source_url") for item in existing}
+    for item in new or []:
+        url = item.get("source_url")
+        if url in seen:
+            continue
+        seen.add(url)
+        merged.append(item)
+    if len(merged) > _MAX_WEB_PAGES_SEEN:
+        merged = merged[-_MAX_WEB_PAGES_SEEN:]
     return merged
 
 
@@ -113,7 +146,9 @@ class AgentState(TypedDict):
     user_id: NotRequired[str]
     tool_call_counts: NotRequired[dict[str, int]]
     last_tool_call: NotRequired[dict]
-    citations: Annotated[list[dict], add_citations]
+    # Plain LastValue: reset by the router for each new user question. Tools
+    # explicitly merge citations across calls within the current question.
+    citations: list[dict]
     # Plain LastValue list (see add_evidence_sources for why this is not a
     # reducer channel), merged into by a search tool only when it returns
     # evidence_sufficient=True AND at least one of its citations is not
@@ -144,3 +179,16 @@ class AgentState(TypedDict):
     # resumed turn (after an ask_user/confirm_import interrupt) keeps
     # updating the same row instead of starting a new one.
     assistant_message_id: NotRequired[str | None]
+    # Every web page search_web has surfaced across this ENTIRE session (not
+    # just the current turn), each tagged with the 1-based user-question
+    # number it came from. Deliberately NOT reset by router.py's per-turn
+    # reset block (unlike `citations`, which resets every question so the
+    # UI's [1][2] numbering stays scoped to one answer) — this is the memory
+    # import_web_page reads to resolve "the page you used earlier", "the
+    # second one from my first question", etc. without the model having to
+    # retype a URL from memory. Persisted the same way as the rest of
+    # AgentState: via the Postgres checkpointer keyed by thread_id ==
+    # session_id (see checkpointer.py) — survives reopening THIS
+    # conversation, but does not carry over to a different chat session (a
+    # different thread_id has its own, empty checkpoint).
+    web_pages_seen: NotRequired[list[dict]]

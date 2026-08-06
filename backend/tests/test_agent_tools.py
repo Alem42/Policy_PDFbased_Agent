@@ -7,7 +7,10 @@ import json
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
 
+from app.modules.chat.rag.agent import tools as agent_tools
 from app.modules.chat.rag.agent.graph import (
     ALL_TOOLS,
     NON_ADMIN_TOOLS,
@@ -22,13 +25,16 @@ from app.modules.chat.rag.agent.graph import (
     route_after_tools,
 )
 from app.modules.chat.rag.agent.prompts import get_agent_system_prompt
-from app.modules.chat.rag.agent.state import add_citations
+from app.modules.chat.rag.agent.state import AgentState, add_citations, add_web_pages_seen
 from app.modules.chat.rag.agent.tools import (
     SUFFICIENT_EVIDENCE_REMINDER,
     _cosine_distance,
     _number_citations,
+    _resolve_web_reference,
     _results_with_evidence_text,
     _score_web_results,
+    import_web_page,
+    search_web,
 )
 from app.modules.web_search.contracts import WebSearchResult
 
@@ -122,6 +128,365 @@ def test_add_citations_treats_distinct_web_urls_as_distinct() -> None:
     second = [{"source_url": "https://b.example.com", "title": "B"}]
     merged = add_citations(first, second)
     assert len(merged) == 2
+
+
+def test_react_citations_reset_between_checkpointed_turns() -> None:
+    builder = StateGraph(AgentState)
+    builder.add_node("finish", lambda _state: {})
+    builder.add_edge(START, "finish")
+    builder.add_edge("finish", END)
+    graph = builder.compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "citation-reset-test"}}
+
+    graph.invoke(
+        {
+            "messages": [HumanMessage(content="first question")],
+            "citations": [{"number": 1, "source_url": "https://old.example"}],
+        },
+        config=config,
+    )
+    graph.invoke(
+        {"messages": [HumanMessage(content="second question")], "citations": []},
+        config=config,
+    )
+
+    assert graph.get_state(config).values["citations"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_web_preserves_citations_from_earlier_tool_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_search(_query: str, *, limit: int) -> list[WebSearchResult]:
+        assert limit == 5
+        return []
+
+    monkeypatch.setattr(agent_tools.web_search_service, "search", fake_search)
+    monkeypatch.setattr(
+        agent_tools,
+        "_score_web_results",
+        lambda _query, _results: (
+            True,
+            "enough evidence",
+            [
+                {
+                    "title": "New web source",
+                    "url": "https://new.example",
+                    "text": "Relevant evidence",
+                    "passed": True,
+                }
+            ],
+        ),
+    )
+    existing = [
+        {
+            "number": 1,
+            "document_id": "doc-1",
+            "chunk_id": "chunk-1",
+            "title": "Earlier document source",
+        }
+    ]
+
+    command = await search_web.coroutine(
+        query="compare with the web",
+        decision_reason="The user requested a web comparison.",
+        tool_call_id="call-web",
+        citations=existing,
+        evidence_sources=["internal"],
+        turn_citation_keys=[["doc-1", "chunk-1", None]],
+        web_pages_seen=[],
+        messages=[HumanMessage(content="compare with the web")],
+    )
+
+    assert command.update["citations"] == [
+        existing[0],
+        {
+            "title": "New web source",
+            "source_url": "https://new.example",
+            "quote": "Relevant evidence",
+            "source_type": "web",
+            "tier": "web",
+            "number": 2,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_web_tags_results_with_the_current_turn_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_search(_query: str, *, limit: int) -> list[WebSearchResult]:
+        return []
+
+    monkeypatch.setattr(agent_tools.web_search_service, "search", fake_search)
+    monkeypatch.setattr(
+        agent_tools,
+        "_score_web_results",
+        lambda _query, _results: (
+            True,
+            "enough evidence",
+            [
+                {
+                    "title": "Second-turn source",
+                    "url": "https://second-turn.example",
+                    "text": "Relevant evidence",
+                    "passed": True,
+                }
+            ],
+        ),
+    )
+
+    # Two prior HumanMessages (turn 1's question, turn 2's question) plus the
+    # current one being answered -> this call belongs to turn 3.
+    command = await search_web.coroutine(
+        query="q3",
+        decision_reason="why",
+        tool_call_id="call-web",
+        citations=[],
+        evidence_sources=[],
+        turn_citation_keys=[],
+        web_pages_seen=[{"title": "Turn 1 source", "source_url": "https://t1.example", "passed": True, "turn_index": 1}],
+        messages=[
+            HumanMessage(content="turn 1"),
+            HumanMessage(content="turn 2"),
+            HumanMessage(content="turn 3"),
+        ],
+    )
+
+    assert command.update["web_pages_seen"] == [
+        {"title": "Turn 1 source", "source_url": "https://t1.example", "passed": True, "turn_index": 1},
+        {
+            "title": "Second-turn source",
+            "source_url": "https://second-turn.example",
+            "passed": True,
+            "turn_index": 3,
+        },
+    ]
+
+
+def test_add_web_pages_seen_deduplicates_by_url_and_caps_length() -> None:
+    existing = [{"source_url": "https://a.example", "title": "A", "turn_index": 1}]
+    new = [
+        {"source_url": "https://a.example", "title": "A (refetched)", "turn_index": 2},  # dup, dropped
+        {"source_url": "https://b.example", "title": "B", "turn_index": 2},
+    ]
+    merged = add_web_pages_seen(existing, new)
+    assert [item["source_url"] for item in merged] == ["https://a.example", "https://b.example"]
+
+    overflow = [{"source_url": f"https://{i}.example", "title": str(i)} for i in range(60)]
+    capped = add_web_pages_seen([], overflow)
+    assert len(capped) == 50
+    # Oldest entries are dropped first, so the tail is preserved.
+    assert capped[-1]["source_url"] == "https://59.example"
+
+
+def test_resolve_web_reference_ordinal_within_turn_scope() -> None:
+    pool = [
+        {"source_url": "https://t1-a.example", "title": "Turn 1 A", "turn_index": 1},
+        {"source_url": "https://t1-b.example", "title": "Turn 1 B", "turn_index": 1},
+        {"source_url": "https://t2-a.example", "title": "Turn 2 A", "turn_index": 2},
+    ]
+    resolved, candidates = _resolve_web_reference(pool, turn_hint=1, reference_hint="second")
+    assert resolved == ("https://t1-b.example", "Turn 1 B")
+    assert candidates == pool[:2]
+
+
+def test_resolve_web_reference_last_without_turn_hint_uses_whole_session() -> None:
+    pool = [
+        {"source_url": "https://old.example", "title": "Old", "turn_index": 1},
+        {"source_url": "https://new.example", "title": "New", "turn_index": 3},
+    ]
+    resolved, _candidates = _resolve_web_reference(pool, turn_hint=None, reference_hint="last")
+    assert resolved == ("https://new.example", "New")
+
+
+def test_resolve_web_reference_title_fragment_match() -> None:
+    pool = [
+        {"source_url": "https://gdpr.example", "title": "GDPR Enforcement Review", "turn_index": 1},
+        {"source_url": "https://other.example", "title": "Unrelated", "turn_index": 1},
+    ]
+    resolved, _candidates = _resolve_web_reference(pool, turn_hint=None, reference_hint="GDPR")
+    assert resolved == ("https://gdpr.example", "GDPR Enforcement Review")
+
+
+def test_resolve_web_reference_exact_match_wins_over_a_longer_title_containing_it() -> None:
+    # Regression: a real webpage's title routinely turns up verbatim inside
+    # a DIFFERENT candidate's longer title (a write-up quoting it). A plain
+    # substring scan finds both and calls it ambiguous even when the answer
+    # named one of them exactly — this is what actually happened importing
+    # "America's AI Action Plan" (whitehouse.gov) alongside a White & Case
+    # law-firm article whose title embeds that same phrase.
+    pool = [
+        {
+            "source_url": "https://whitehouse.gov/plan.pdf",
+            "title": "America's AI Action Plan",
+            "turn_index": 1,
+        },
+        {
+            "source_url": "https://whitecase.com/insight",
+            "title": (
+                'White House unveils comprehensive AI strategy: "Winning the race: '
+                'America\'s AI action plan" | White & Case LLP'
+            ),
+            "turn_index": 1,
+        },
+    ]
+    resolved, candidates = _resolve_web_reference(pool, None, "America's AI Action Plan")
+    assert resolved == ("https://whitehouse.gov/plan.pdf", "America's AI Action Plan")
+    assert candidates == [pool[0]]
+
+
+def test_resolve_web_reference_ambiguous_returns_no_match_and_full_pool() -> None:
+    pool = [
+        {"source_url": "https://a.example", "title": "A", "turn_index": 1},
+        {"source_url": "https://b.example", "title": "B", "turn_index": 1},
+    ]
+    resolved, candidates = _resolve_web_reference(pool, turn_hint=None, reference_hint=None)
+    assert resolved is None
+    assert candidates == pool
+
+
+def test_resolve_web_reference_empty_pool_returns_no_match() -> None:
+    resolved, candidates = _resolve_web_reference([], turn_hint=None, reference_hint="last")
+    assert resolved is None
+    assert candidates == []
+
+
+@pytest.mark.asyncio
+async def test_import_web_page_reports_error_when_no_pages_seen_this_session() -> None:
+    # Nothing to disambiguate between (empty pool) -> a plain error, no
+    # interrupt. Raising from the monkeypatched interrupt makes it loud if
+    # this regresses into calling it anyway.
+    def _fail_if_called(_payload):
+        raise AssertionError("should not interrupt with nothing to disambiguate")
+
+    import app.modules.chat.rag.agent.tools as tools_module
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(tools_module, "interrupt", _fail_if_called)
+        command = await import_web_page.coroutine(
+            tool_call_id="call-import",
+            is_admin=True,
+            user_id="user-1",
+            citations=[],
+            web_pages_seen=[],
+        )
+
+    payload = json.loads(command.update["messages"][0].content)
+    assert payload["imported"] is False
+    assert "candidates" not in payload
+
+
+@pytest.mark.asyncio
+async def test_import_web_page_asks_the_user_itself_using_real_candidates_when_ambiguous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This is the fix for the bug where the model composed its own (possibly
+    # inaccurate) candidate list and called ask_user with it before ever
+    # calling import_web_page: the tool now disambiguates itself, using the
+    # real titles from web_pages_seen, regardless of what the model does.
+    seen_prompts: list[dict] = []
+    answers = iter(["B", True])  # first interrupt (choice), then confirm_import
+
+    def fake_interrupt(payload):
+        seen_prompts.append(payload)
+        return next(answers)
+
+    monkeypatch.setattr(agent_tools, "interrupt", fake_interrupt)
+
+    class FakeResult:
+        document = {"id": "doc-b"}
+        title = "B"
+        source_url = "https://b.example"
+        was_duplicate = False
+
+    async def fake_import_page(request):
+        assert request.url == "https://b.example"
+        assert request.title == "B"
+        return FakeResult()
+
+    monkeypatch.setattr(agent_tools.web_import_service, "import_page", fake_import_page)
+
+    command = await import_web_page.coroutine(
+        tool_call_id="call-import",
+        is_admin=True,
+        user_id="user-1",
+        citations=[],
+        web_pages_seen=[
+            {"source_url": "https://a.example", "title": "A", "passed": True, "turn_index": 1},
+            {"source_url": "https://b.example", "title": "B", "passed": True, "turn_index": 1},
+        ],
+    )
+
+    assert seen_prompts[0]["type"] == "ask_user"
+    assert seen_prompts[0]["mode"] == "choice"
+    assert set(seen_prompts[0]["options"]) == {"A", "B"}
+    payload = json.loads(command.update["messages"][0].content)
+    assert payload["imported"] is True
+    assert payload["document_id"] == "doc-b"
+
+
+@pytest.mark.asyncio
+async def test_import_web_page_reports_error_when_disambiguation_answer_does_not_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_tools, "interrupt", lambda _payload: "something unrelated")
+
+    command = await import_web_page.coroutine(
+        tool_call_id="call-import",
+        is_admin=True,
+        user_id="user-1",
+        citations=[],
+        web_pages_seen=[
+            {"source_url": "https://a.example", "title": "A", "passed": True, "turn_index": 1},
+            {"source_url": "https://b.example", "title": "B", "passed": True, "turn_index": 1},
+        ],
+    )
+
+    payload = json.loads(command.update["messages"][0].content)
+    assert payload["imported"] is False
+    assert "something unrelated" in payload["error"]
+    assert {c["source_url"] for c in payload["candidates"]} == {
+        "https://a.example",
+        "https://b.example",
+    }
+
+
+@pytest.mark.asyncio
+async def test_import_web_page_resolves_reference_hint_without_explicit_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_tools, "interrupt", lambda _payload: True)
+
+    class FakeResult:
+        document = {"id": "doc-imported"}
+        title = "Turn 1 B"
+        source_url = "https://t1-b.example"
+        was_duplicate = False
+
+    async def fake_import_page(request):
+        assert request.url == "https://t1-b.example"
+        assert request.title == "Turn 1 B"
+        return FakeResult()
+
+    monkeypatch.setattr(agent_tools.web_import_service, "import_page", fake_import_page)
+
+    command = await import_web_page.coroutine(
+        tool_call_id="call-import",
+        is_admin=True,
+        user_id="user-1",
+        citations=[],
+        web_pages_seen=[
+            {"source_url": "https://t1-a.example", "title": "Turn 1 A", "passed": True, "turn_index": 1},
+            {"source_url": "https://t1-b.example", "title": "Turn 1 B", "passed": True, "turn_index": 1},
+        ],
+        turn_hint=1,
+        reference_hint="second",
+    )
+
+    payload = json.loads(command.update["messages"][0].content)
+    assert payload["imported"] is True
+    assert payload["document_id"] == "doc-imported"
 
 
 def test_import_web_page_hidden_from_non_admin_tool_binding() -> None:

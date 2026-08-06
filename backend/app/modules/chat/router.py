@@ -306,6 +306,9 @@ async def chat_stream(
         # overwritten for every new user question. Resume requests do not pass
         # graph_input, so the same question keeps its counts across interrupt().
         "tool_call_counts": {"__current_turn__": 1},
+        # Citations are scoped to this question. LastValue lets this empty list
+        # replace the prior checkpoint value; tools merge within this turn.
+        "citations": [],
         # evidence_sources/last_evidence_reason are also plain LastValue
         # fields (see agent/state.py) — explicitly reset them here for the
         # same reason as tool_call_counts above. Without this, a prior
@@ -319,6 +322,15 @@ async def chat_stream(
         # Same reset reasoning as evidence_sources above — see
         # agent/state.py::AgentState.turn_citation_keys.
         "turn_citation_keys": [],
+        # NOT a reset like the fields above — web_pages_seen deliberately
+        # accumulates for the whole session (see agent/state.py). It still
+        # has to be included here, carrying forward whatever the checkpoint
+        # already has: search_web/import_web_page read it via
+        # InjectedState, which does a raw state[field] lookup with no
+        # default, so on a brand-new thread (key never written) the very
+        # first search_web call would otherwise KeyError before it gets the
+        # chance to write it itself.
+        "web_pages_seen": existing_state.values.get("web_pages_seen", []),
         "assistant_message_id": assistant_message_id,
     }
 
