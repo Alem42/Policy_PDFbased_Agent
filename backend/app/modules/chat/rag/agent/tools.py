@@ -5,14 +5,16 @@ import json
 import logging
 from typing import Annotated, Literal
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
 from app.modules.chat.rag.agent.state import (
     EvidenceSource,
+    add_citations,
     add_evidence_sources,
+    add_web_pages_seen,
     citation_key,
     merge_turn_citation_keys,
 )
@@ -127,6 +129,96 @@ def _claims_new_ground(turn_citation_keys: list[list] | None, raw_citations: lis
     return any(citation_key(c) not in claimed for c in raw_citations)
 
 
+# Small closed vocabulary import_web_page's docstring asks the model to
+# normalize a natural-language ordinal reference into, rather than trying to
+# fuzzy-parse arbitrary phrasing like "最近引用的一次" or "the one before
+# last" in code. Keep this in sync with the docstring's examples.
+_ORDINAL_WORDS: dict[str, int] = {
+    "first": 0,
+    "1st": 0,
+    "第一": 0,
+    "第一个": 0,
+    "第一条": 0,
+    "second": 1,
+    "2nd": 1,
+    "第二": 1,
+    "第二个": 1,
+    "第二条": 1,
+    "third": 2,
+    "3rd": 2,
+    "第三": 2,
+    "第三个": 2,
+    "第三条": 2,
+    "last": -1,
+    "latest": -1,
+    "most recent": -1,
+    "最新": -1,
+    "最近": -1,
+    "最后": -1,
+    "最后一个": -1,
+}
+
+
+def _resolve_web_reference(
+    web_pages_seen: list[dict], turn_hint: int | None, reference_hint: str | None
+) -> tuple[tuple[str, str] | None, list[dict]]:
+    """Resolve "the page you used earlier" into a concrete (url, title) pair
+    from AgentState.web_pages_seen, instead of trusting the model to retype
+    a URL from memory — a mistyped or hallucinated link would silently
+    import the wrong page.
+
+    `turn_hint` (if given) narrows the pool to one numbered user question
+    first; `reference_hint` then picks within that pool by ordinal
+    (_ORDINAL_WORDS) or by a case-insensitive fragment of the title/URL.
+
+    Returns (resolved_pair_or_None, the candidate pool actually considered).
+    The caller surfaces that pool back to the model/user when resolution
+    isn't unique, instead of guessing between them.
+    """
+    pool = web_pages_seen or []
+    if turn_hint is not None:
+        pool = [item for item in pool if item.get("turn_index") == turn_hint]
+
+    if not reference_hint:
+        # No hint at all: only safe to guess when there is exactly one
+        # candidate. Multiple candidates with no hint is a genuine
+        # ambiguity, not something to default-pick from.
+        if len(pool) == 1:
+            item = pool[0]
+            return (item["source_url"], item["title"]), pool
+        return None, pool
+
+    hint = reference_hint.strip().lower()
+    if hint in _ORDINAL_WORDS and pool:
+        try:
+            item = pool[_ORDINAL_WORDS[hint]]
+            return (item["source_url"], item["title"]), pool
+        except IndexError:
+            return None, pool
+
+    # Exact match wins before falling back to substring matching. A real
+    # webpage title is routinely a fragment embedded inside a DIFFERENT
+    # candidate's longer title (e.g. a law-firm write-up titled 'White
+    # House unveils ... "America's AI Action Plan"' sitting next to the
+    # actual page just called "America's AI Action Plan") — a plain
+    # substring scan finds both and wrongly calls that ambiguous even when
+    # the answer named one of them precisely.
+    exact_matches = [
+        item for item in pool if item["title"].lower() == hint or item["source_url"].lower() == hint
+    ]
+    if len(exact_matches) == 1:
+        item = exact_matches[0]
+        return (item["source_url"], item["title"]), exact_matches
+
+    matches = [
+        item for item in pool if hint in item["title"].lower() or hint in item["source_url"].lower()
+    ]
+    if len(matches) == 1:
+        item = matches[0]
+        return (item["source_url"], item["title"]), matches
+    return None, (matches or pool)
+
+
 def _run_retrieval_pipeline(
     question: str,
     identifiers: list[str],
@@ -221,7 +313,7 @@ async def search_internal_documents(
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
-        "citations": new_citations,
+        "citations": add_citations(citations, new_citations),
         "last_evidence_reason": result.get("evidence_reason"),
     }
     # Only credit this tier if it actually surfaced evidence no other tier
@@ -296,7 +388,7 @@ async def search_full_corpus(
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
-        "citations": new_citations,
+        "citations": add_citations(citations, new_citations),
         "last_evidence_reason": reason,
     }
     # See search_internal_documents above: only credit this tier when it
@@ -399,6 +491,8 @@ async def search_web(
     citations: Annotated[list[dict], InjectedState("citations")],
     evidence_sources: Annotated[list[EvidenceSource], InjectedState("evidence_sources")],
     turn_citation_keys: Annotated[list[list], InjectedState("turn_citation_keys")],
+    web_pages_seen: Annotated[list[dict], InjectedState("web_pages_seen")],
+    messages: Annotated[list[AnyMessage], InjectedState("messages")],
     reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Search the public web. Results are checked against the same
@@ -442,10 +536,29 @@ async def search_web(
     payload = {"evidence_sufficient": sufficient, "reason": reason, "results": tool_results}
     if sufficient:
         payload["reminder"] = SUFFICIENT_EVIDENCE_REMINDER
+    # 1-based: how many user questions (including this one) have been asked
+    # so far in this session. Tags every result below with the turn it came
+    # from, so import_web_page's turn_hint can later scope "the page from my
+    # first question" without needing the model to see this turn's own
+    # ToolMessage again (it won't, once a later turn strips it — see
+    # graph.py::_messages_for_current_turn).
+    current_turn_index = sum(1 for message in messages if isinstance(message, HumanMessage))
     update: dict = {
         "messages": [_tool_message(tool_call_id, payload)],
-        "citations": new_citations,
+        "citations": add_citations(citations, new_citations),
         "last_evidence_reason": reason,
+        "web_pages_seen": add_web_pages_seen(
+            web_pages_seen,
+            [
+                {
+                    "title": c["title"],
+                    "source_url": c["url"],
+                    "passed": c["passed"],
+                    "turn_index": current_turn_index,
+                }
+                for c in candidates
+            ],
+        ),
     }
     # See search_internal_documents above: only credit this tier when it
     # contributed a citation no other tier already claimed this turn.
@@ -457,12 +570,15 @@ async def search_web(
 
 @tool
 async def import_web_page(
-    url: str,
-    title: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
     is_admin: Annotated[bool, InjectedState("is_admin")],
     user_id: Annotated[str, InjectedState("user_id")],
     citations: Annotated[list[dict], InjectedState("citations")],
+    web_pages_seen: Annotated[list[dict], InjectedState("web_pages_seen")],
+    url: str | None = None,
+    title: str | None = None,
+    turn_hint: int | None = None,
+    reference_hint: str | None = None,
     reflection_on_previous_result: str | None = None,
 ) -> Command:
     """Permanently import a web page into the shared knowledge base so every
@@ -471,9 +587,33 @@ async def import_web_page(
     ADMIN ONLY. Always confirm with the user first — this asks its own
     confirmation question, separate from the one-off web-search confirmation,
     because it permanently changes the shared library rather than answering
-    a single question. If this is not your first tool call this turn, also
-    fill `reflection_on_previous_result` — see its own description for what
-    goes there.
+    a single question.
+
+    If the user gave you an explicit link, pass it as `url`/`title` as
+    usual. If instead they refer to a page from an earlier search_web call
+    by description — "import the page you just used", "import the second
+    one", "把第一轮里那个网页导入一下" — leave `url`/`title` empty and
+    describe which one instead of retyping or guessing a URL from memory (a
+    mistyped link would silently import the wrong page):
+    - `turn_hint`: the 1-based user-question number they mean, ONLY when
+      they actually named a specific earlier question ("我的第一个问题",
+      "my first question", "上一轮"). Leave it out when they just mean "the
+      most recent" or didn't name a turn at all.
+    - `reference_hint`: within that turn (or the whole conversation if you
+      didn't set turn_hint), an ordinal — "first"/"second"/"third"/"last" or
+      their Chinese equivalents (第一/第二/第三/最近/最新/最后) — or a
+      fragment of the page's title/URL.
+    Do NOT call ask_user yourself first to ask the user which page they
+    mean — you don't have the actual list of pages this session searched,
+    so any candidate names you compose from memory of your own earlier
+    answer may not match what was actually found, wasting a round trip. If
+    `turn_hint`/`reference_hint` aren't enough to resolve a single page
+    (including when you left both empty because you have no idea which one
+    they mean), this tool asks the user itself using the real candidate
+    titles and waits for their answer — just call it and let that happen.
+    If this is not your first tool call this turn, also fill
+    `reflection_on_previous_result` — see its own description for what goes
+    there.
     """
     if not is_admin:
         payload = {
@@ -481,6 +621,60 @@ async def import_web_page(
             "error": "Only admins can import pages into the knowledge base.",
         }
         return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
+
+    if not url:
+        resolved, candidates = _resolve_web_reference(web_pages_seen, turn_hint, reference_hint)
+        if resolved is None:
+            if not candidates:
+                payload = {
+                    "imported": False,
+                    "error": "Could not find any web page to import from this session.",
+                    "hint": "Call search_web first, or give an explicit url/title.",
+                }
+                return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
+            # Ambiguous: disambiguate right here, using the REAL candidate
+            # titles this tool just looked up in web_pages_seen — never let
+            # the model compose its own candidate list and ask_user with it
+            # first. The model's own list is free recall from chat history
+            # (e.g. "I used the White House fact sheet, the Executive Order,
+            # and the Brookings analysis" reconstructed from its prior
+            # answer's prose), not a lookup — it routinely doesn't match the
+            # actual stored title strings closely enough for the substring
+            # match below, which is what forced a second, separate ask_user
+            # round in practice. Interrupting here instead means correctness
+            # no longer depends on the model choosing to call ask_user, or
+            # calling it with accurate options — this happens regardless of
+            # what the model does before calling this tool. Reuses ask_user's
+            # own interrupt shape so the frontend needs no changes to render
+            # it (see streaming.py's generic "type" handling on __interrupt__).
+            answer = interrupt(
+                {
+                    "type": "ask_user",
+                    "mode": "choice",
+                    "question": "Which page would you like to import?",
+                    "options": [item["title"] for item in candidates],
+                }
+            )
+            resolved, _ = _resolve_web_reference(candidates, None, str(answer))
+            if resolved is None:
+                payload = {
+                    "imported": False,
+                    "error": f"Could not match '{answer}' to any of the candidate pages.",
+                    "candidates": [
+                        {"title": item["title"], "source_url": item["source_url"]}
+                        for item in candidates
+                    ],
+                }
+                return Command(update={"messages": [_tool_message(tool_call_id, payload)]})
+        url, title = resolved
+    elif not title:
+        # Explicit url but no title (e.g. the user typed a bare link) —
+        # backfill from web_pages_seen if this exact URL was already seen
+        # this session, rather than importing with no title. import_page
+        # tolerates a missing title on its own, so this is a nice-to-have.
+        match = next((item for item in (web_pages_seen or []) if item.get("source_url") == url), None)
+        if match:
+            title = match["title"]
 
     confirmed = interrupt(
         {
@@ -525,7 +719,7 @@ async def import_web_page(
     return Command(
         update={
             "messages": [_tool_message(tool_call_id, payload)],
-            "citations": new_citations,
+            "citations": add_citations(citations, new_citations),
         }
     )
 

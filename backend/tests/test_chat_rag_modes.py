@@ -1,3 +1,5 @@
+import pytest
+
 from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.prompts import (
     get_insufficient_evidence_message,
@@ -187,7 +189,18 @@ def test_assess_evidence_rejects_semantically_related_policy_without_named_instr
     assert "Quantum AI Act" in reason
 
 
-def test_assess_evidence_accepts_named_instrument_when_it_is_present() -> None:
+def test_assess_evidence_accepts_named_instrument_when_it_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.modules.retrieval.evidence as evidence_module
+
+    # The bag-of-words check passes here (verbatim mention), which now also
+    # triggers the LLM veto stopgap -- stub it out so this stays a hermetic,
+    # network-free unit test. Its own behaviour is covered separately below.
+    monkeypatch.setattr(
+        evidence_module, "_llm_disputes_named_instrument", lambda *args, **kwargs: False
+    )
+
     context = (
         "Australia's 2031 Quantum AI Act imposes a civil penalty of AUD 42 million "
         "for lunar data-centre violations. "
@@ -211,6 +224,85 @@ def test_assess_evidence_accepts_named_instrument_when_it_is_present() -> None:
 
     assert sufficient is True
     assert reason is None
+
+
+def test_assess_evidence_llm_veto_blocks_bag_of_words_false_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bag-of-words check alone would pass this (both "us" and "action"
+    appear somewhere in the text), reproducing the real "US AI Action Plan"
+    false positive this stopgap was built for. With the veto mocked to
+    dispute it (as the real LLM call did in manual verification), the gate
+    must block."""
+    import app.modules.retrieval.evidence as evidence_module
+
+    monkeypatch.setattr(
+        evidence_module, "_llm_disputes_named_instrument", lambda *args, **kwargs: True
+    )
+
+    context = (
+        "Dayos is an enterprise AI automation company headquartered in Singapore "
+        "with operations in the US. Every action produces a reasoning chain that "
+        "captures classification logic and a confidence score. "
+    ) * 4
+    sufficient, reason = assess_evidence_sufficiency(
+        question="What are the three main pillars of the United States' AI Action Plan?",
+        raw_chunks=[
+            {
+                "distance": 0.2,
+                "reranker_score": 1.0,
+                "text": context,
+            }
+        ],
+        pages=[],
+        context=context,
+        has_embeddings=True,
+    )
+
+    assert sufficient is False
+    assert reason is not None
+    assert "AI Action Plan" in reason
+
+
+def test_assess_evidence_llm_veto_disabled_by_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kill switch: with the env var off, the veto must never be consulted
+    (and therefore never dispute anything), regardless of what it would
+    otherwise return."""
+    import app.modules.retrieval.evidence as evidence_module
+
+    monkeypatch.setenv("RETRIEVAL_NAMED_INSTRUMENT_LLM_VETO_ENABLED", "false")
+
+    def _fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("LLM veto must not be consulted when disabled")
+
+    # The client is only ever imported (and could only be called) inside
+    # _llm_disputes_named_instrument's try block, past the enabled-check
+    # this test targets -- patch the real source so the assertion would
+    # fire if that guard were ever bypassed.
+    monkeypatch.setattr("app.core.ai.chat_models.resolve_generation_target", _fail_if_called)
+    assert evidence_module._llm_disputes_named_instrument("US AI Action Plan", "us action") is False
+
+
+def test_assess_evidence_llm_veto_fails_open_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the LLM call itself blows up (bad credentials, timeout, rate
+    limit, ...), the veto must fail open -- never block evidence just
+    because this optional stopgap couldn't reach the model."""
+    import app.modules.retrieval.evidence as evidence_module
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated provider outage")
+
+    monkeypatch.setattr(evidence_module, "_llm_veto_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.core.ai.chat_models.resolve_generation_target", _boom
+    )
+
+    result = evidence_module._llm_disputes_named_instrument("US AI Action Plan", "irrelevant text")
+    assert result is False
 
 
 def test_route_after_evidence_check_analysis_blocks_weak_evidence() -> None:

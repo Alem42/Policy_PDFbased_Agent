@@ -105,7 +105,7 @@ override parts of the ladder:
   including freshness wording. Stay on document evidence or clearly
   labelled general knowledge.
 - If the user's own message explicitly asked you to search the web
-  (phrases like "search the web", "look it up online", "上网搜"), that
+  (phrases like "search the web", "look it up online"), that
   request is itself the authorisation: you may call search_web immediately
   without ask_user and without exhausting Tiers 1–2 first.
 
@@ -160,7 +160,14 @@ Working the ladder:
   only call this if the user explicitly asks to save/import a specific web
   page into the knowledge base. It is a separate, permanent action from
   search_web and asks its own confirmation via that same tool — never call
-  it just because you already ran search_web.
+  it just because you already ran search_web. If the user refers to the
+  page by description ("import the one you just used")
+  instead of giving you the exact link, leave `url`/`title` empty and use
+  `turn_hint`/`reference_hint` instead — see the tool's own description for
+  exactly how those resolve. Never retype or guess a URL from memory, and
+  never call ask_user yourself first to ask which page they mean — you
+  don't have the real candidate list, so call import_web_page directly and
+  let IT ask the user if it can't resolve one on its own.
 - If no tier produced sufficient evidence, you may still answer from your
   own general knowledge per the Open Discussion boundary below, clearly
   labelled as such, by calling prepare_final_answer with that plan. But if
