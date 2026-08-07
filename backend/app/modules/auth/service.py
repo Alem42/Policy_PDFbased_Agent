@@ -67,12 +67,8 @@ def create_user(
     clean_email = email.strip().lower()
     if len(clean_username) < 3:
         raise ValueError("Username must be at least 3 characters.")
-    if len(password) < 8:
-        raise ValueError("Password must be at least 8 characters.")
-    if not any(character.isalpha() for character in password) or not any(
-        character.isdigit() for character in password
-    ):
-        raise ValueError("Password must include at least one letter and one number.")
+    if not password:
+        raise ValueError("Password is required.")
     clean_role = role or "user"
     if clean_role not in {"admin", "user"}:
         raise ValueError("Role must be admin or user.")

@@ -18,8 +18,8 @@ class LoginRequest(BaseModel):
 class RegistrationRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
     email: str = Field(min_length=5, max_length=320)
-    password: str = Field(min_length=8, max_length=256)
-    password_confirmation: str = Field(min_length=8, max_length=256)
+    password: str = Field(min_length=1, max_length=256)
+    password_confirmation: str = Field(min_length=1, max_length=256)
     verification_code: str = Field(pattern=r"^\d{6}$")
     role: UserRole | None = None
     secret: str | None = None

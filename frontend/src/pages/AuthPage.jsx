@@ -35,7 +35,7 @@ function Label({ children }) {
   );
 }
 
-function PasswordField({ label, value, onChange, autoComplete, visible, onToggle, hint, sx }) {
+function PasswordField({ label, value, onChange, autoComplete, visible, onToggle, sx }) {
   return (
     <Box sx={{ display: "grid", gap: 0.5, ...sx }}>
       <Label>{label}</Label>
@@ -46,6 +46,7 @@ function PasswordField({ label, value, onChange, autoComplete, visible, onToggle
         autoComplete={autoComplete}
         fullWidth
         size="small"
+        required
         InputProps={{
           endAdornment: (
             <InputAdornment position="end">
@@ -56,7 +57,6 @@ function PasswordField({ label, value, onChange, autoComplete, visible, onToggle
           ),
         }}
       />
-      {hint && <Typography variant="caption" color="text.secondary">{hint}</Typography>}
     </Box>
   );
 }
@@ -149,10 +149,6 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     setNotice("");
     if (password !== passwordConfirmation) {
       setError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      setError("Use at least 8 characters with at least one letter and one number.");
       return;
     }
     if (!acceptedTerms) {
@@ -322,7 +318,6 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 autoComplete="new-password"
                 visible={showPassword}
                 onToggle={() => setShowPassword((value) => !value)}
-                hint="At least 8 characters, including a letter and a number."
               />
               <PasswordField
                 label="Confirm password"

@@ -76,6 +76,18 @@ def test_registration_schema_requires_matching_passwords_and_valid_email():
         RegistrationRequest(**{**valid, "email": "not-an-email"})
 
 
+def test_registration_password_has_no_format_requirement():
+    payload = RegistrationRequest(
+        username="researcher",
+        email="researcher@example.com",
+        password="!",
+        password_confirmation="!",
+        verification_code="123456",
+    )
+
+    assert payload.password == "!"
+
+
 def test_development_code_is_issued_and_can_only_be_consumed_once(monkeypatch):
     repository = FakeVerificationRepository()
     monkeypatch.setattr(verification, "verification_code_repository", repository)
