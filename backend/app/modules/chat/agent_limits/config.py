@@ -14,7 +14,7 @@ class AgentToolLimitsConfig(BaseModel):
     """Admin-tunable per-tool call budgets for the ReAct agent (one JSON row)."""
 
     search_internal_documents: int = Field(default=5, ge=1, le=50)
-    search_full_corpus: int = Field(default=5, ge=1, le=50)
+    search_full_corpus: int = Field(default=1, ge=1, le=50)
     ask_user: int = Field(default=20, ge=1, le=50)
     search_web: int = Field(default=4, ge=1, le=50)
     import_web_page: int = Field(default=1, ge=1, le=50)
