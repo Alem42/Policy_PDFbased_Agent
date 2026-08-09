@@ -98,14 +98,14 @@ options are:
 | `APP_ENV` | Runtime environment name | `development` |
 | `APP_DEBUG` | FastAPI debug mode | `true` |
 | `API_V1_PREFIX` | Prefix for application routes | `/api/v1` |
-| `APP_SECRET` | Signs access tokens; replace outside local development | development value |
+| `APP_SECRET` | Optional explicit access-token signing secret | generated file |
+| `APP_SECRET_FILE` | Persisted access-token signing secret | `data/app_secret` |
 | `DATABASE_ENABLED` | Enables the async database lifecycle | `false` |
 | `DATABASE_URL` | PostgreSQL connection URL | local `ai_policy` database |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl web-search credential | empty |
 | `EMBEDDING_MODEL_NAME` | Local embedding model for vector search | `BAAI/bge-small-en-v1.5` |
 | `DEFAULT_EMBEDDING_DIMENSIONS` | Output dimensions of the embedding model | `384` |
 | `MODEL_CACHE_DIR` | Path to cache downloaded HuggingFace models | `data/model_cache` |
-| `ADMIN_REGISTER_SECRET` | Secret required to register admin accounts | empty |
 
 See `app/core/config.py` for the complete list and validation rules. Never commit
 the populated `.env` file.
@@ -253,7 +253,9 @@ Tests use mocked providers and do not perform real web searches.
 
 ## Container deployment
 
-The repository root contains `compose.yaml` and `.env.production.example` for the
-backend and Caddy-served frontend. The Compose stack expects PostgreSQL to be
-provided separately through `DATABASE_URL` and persists backend files by mounting
-`backend/data` into the container.
+The repository root contains a self-contained `compose.yaml` for PostgreSQL/pgvector,
+the backend, and the Caddy-served frontend. No environment file is required. Optional
+deployment overrides are documented in the root `.env.example`; backend files and the
+generated token-signing secret persist under `backend/data`.
+
+See the repository root README for the first-administrator invitation workflow.
