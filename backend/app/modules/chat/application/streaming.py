@@ -160,8 +160,12 @@ async def stream_agent_events(
                     interrupts = chunk["__interrupt__"]
                     value: dict[str, Any] = dict(interrupts[0].value) if interrupts else {}
                     event_type = value.pop("type", "ask_user")
-                    yield encode_sse({"type": event_type, "session_id": session_id, **value})
+                    # Mark the turn paused before yielding control to the client. The
+                    # browser closes this SSE response as soon as it receives the
+                    # prompt; if GeneratorExit lands at the yield, the cleanup path
+                    # must not mark this resumable turn as failed.
                     interrupted = True
+                    yield encode_sse({"type": event_type, "session_id": session_id, **value})
                     break
 
                 if "record_tool_call" in chunk:

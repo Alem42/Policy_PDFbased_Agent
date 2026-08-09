@@ -9,6 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.chat import router as chat_router
+from app.modules.chat.application import streaming
 from app.modules.chat.schemas import ResumeChatRequest
 
 
@@ -45,3 +46,41 @@ async def test_chat_resume_rejects_when_no_paused_turn(monkeypatch: pytest.Monke
         await chat_router.chat_resume(payload, {"id": str(uuid4()), "role": "user"})
 
     assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_closing_interrupt_stream_does_not_fail_paused_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeGraph:
+        async def astream(self, graph_input, *, config, stream_mode):
+            yield "updates", {
+                "__interrupt__": (SimpleNamespace(value={"type": "confirm_import"}),)
+            }
+
+    async def message_steps(_message_id):
+        return []
+
+    failed_messages = []
+
+    async def fail(message_id, content=""):
+        failed_messages.append((message_id, content))
+
+    monkeypatch.setattr(streaming.react_orchestrator, "graph", lambda: FakeGraph())
+    monkeypatch.setattr(streaming.chat_turn_service, "message_steps", message_steps)
+    monkeypatch.setattr(streaming.chat_turn_service, "fail", fail)
+
+    events = streaming.stream_agent_events(
+        {},
+        config={"configurable": {"thread_id": "session-1"}},
+        session_id="session-1",
+        response_mode="researcher",
+        answer_mode="analysis",
+        assistant_message_id="message-1",
+    )
+
+    first_event = await anext(events)
+    await events.aclose()
+
+    assert '"type": "confirm_import"' in first_event
+    assert failed_messages == []

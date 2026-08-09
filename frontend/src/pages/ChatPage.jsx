@@ -113,11 +113,6 @@ const RESPONSE_MODE_OPTIONS = [
     description: "Dense, specialist language for practitioners",
   },
   {
-    value: "policymaker",
-    label: "Policymaker",
-    description: "Document-grounded analysis for policy decision preparation",
-  },
-  {
     value: "student",
     label: "Student",
     description: "Plain language with short explanations",
@@ -155,7 +150,10 @@ function getOptionLabel(options, value) {
 }
 
 function getResponseModeLabel(value) {
-  return getOptionLabel(RESPONSE_MODE_OPTIONS, value);
+  return getOptionLabel(
+    RESPONSE_MODE_OPTIONS,
+    value === "policymaker" ? "researcher" : value,
+  );
 }
 
 // Flattens the /chat/models response ([{provider, provider_label, models}, ...])
@@ -562,6 +560,7 @@ export default function ChatPage({
   // {type, session_id, url, title, question}. Cleared once the user answers.
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const confirmSubmissionRef = useRef(false);
 
   // History state
   const [historySessions, setHistorySessions] = useState([]);
@@ -718,7 +717,7 @@ export default function ChatPage({
   // universal "No" to fall back to. Ignored while typing in the prompt's own
   // text input (freeform question or the "Other" answer box).
   useEffect(() => {
-    if (!pendingConfirm || confirmBusy) return undefined;
+    if (!pendingConfirm || busy || confirmBusy) return undefined;
     const isImport = pendingConfirm.type === "confirm_import";
     const mode = isImport ? "confirm" : pendingConfirm.mode || "confirm";
     const options = isImport
@@ -741,7 +740,7 @@ export default function ChatPage({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [pendingConfirm, confirmBusy]);
+  }, [pendingConfirm, busy, confirmBusy]);
 
   if (!user) {
     return (
@@ -796,7 +795,9 @@ export default function ChatPage({
       })),
     );
     setSessionId(String(detail.id));
-    if (detail.response_mode) setResponseMode(detail.response_mode);
+    if (detail.response_mode) {
+      setResponseMode(detail.response_mode === "policymaker" ? "researcher" : detail.response_mode);
+    }
     const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
     if (detail.response_mode === "policymaker") {
       setAnswerMode("analysis");
@@ -1022,6 +1023,7 @@ export default function ChatPage({
   // streaming assistant message. Returns true if the stream paused on a
   // confirm_* interrupt event, false if it ran to completion ("done").
   async function consumeAgentStream(streamGenerator) {
+    let paused = false;
     for await (const evt of streamGenerator) {
       if (evt.type === "tool_call") {
         setMessages((current) => {
@@ -1104,8 +1106,12 @@ export default function ChatPage({
           return next;
         });
       } else if (evt.type === "ask_user" || evt.type === "confirm_import") {
+        confirmSubmissionRef.current = false;
         setPendingConfirm(evt);
-        return true;
+        // Keep reading until the server closes the interrupted stream. This
+        // lets LangGraph finish persisting/closing its checkpoint before the
+        // confirmation control becomes enabled and sends /chat/resume.
+        paused = true;
       } else if (evt.type === "citations") {
         setMessages((current) => {
           // The turn may have produced no token/tool_call yet (e.g. an error
@@ -1175,7 +1181,7 @@ export default function ChatPage({
         });
       }
     }
-    return false;
+    return paused;
   }
 
   function handleStop() {
@@ -1240,7 +1246,8 @@ export default function ChatPage({
   }
 
   async function handleConfirmResponse(answer) {
-    if (!pendingConfirm) return;
+    if (!pendingConfirm || busy || confirmBusy || confirmSubmissionRef.current) return;
+    confirmSubmissionRef.current = true;
     const { session_id: confirmSessionId } = pendingConfirm;
     setPendingConfirm(null);
     setConfirmBusy(true);
@@ -1823,7 +1830,11 @@ export default function ChatPage({
                 </Box>
               );
             })}
-            <ConfirmPrompt confirm={pendingConfirm} busy={confirmBusy} onAnswer={handleConfirmResponse} />
+            <ConfirmPrompt
+              confirm={pendingConfirm}
+              busy={busy || confirmBusy}
+              onAnswer={handleConfirmResponse}
+            />
             {busy
               && !messages[messages.length - 1]?.streaming
               && !messages[messages.length - 1]?.suggestionsLoading && (
@@ -1903,7 +1914,6 @@ export default function ChatPage({
                     selected={option.value === responseMode}
                     onClick={() => {
                       setResponseMode(option.value);
-                      if (option.value === "policymaker") setAnswerMode("analysis");
                       setResponseModeAnchor(null);
                     }}
                   >
@@ -1917,7 +1927,7 @@ export default function ChatPage({
               <Button
                 variant="outlined"
                 size="small"
-                disabled={busy || responseMode === "policymaker"}
+                disabled={busy}
                 onClick={(event) => setAnswerModeAnchor(event.currentTarget)}
                 aria-haspopup="menu"
                 sx={{
@@ -1947,9 +1957,7 @@ export default function ChatPage({
                 anchorOrigin={{ vertical: "top", horizontal: "left" }}
                 transformOrigin={{ vertical: "bottom", horizontal: "left" }}
               >
-                {ANSWER_MODE_OPTIONS
-                  .filter((option) => responseMode !== "policymaker" || option.value === "analysis")
-                  .map((option) => (
+                {ANSWER_MODE_OPTIONS.map((option) => (
                   <MenuItem
                     key={option.value}
                     selected={option.value === answerMode}

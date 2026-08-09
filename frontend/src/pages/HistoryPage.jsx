@@ -36,7 +36,7 @@ function formatDate(iso) {
 }
 
 function formatResponseMode(mode) {
-  if (mode === "policymaker") return "Policymaker";
+  if (mode === "policymaker") return "Policy Researcher";
   if (mode === "student") return "Student";
   if (mode === "researcher") return "Policy Researcher";
   return mode;
