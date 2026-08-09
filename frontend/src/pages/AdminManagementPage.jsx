@@ -8,12 +8,19 @@ import RerankingSection from "./manage/RerankingSection";
 import WebSearchSection from "./manage/WebSearchSection";
 import SuggestionsSection from "./manage/SuggestionsSection";
 import AgentToolLimitsSection from "./manage/AgentToolLimitsSection";
+import AdminInvitesSection from "./manage/AdminInvitesSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
 
 // Sections shown in the Manage sidebar. Add more here as the admin area grows.
 const SECTIONS = [
+  {
+    id: "admin-invites",
+    label: "Administrator invites",
+    desc: "Create, review and revoke single-use invitation codes for new administrators.",
+    Component: AdminInvitesSection,
+  },
   {
     id: "taxonomy",
     label: "Document categories",

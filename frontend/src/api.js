@@ -118,24 +118,15 @@ export function login(username, password) {
   });
 }
 
-export function requestRegistrationCode(email) {
-  return request("/auth/verification-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-}
-
-export function register({ username, email, password, passwordConfirmation, verificationCode, role, secret }) {
+export function register({ username, email, password, passwordConfirmation, role, inviteCode }) {
   const body = {
     username,
     email,
     password,
     password_confirmation: passwordConfirmation,
-    verification_code: verificationCode,
     role,
   };
-  if (secret) body.secret = secret;
+  if (inviteCode) body.invite_code = inviteCode;
   return request("/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -513,6 +504,22 @@ export function saveAgentToolLimits(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export function getAdminInvites() {
+  return request("/admin/invites");
+}
+
+export function createAdminInvite(expiresInDays) {
+  return request("/admin/invites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expires_in_days: expiresInDays }),
+  });
+}
+
+export function revokeAdminInvite(inviteId) {
+  return request(`/admin/invites/${inviteId}`, { method: "DELETE" });
 }
 
 export function getTaxonomy() {

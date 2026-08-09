@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Box,
@@ -22,10 +22,9 @@ import {
   VisibilityOffOutlined,
   VisibilityOutlined,
 } from "@mui/icons-material";
-import { login, register, requestRegistrationCode, saveAuth } from "../api";
+import { login, register, saveAuth } from "../api";
 
 const GREEN = "#214f42";
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function Label({ children }) {
   return (
@@ -68,36 +67,23 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
   const [role, setRole] = useState("user");
-  const [secret, setSecret] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [codeBusy, setCodeBusy] = useState(false);
-  const [resendSeconds, setResendSeconds] = useState(0);
-  const [developmentCode, setDevelopmentCode] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    if (resendSeconds <= 0) return undefined;
-    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000);
-    return () => window.clearInterval(timer);
-  }, [resendSeconds]);
 
   function resetFields() {
     setUsername("");
     setEmail("");
     setPassword("");
     setPasswordConfirmation("");
-    setVerificationCode("");
     setRole("user");
-    setSecret("");
+    setInviteCode("");
     setAcceptedTerms(false);
-    setDevelopmentCode("");
-    setResendSeconds(0);
   }
 
   function switchMode(next) {
@@ -123,26 +109,6 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
     }
   }
 
-  async function handleSendCode() {
-    setError("");
-    setNotice("");
-    if (!EMAIL_PATTERN.test(email.trim())) {
-      setError("Enter a valid email address before requesting a code.");
-      return;
-    }
-    setCodeBusy(true);
-    try {
-      const result = await requestRegistrationCode(email.trim());
-      setResendSeconds(result.retry_after || 60);
-      setDevelopmentCode(result.development_code || "");
-      setNotice(result.development_code ? "Development verification code created." : result.message);
-    } catch (codeError) {
-      setError(codeError.message);
-    } finally {
-      setCodeBusy(false);
-    }
-  }
-
   async function handleRegister(event) {
     event.preventDefault();
     setError("");
@@ -162,9 +128,8 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
         email: email.trim(),
         password,
         passwordConfirmation,
-        verificationCode,
         role,
-        secret: role === "admin" ? secret : undefined,
+        inviteCode: role === "admin" ? inviteCode : undefined,
       });
       const registeredUsername = username.trim();
       switchMode("login");
@@ -200,18 +165,12 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
           </Typography>
           <Typography variant="body2" align="center" sx={{ mt: 1.2, color: "text.secondary" }}>
             {mode === "login"
-              ? "Use your username or verified email to continue."
-              : "Verify your email, then create credentials for the research workspace."}
+              ? "Use your unique username to continue."
+              : "Enter your email and create credentials for the research workspace."}
           </Typography>
 
           {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}
-          {developmentCode && (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Local demo code: <strong>{developmentCode}</strong>. SMTP deployments send this by email instead.
-            </Alert>
-          )}
-
           {mode === "login" ? (
             <Box component="form" onSubmit={handleLogin} sx={{ mt: 3, display: "grid", gap: 2 }}>
               <ToggleButtonGroup
@@ -225,7 +184,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 <ToggleButton value="admin">Administrator</ToggleButton>
               </ToggleButtonGroup>
               <Box sx={{ display: "grid", gap: 0.5 }}>
-                <Label>Username or email</Label>
+                <Label>Username</Label>
                 <TextField
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
@@ -269,7 +228,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                 <Label>Email</Label>
                 <TextField
                   value={email}
-                  onChange={(event) => { setEmail(event.target.value); setDevelopmentCode(""); }}
+                  onChange={(event) => setEmail(event.target.value)}
                   type="email"
                   autoComplete="email"
                   placeholder="name@example.com"
@@ -277,27 +236,6 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   size="small"
                   required
                 />
-              </Box>
-              <Box sx={{ display: "grid", gap: 0.5, gridColumn: "1 / -1" }}>
-                <Label>Email verification code</Label>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1 }}>
-                  <TextField
-                    value={verificationCode}
-                    onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                    inputProps={{ inputMode: "numeric", pattern: "[0-9]{6}" }}
-                    placeholder="6-digit code"
-                    size="small"
-                    required
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={handleSendCode}
-                    disabled={codeBusy || resendSeconds > 0}
-                    sx={{ minWidth: 128 }}
-                  >
-                    {codeBusy ? "Sending..." : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Send code"}
-                  </Button>
-                </Box>
               </Box>
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Label>Username</Label>
@@ -330,7 +268,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
               <Box sx={{ display: "grid", gap: 0.5 }}>
                 <Label>Account type</Label>
                 <FormControl size="small" fullWidth>
-                  <Select value={role} onChange={(event) => { setRole(event.target.value); setSecret(""); }}>
+                  <Select value={role} onChange={(event) => { setRole(event.target.value); setInviteCode(""); }}>
                     <MenuItem value="user">User (Policy Researcher)</MenuItem>
                     <MenuItem value="admin">Administrator</MenuItem>
                   </Select>
@@ -338,17 +276,18 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
               </Box>
               {role === "admin" && (
                 <Box sx={{ display: "grid", gap: 0.5, gridColumn: "1 / -1" }}>
-                  <Label>Admin registration secret (reserved)</Label>
+                  <Label>Administrator invitation code</Label>
                   <TextField
-                    value={secret}
-                    onChange={(event) => setSecret(event.target.value)}
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value.trim())}
                     type="password"
-                    placeholder="Reserved for a future deployment"
+                    placeholder="Paste the single-use code from an administrator"
                     fullWidth
                     size="small"
+                    required
                   />
                   <Typography variant="caption" color="text.secondary">
-                    This field is a placeholder in the current build and is not validated.
+                    Invitation codes expire and can only be used once.
                   </Typography>
                 </Box>
               )}
