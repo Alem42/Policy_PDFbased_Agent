@@ -1,7 +1,7 @@
 services:
 
   db:
-    image: ankane/pgvector:latest
+    image: pgvector/pgvector:0.8.5-pg15-bookworm
     environment:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: ${DB_PASSWORD:-breadsqlpassword}
@@ -37,6 +37,9 @@ services:
       - ./backend/database/migrations/022_remove_legacy_crawling.sql:/docker-entrypoint-initdb.d/23_migration_022.sql:ro
       - ./backend/database/migrations/023_add_agent_tool_limits.sql:/docker-entrypoint-initdb.d/24_migration_023.sql:ro
       - ./backend/database/migrations/024_add_filter_notice_to_chat_messages.sql:/docker-entrypoint-initdb.d/25_migration_024.sql:ro
+      - ./backend/database/migrations/025_add_admin_invites.sql:/docker-entrypoint-initdb.d/26_migration_025.sql:ro
+      - ./backend/database/migrations/026_remove_email_verification.sql:/docker-entrypoint-initdb.d/27_migration_026.sql:ro
+      - ./backend/database/migrations/027_allow_shared_admin_emails.sql:/docker-entrypoint-initdb.d/28_migration_027.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s
@@ -50,13 +53,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - .env.production
     environment:
       HOME: /app/data
       HF_HOME: /app/data/model_cache/huggingface
+      APP_NAME: Policy in Action Library Backend
+      APP_ENV: production
+      APP_DEBUG: "false"
+      API_V1_PREFIX: /api/v1
+      APP_SECRET: ${APP_SECRET:-}
+      APP_SECRET_FILE: /app/data/app_secret
       DATABASE_ENABLED: "true"
       DATABASE_URL: postgresql+asyncpg://appuser:${DB_PASSWORD:-breadsqlpassword}@db:5432/testdb
+      DATABASE_POOL_PRE_PING: "true"
+      DOCUMENT_STORAGE_DIR: data/pdfs
+      VECTOR_INDEX_DIR: data/vector_index
     volumes:
       - ./backend/data:/app/data
     restart: unless-stopped
