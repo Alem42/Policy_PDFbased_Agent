@@ -4,18 +4,37 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
+from pathlib import Path
 
-from app.core.config import get_settings
+from app.core.config import get_settings, resolve_backend_path
+from app.modules.auth.invites import hash_invite_code
 from app.modules.auth.repository import user_repository
 
 TOKEN_TTL_SECONDS = 60 * 60 * 24
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
 
 
-def _secret_key() -> bytes:
-    return get_settings().app_secret.encode("utf-8")
+def application_secret_key() -> bytes:
+    settings = get_settings()
+    if settings.app_secret:
+        return settings.app_secret.encode("utf-8")
+
+    secret_path: Path = resolve_backend_path(settings.app_secret_file)
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as secret_file:
+            secret_file.write(secrets.token_urlsafe(48))
+    secret = secret_path.read_text(encoding="utf-8").strip()
+    if len(secret) < 32:
+        raise RuntimeError("APP_SECRET_FILE must contain at least 32 characters.")
+    return secret.encode("utf-8")
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -50,7 +69,6 @@ def public_user(row: dict) -> dict:
         "uid": row["uid"],
         "username": row["username"],
         "email": row.get("email"),
-        "email_verified": row.get("email_verified_at") is not None,
         "role": row["role"],
         "created_at": row["created_at"].isoformat(),
     }
@@ -61,7 +79,7 @@ def create_user(
     email: str,
     password: str,
     role: str | None = None,
-    secret: str | None = None,
+    invite_code: str | None = None,
 ) -> dict:
     clean_username = username.strip()
     clean_email = email.strip().lower()
@@ -72,11 +90,17 @@ def create_user(
     clean_role = role or "user"
     if clean_role not in {"admin", "user"}:
         raise ValueError("Role must be admin or user.")
-    # TEMP: admin secret check disabled for development
-    # if clean_role == "admin":
-    #     configured_secret = get_settings().admin_register_secret
-    #     if not configured_secret or secret != configured_secret:
-    #         raise ValueError("Invalid admin registration secret.")
+    if clean_role == "admin":
+        if not invite_code:
+            raise ValueError("A valid administrator invitation code is required.")
+        return public_user(
+            user_repository.create_admin_with_invite(
+                clean_username,
+                clean_email,
+                hash_password(password),
+                hash_invite_code(invite_code),
+            )
+        )
     row = user_repository.create(clean_username, clean_email, hash_password(password), clean_role)
     return public_user(row)
 
@@ -96,7 +120,9 @@ def create_access_token(user: dict) -> str:
         "exp": int(time.time()) + TOKEN_TTL_SECONDS,
     }
     payload_part = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
-    signature = hmac.new(_secret_key(), payload_part.encode("ascii"), hashlib.sha256).digest()
+    signature = hmac.new(
+        application_secret_key(), payload_part.encode("ascii"), hashlib.sha256
+    ).digest()
     return f"{payload_part}.{_b64url_encode(signature)}"
 
 
@@ -106,7 +132,7 @@ def decode_access_token(token: str) -> dict:
     except ValueError as exc:
         raise ValueError("Invalid token.") from exc
     expected_signature = hmac.new(
-        _secret_key(), payload_part.encode("ascii"), hashlib.sha256
+        application_secret_key(), payload_part.encode("ascii"), hashlib.sha256
     ).digest()
     if not hmac.compare_digest(_b64url_encode(expected_signature), signature_part):
         raise ValueError("Invalid token signature.")

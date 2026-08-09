@@ -22,12 +22,31 @@ def test_every_migration_file_is_mounted_by_compose() -> None:
     assert not missing, f"Migrations not mounted in compose.yaml: {missing}"
 
 
-def test_email_verification_schema_and_migration_are_available() -> None:
+def test_email_verification_schema_is_removed() -> None:
     init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
     compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
-    assert '"email_verification_codes"' in init_sql
-    assert '"email_verified_at"' in init_sql
-    assert "021_add_email_verification.sql" in compose
+    assert '"email_verification_codes"' not in init_sql
+    assert '"email_verified_at"' not in init_sql
+    assert "026_remove_email_verification.sql" in compose
+
+
+def test_admin_invitation_schema_and_migration_are_available() -> None:
+    init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
+    compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert '"admin_invites"' in init_sql
+    assert '"code_hash"' in init_sql
+    assert "025_add_admin_invites.sql" in compose
+
+
+def test_email_is_not_a_unique_account_identifier() -> None:
+    init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
+    compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    migration = (
+        BACKEND_ROOT / "database" / "migrations" / "027_allow_shared_admin_emails.sql"
+    ).read_text(encoding="utf-8")
+    assert "app_users_email_lower_key" not in init_sql
+    assert "DROP INDEX" in migration
+    assert "027_allow_shared_admin_emails.sql" in compose
 
 
 def test_legacy_crawling_schema_is_removed() -> None:

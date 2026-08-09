@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -20,9 +21,8 @@ class RegistrationRequest(BaseModel):
     email: str = Field(min_length=5, max_length=320)
     password: str = Field(min_length=1, max_length=256)
     password_confirmation: str = Field(min_length=1, max_length=256)
-    verification_code: str = Field(pattern=r"^\d{6}$")
     role: UserRole | None = None
-    secret: str | None = None
+    invite_code: str | None = Field(default=None, min_length=20, max_length=256)
 
     @field_validator("email")
     @classmethod
@@ -39,31 +39,11 @@ class RegistrationRequest(BaseModel):
         return self
 
 
-class VerificationCodeRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=320)
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, value: str) -> str:
-        clean = value.strip().lower()
-        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", clean):
-            raise ValueError("Enter a valid email address.")
-        return clean
-
-
-class VerificationCodeResponse(BaseModel):
-    message: str
-    expires_in: int
-    retry_after: int
-    development_code: str | None = None
-
-
 class UserResponse(BaseModel):
     id: str
     uid: str
     username: str
     email: str | None = None
-    email_verified: bool = False
     role: UserRole
     created_at: str
 
@@ -71,3 +51,23 @@ class UserResponse(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: UserResponse
+
+
+class AdminInviteCreateRequest(BaseModel):
+    expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class AdminInviteResponse(BaseModel):
+    id: str
+    code_prefix: str
+    created_by_username: str | None = None
+    consumed_by_username: str | None = None
+    expires_at: datetime
+    consumed_at: datetime | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime
+    status: str
+
+
+class AdminInviteCreatedResponse(AdminInviteResponse):
+    invite_code: str

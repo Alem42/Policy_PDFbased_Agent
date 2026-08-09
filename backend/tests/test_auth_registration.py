@@ -1,62 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-from psycopg.errors import UndefinedTable
 from pydantic import ValidationError
 
-from app.modules.auth import router, service, verification
-from app.modules.auth.schemas import RegistrationRequest, VerificationCodeRequest
-
-
-class FakeVerificationRepository:
-    def __init__(self) -> None:
-        self.row = None
-        self.failed_attempts = 0
-        self.consumed = False
-
-    def latest(self, email):
-        return self.row
-
-    def create(self, email, code_hash, expires_at):
-        self.row = {
-            "id": uuid4(),
-            "email": email,
-            "code_hash": code_hash,
-            "expires_at": expires_at,
-            "consumed_at": None,
-            "attempt_count": 0,
-            "created_at": datetime.now(UTC),
-        }
-        return self.row
-
-    def record_failed_attempt(self, code_id):
-        self.failed_attempts += 1
-        self.row["attempt_count"] += 1
-
-    def consume(self, code_id):
-        self.consumed = True
-        self.row["consumed_at"] = datetime.now(UTC)
-        return True
-
-    def revoke(self, code_id):
-        self.row = None
-
-
-def _settings(**overrides):
-    values = {
-        "app_secret": "test-secret",
-        "email_verification_mode": "development",
-        "email_verification_code_ttl_seconds": 600,
-        "email_verification_resend_seconds": 60,
-        "email_verification_max_attempts": 5,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
+from app.modules.auth import invites, service
+from app.modules.auth.schemas import RegistrationRequest
 
 
 def test_registration_schema_requires_matching_passwords_and_valid_email():
@@ -65,7 +16,6 @@ def test_registration_schema_requires_matching_passwords_and_valid_email():
         "email": "Researcher@Example.com",
         "password": "Policy123",
         "password_confirmation": "Policy123",
-        "verification_code": "123456",
     }
     payload = RegistrationRequest(**valid)
     assert payload.email == "researcher@example.com"
@@ -76,112 +26,101 @@ def test_registration_schema_requires_matching_passwords_and_valid_email():
         RegistrationRequest(**{**valid, "email": "not-an-email"})
 
 
-def test_registration_password_has_no_format_requirement():
+def test_registration_does_not_require_an_email_verification_code():
     payload = RegistrationRequest(
         username="researcher",
         email="researcher@example.com",
         password="!",
         password_confirmation="!",
-        verification_code="123456",
     )
 
-    assert payload.password == "!"
+    assert payload.email == "researcher@example.com"
+    assert "verification_code" not in payload.model_dump()
 
 
-def test_development_code_is_issued_and_can_only_be_consumed_once(monkeypatch):
-    repository = FakeVerificationRepository()
-    monkeypatch.setattr(verification, "verification_code_repository", repository)
-    monkeypatch.setattr(verification, "get_settings", lambda: _settings())
-    monkeypatch.setattr(verification.secrets, "randbelow", lambda limit: 123456)
-
-    result = verification.issue_verification_code("User@Example.com")
-    assert result["development_code"] == "123456"
-
-    verification.consume_verification_code("user@example.com", "123456")
-    assert repository.consumed is True
-    with pytest.raises(ValueError, match="Request a new"):
-        verification.consume_verification_code("user@example.com", "123456")
-
-
-def test_incorrect_code_records_attempt_without_consuming(monkeypatch):
-    repository = FakeVerificationRepository()
-    monkeypatch.setattr(verification, "verification_code_repository", repository)
-    monkeypatch.setattr(verification, "get_settings", lambda: _settings())
-    monkeypatch.setattr(verification.secrets, "randbelow", lambda limit: 123456)
-    verification.issue_verification_code("user@example.com")
-
-    with pytest.raises(ValueError, match="incorrect"):
-        verification.consume_verification_code("user@example.com", "000000")
-    assert repository.failed_attempts == 1
-    assert repository.consumed is False
-
-
-def test_expired_code_is_rejected(monkeypatch):
-    repository = FakeVerificationRepository()
-    repository.row = {
-        "id": uuid4(),
-        "email": "user@example.com",
-        "code_hash": "unused",
-        "expires_at": datetime.now(UTC) - timedelta(seconds=1),
-        "consumed_at": None,
-        "attempt_count": 0,
-        "created_at": datetime.now(UTC) - timedelta(minutes=11),
-    }
-    monkeypatch.setattr(verification, "verification_code_repository", repository)
-    monkeypatch.setattr(verification, "get_settings", lambda: _settings())
-
-    with pytest.raises(ValueError, match="expired"):
-        verification.consume_verification_code("user@example.com", "123456")
-
-
-def test_delivery_failure_revokes_unusable_code(monkeypatch):
-    repository = FakeVerificationRepository()
-    monkeypatch.setattr(verification, "verification_code_repository", repository)
-    monkeypatch.setattr(
-        verification, "get_settings", lambda: _settings(email_verification_mode="smtp")
-    )
-    monkeypatch.setattr(
-        verification,
-        "_send_smtp_code",
-        lambda email, code: (_ for _ in ()).throw(OSError("mail server unavailable")),
-    )
-
-    with pytest.raises(verification.EmailDeliveryError):
-        verification.issue_verification_code("user@example.com")
-    assert repository.row is None
-
-
-@pytest.mark.asyncio
-async def test_missing_auth_migration_returns_actionable_503(monkeypatch):
-    def missing_table(email):
-        raise UndefinedTable("email_verification_codes does not exist")
-
-    monkeypatch.setattr(router, "issue_verification_code", missing_table)
-    with pytest.raises(HTTPException) as caught:
-        await router.verification_code(VerificationCodeRequest(email="user@example.com"))
-
-    assert caught.value.status_code == 503
-    assert "021_add_email_verification.sql" in caught.value.detail
-
-
-def test_admin_secret_remains_a_non_enforced_placeholder(monkeypatch):
+def test_admin_registration_requires_and_consumes_an_invite(monkeypatch):
     captured = {}
 
-    def create(username, email, password_hash, role):
-        captured.update(username=username, email=email, role=role)
+    def create_admin(username, email, password_hash, invite_hash):
+        captured.update(
+            username=username,
+            email=email,
+            role="admin",
+            invite_hash=invite_hash,
+        )
         return {
             "id": uuid4(),
             "uid": "00001",
             "username": username,
             "email": email,
-            "email_verified_at": datetime.now(UTC),
-            "role": role,
+            "role": "admin",
             "created_at": datetime.now(UTC),
         }
 
-    monkeypatch.setattr(service.user_repository, "create", create)
+    monkeypatch.setattr(service.user_repository, "create_admin_with_invite", create_admin)
+    with pytest.raises(ValueError, match="invitation code"):
+        service.create_user("admin-user", "admin@example.com", "Password1", "admin")
+
     user = service.create_user(
-        "admin-user", "admin@example.com", "Password1", "admin", secret="anything"
+        "admin-user",
+        "admin@example.com",
+        "Password1",
+        "admin",
+        invite_code="a-secure-single-use-invitation",
     )
     assert captured["role"] == "admin"
-    assert user["email_verified"] is True
+    assert len(captured["invite_hash"]) == 64
+    assert user["email"] == "admin@example.com"
+
+
+def test_invitation_plaintext_is_returned_once_and_only_hash_is_persisted(monkeypatch):
+    captured = {}
+
+    def create(**values):
+        captured.update(values)
+        return {
+            "id": uuid4(),
+            "code_prefix": values["code_prefix"],
+            "created_by_user_id": values["created_by_user_id"],
+            "expires_at": values["expires_at"],
+            "consumed_at": None,
+            "revoked_at": None,
+            "created_at": datetime.now(UTC),
+        }
+
+    monkeypatch.setattr(invites.admin_invite_repository, "create", create)
+    monkeypatch.setattr(
+        invites.secrets,
+        "token_urlsafe",
+        lambda length: "invite-code-with-high-entropy",
+    )
+
+    result = invites.create_invite(created_by_user_id="admin-id", expires_in_days=7)
+
+    assert result["invite_code"] == "invite-code-with-high-entropy"
+    assert captured["code_hash"] == invites.hash_invite_code(result["invite_code"])
+    assert captured["code_hash"] != result["invite_code"]
+    assert "code_hash" not in result
+
+
+def test_bootstrap_invitation_is_disabled_after_first_admin(monkeypatch):
+    monkeypatch.setattr(invites.user_repository, "admin_exists", lambda: True)
+
+    with pytest.raises(ValueError, match="already exists"):
+        invites.create_bootstrap_invite()
+
+
+def test_generated_app_secret_is_persisted_and_reused(tmp_path, monkeypatch):
+    settings = type(
+        "Settings",
+        (),
+        {"app_secret": None, "app_secret_file": tmp_path / "app_secret"},
+    )()
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+
+    first = service.application_secret_key()
+    second = service.application_secret_key()
+
+    assert first == second
+    assert len(first) >= 32
+    assert (tmp_path / "app_secret").read_bytes() == first

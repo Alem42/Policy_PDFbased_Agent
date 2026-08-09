@@ -43,7 +43,6 @@ CREATE TABLE "public"."app_users" (
   "uid" text COLLATE "pg_catalog"."default" NOT NULL,
   "username" text COLLATE "pg_catalog"."default" NOT NULL,
   "email" text COLLATE "pg_catalog"."default",
-  "email_verified_at" timestamptz(6),
   "password_hash" text COLLATE "pg_catalog"."default" NOT NULL,
   "role" text COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'user'::text,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
@@ -52,26 +51,26 @@ CREATE TABLE "public"."app_users" (
 ;
 
 -- ----------------------------
--- Table structure for email_verification_codes
+-- Table structure for single-use administrator invitations
 -- ----------------------------
-DROP TABLE IF EXISTS "public"."email_verification_codes";
-CREATE TABLE "public"."email_verification_codes" (
+DROP TABLE IF EXISTS "public"."admin_invites";
+CREATE TABLE "public"."admin_invites" (
   "id" uuid PRIMARY KEY,
-  "email" text COLLATE "pg_catalog"."default" NOT NULL,
-  "code_hash" text COLLATE "pg_catalog"."default" NOT NULL,
-  "expires_at" timestamptz(6) NOT NULL,
-  "consumed_at" timestamptz(6),
-  "attempt_count" integer NOT NULL DEFAULT 0,
-  "created_at" timestamptz(6) NOT NULL DEFAULT now(),
-  CONSTRAINT "email_verification_attempt_count_check"
-    CHECK (attempt_count >= 0)
-)
-;
+  "code_hash" text NOT NULL UNIQUE,
+  "code_prefix" text NOT NULL,
+  "created_by_user_id" uuid REFERENCES "public"."app_users"("id"),
+  "consumed_by_user_id" uuid REFERENCES "public"."app_users"("id"),
+  "expires_at" timestamptz NOT NULL,
+  "consumed_at" timestamptz,
+  "revoked_at" timestamptz,
+  "created_at" timestamptz NOT NULL DEFAULT now()
+);
 
-CREATE INDEX "idx_email_verification_codes_email_created"
-  ON "public"."email_verification_codes" (lower("email"), "created_at" DESC);
-CREATE UNIQUE INDEX "app_users_email_lower_key"
-  ON "public"."app_users" (lower("email")) WHERE "email" IS NOT NULL;
+CREATE INDEX "idx_admin_invites_created_at"
+  ON "public"."admin_invites" ("created_at" DESC);
+CREATE INDEX "idx_admin_invites_active"
+  ON "public"."admin_invites" ("expires_at")
+  WHERE "consumed_at" IS NULL AND "revoked_at" IS NULL;
 
 -- ----------------------------
 -- Table structure for chunk_embeddings
