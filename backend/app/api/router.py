@@ -6,6 +6,7 @@ from app.modules.catalog.router import router as catalog_admin_router
 from app.modules.chat.agent_limits.router import router as agent_tool_limits_router
 from app.modules.chat.history_router import router as chat_history_router
 from app.modules.chat.router import router as chat_router
+from app.modules.chat.runtime.router import router as agent_runs_admin_router
 from app.modules.chat.suggestions.router import admin_router as suggestions_admin_router
 from app.modules.chat.suggestions.router import user_router as suggestions_user_router
 from app.modules.documents.admin_router import router as admin_documents_router
@@ -30,6 +31,7 @@ api_router.include_router(admin_documents_router)
 api_router.include_router(embedding_admin_router)
 api_router.include_router(reranking_admin_router)
 api_router.include_router(agent_tool_limits_router)
+api_router.include_router(agent_runs_admin_router)
 api_router.include_router(catalog_admin_router)
 api_router.include_router(taxonomy_router)
 api_router.include_router(settings_router)
