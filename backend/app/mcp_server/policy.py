@@ -4,17 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
 
 from app.modules.chat.capabilities import PolicySearchCapability, PolicySearchRequest
 from app.modules.chat.capabilities.policy_search import policy_search_capability
+from app.modules.chat.domain.modes import ChatExecutionProfile
+from app.modules.chat.runtime.context import AgentRunContext, build_agent_run_context
+from app.modules.chat.runtime.observer import RunObserver, elapsed_ms
+from app.modules.chat.runtime.postgres_sink import PostgresRunEventSink
+from app.modules.chat.runtime.sink import RunEventSink
 from app.modules.retrieval.contracts import MetadataFilters, RetrievalResult
 
 MCPSourcePolicy = Literal["selected_only", "library_allowed"]
 SearchScope = Literal["selected", "library"]
+EventSinkFactory = Callable[[AgentRunContext], RunEventSink]
 
 
 @dataclass(frozen=True)
@@ -46,6 +55,7 @@ class MCPAccessPolicy:
 class MCPPolicySearchRuntime:
     capability: PolicySearchCapability
     policy: MCPAccessPolicy
+    event_sink_factory: EventSinkFactory
     _calls_used: int = 0
     _budget_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -87,25 +97,57 @@ class MCPPolicySearchRuntime:
                 raise RuntimeError("MCP policy-search call budget exhausted.")
             self._calls_used += 1
 
-        result = await asyncio.to_thread(
-            self.capability.search,
-            PolicySearchRequest(
-                query=normalized_query,
-                scope=scope,
-                identifiers=tuple(identifiers),
-                top_k=top_k,
-                include_restricted=False,
-                metadata_filters=MetadataFilters(
-                    policy_areas=tuple(policy_areas),
-                    country_regions=tuple(country_regions),
-                    source_organisations=tuple(source_organisations),
-                    languages=tuple(languages),
-                    tags=tuple(tags),
-                    year_from=year_from,
-                    year_to=year_to,
-                    freshness_requested=freshness_requested,
+        run_context = _mcp_run_context(scope, top_k)
+        observer = RunObserver(run_context, self.event_sink_factory(run_context))
+        await observer.start()
+        await observer.emit(
+            "tool_call_started",
+            tool_name="search_policy_documents",
+            public_metadata={"scope": scope, "agent_mode": "mcp"},
+        )
+        search_started_at = time.perf_counter()
+        try:
+            result = await asyncio.to_thread(
+                self.capability.search,
+                PolicySearchRequest(
+                    query=normalized_query,
+                    scope=scope,
+                    identifiers=tuple(identifiers),
+                    top_k=top_k,
+                    include_restricted=False,
+                    metadata_filters=MetadataFilters(
+                        policy_areas=tuple(policy_areas),
+                        country_regions=tuple(country_regions),
+                        source_organisations=tuple(source_organisations),
+                        languages=tuple(languages),
+                        tags=tuple(tags),
+                        year_from=year_from,
+                        year_to=year_to,
+                        freshness_requested=freshness_requested,
+                    ),
                 ),
-            ),
+            )
+        except Exception as exc:
+            await observer.fail(exc)
+            raise
+        await observer.emit(
+            "tool_call_finished",
+            tool_name="search_policy_documents",
+            duration_ms=elapsed_ms(search_started_at),
+            status="succeeded",
+            public_metadata={
+                "scope": scope,
+                "citation_count": len(result.citations),
+                "evidence_sufficient": result.evidence.sufficient,
+            },
+        )
+        await observer.finish(
+            public_metadata={
+                "agent_mode": "mcp",
+                "scope": scope,
+                "citation_count": len(result.citations),
+                "evidence_sufficient": result.evidence.sufficient,
+            }
         )
         return _public_result(result, scope, self.calls_remaining)
 
@@ -113,9 +155,10 @@ class MCPPolicySearchRuntime:
 def build_policy_mcp_server(
     capability: PolicySearchCapability = policy_search_capability,
     policy: MCPAccessPolicy | None = None,
+    event_sink_factory: EventSinkFactory = PostgresRunEventSink,
 ) -> FastMCP:
     access_policy = policy or MCPAccessPolicy.from_environment()
-    runtime = MCPPolicySearchRuntime(capability, access_policy)
+    runtime = MCPPolicySearchRuntime(capability, access_policy, event_sink_factory)
     server = FastMCP(
         name="Policy PDF Agent",
         instructions=(
@@ -226,3 +269,26 @@ def _integer_environment(name: str, default: int) -> int:
         return int(raw)
     except ValueError as exc:
         raise ValueError(f"{name} must be an integer.") from exc
+
+
+def _mcp_run_context(scope: SearchScope, top_k: int) -> AgentRunContext:
+    source_policy = "selected_only" if scope == "selected" else "library_allowed"
+    return build_agent_run_context(
+        run_id=str(uuid4()),
+        session_id="mcp:policy-search",
+        assistant_message_id=None,
+        user_id="mcp:stdio-client",
+        is_admin=False,
+        profile=ChatExecutionProfile(
+            workflow_mode="research",
+            source_policy=source_policy,
+            output_format="adaptive",
+        ),
+        model=None,
+        configuration={
+            "transport": "mcp-stdio",
+            "source_policy": source_policy,
+            "top_k": top_k,
+            "include_restricted": False,
+        },
+    )

@@ -33,6 +33,11 @@ POLICY_MCP_MAX_TOP_K=12
 
 The safe default is `selected_only`. A model cannot request library scope unless the process owner explicitly starts the server with `library_allowed`. Search calls consume a process-local budget; status calls do not.
 
+Each accepted search also emits the same durable run events used by the chat runtime. With
+migration `028_add_agent_run_events.sql` applied, MCP searches appear in the Admin Console's
+**Agent Runs** view under the synthetic `mcp:policy-search` session. Telemetry failures are
+isolated and never change the search result.
+
 ## Example host configuration
 
 Replace the working directory and Python executable with values for the deployment environment:
