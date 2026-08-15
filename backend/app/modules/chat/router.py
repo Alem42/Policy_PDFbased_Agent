@@ -22,7 +22,8 @@ from app.modules.chat.domain.modes import profile_from_legacy
 from app.modules.chat.orchestration.direct import direct_orchestrator
 from app.modules.chat.orchestration.react import react_orchestrator
 from app.modules.chat.rag.graph.state import normalize_answer_mode
-from app.modules.chat.runtime.context import build_agent_run_context
+from app.modules.chat.runtime.context import AgentRunContext, build_agent_run_context
+from app.modules.chat.runtime.postgres_sink import PostgresRunEventSink
 from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
@@ -295,6 +296,7 @@ async def chat_stream(
                 user_id=user_id,
                 metadata_filters=metadata_filters.as_dict(),
                 run_context=run_context,
+                event_sink=PostgresRunEventSink(run_context),
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -380,6 +382,8 @@ async def chat_stream(
             response_mode=payload.response_mode,
             answer_mode=effective_answer_mode,
             assistant_message_id=assistant_message_id,
+            run_context=run_context,
+            event_sink=PostgresRunEventSink(run_context),
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -411,6 +415,10 @@ async def chat_resume(
     response_mode = state.values.get("response_mode", "researcher")
     answer_mode = state.values.get("answer_mode", "analysis")
     assistant_message_id = state.values.get("assistant_message_id")
+    stored_run_context = state.values.get("run_context")
+    run_context = (
+        AgentRunContext.from_dict(stored_run_context) if stored_run_context else None
+    )
 
     return StreamingResponse(
         stream_agent_events(
@@ -420,6 +428,8 @@ async def chat_resume(
             response_mode=response_mode,
             answer_mode=answer_mode,
             assistant_message_id=assistant_message_id,
+            run_context=run_context,
+            event_sink=PostgresRunEventSink(run_context) if run_context else None,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

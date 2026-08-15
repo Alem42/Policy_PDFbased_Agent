@@ -37,7 +37,14 @@ PUBLIC_METADATA_KEYS = frozenset(
     }
 )
 TOKEN_USAGE_KEYS = frozenset(
-    {"input_tokens", "output_tokens", "total_tokens", "cached_input_tokens"}
+    {
+        "input_tokens",
+        "output_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cached_input_tokens",
+    }
 )
 
 

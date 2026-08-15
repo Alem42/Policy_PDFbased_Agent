@@ -32,6 +32,8 @@ from app.modules.chat.rag.generation import generate_answer_streaming, resolve_g
 from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
 from app.modules.chat.runtime.context import AgentRunContext
+from app.modules.chat.runtime.observer import RunObserver, elapsed_ms
+from app.modules.chat.runtime.sink import NullRunEventSink, RunEventSink
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.generator import generate_followup_suggestions
 
@@ -125,6 +127,8 @@ async def stream_agent_events(
     response_mode: str,
     answer_mode: str,
     assistant_message_id: str,
+    run_context: AgentRunContext | None = None,
+    event_sink: RunEventSink | None = None,
 ) -> AsyncGenerator[str, None]:
     """Drive the persisted ReAct graph and emit the frontend SSE protocol."""
 
@@ -133,6 +137,11 @@ async def stream_agent_events(
     steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
     interrupted = False
     finalized = False
+    observer = RunObserver(run_context, event_sink or NullRunEventSink()) if run_context else None
+    model_started_at = time.perf_counter()
+    model_active = True
+    active_tool_name: str | None = None
+    tool_started_at: float | None = None
     # Re-derive the filter warning from steps persisted before an interrupt,
     # so a resumed turn doesn't lose a fallback that happened pre-interrupt.
     # Same set/reset rules as the live loop below.
@@ -144,6 +153,9 @@ async def stream_agent_events(
             fallback_notice = None
 
     try:
+        if observer:
+            await observer.start(resumed=isinstance(graph_input, Command))
+            await observer.emit("model_call_started", node_name="agent")
         async with aclosing(
             graph.astream(graph_input, config=config, stream_mode=["updates", "messages"])
         ) as stream:
@@ -153,6 +165,8 @@ async def stream_agent_events(
                     if meta.get("langgraph_node") == "final_generation" and getattr(
                         message, "content", None
                     ):
+                        if observer:
+                            await observer.first_token(node_name="final_generation")
                         full_tokens.append(message.content)
                         yield encode_sse({"type": "token", "value": message.content})
                     continue
@@ -172,6 +186,22 @@ async def stream_agent_events(
                 if "record_tool_call" in chunk:
                     call = chunk["record_tool_call"].get("last_tool_call")
                     if call:
+                        if observer and model_active:
+                            await observer.emit(
+                                "model_call_finished",
+                                node_name="agent",
+                                duration_ms=elapsed_ms(model_started_at),
+                                status="succeeded",
+                            )
+                            model_active = False
+                        active_tool_name = call.get("name") or call.get("tool")
+                        tool_started_at = time.perf_counter()
+                        if observer:
+                            await observer.emit(
+                                "tool_call_started",
+                                node_name="tools",
+                                tool_name=active_tool_name,
+                            )
                         reflection = call.get("reflection_on_previous_result")
                         if reflection and steps:
                             steps[-1]["reflection"] = reflection
@@ -182,6 +212,25 @@ async def stream_agent_events(
                 if "tools" in chunk:
                     for message in chunk["tools"].get("messages", []):
                         result_event = tool_result_event(message)
+                        if observer:
+                            await observer.emit(
+                                "tool_call_finished",
+                                node_name="tools",
+                                tool_name=active_tool_name or result_event.get("name"),
+                                duration_ms=(
+                                    elapsed_ms(tool_started_at) if tool_started_at else None
+                                ),
+                                status="succeeded",
+                                public_metadata={
+                                    "evidence_sufficient": result_event.get(
+                                        "evidence_sufficient"
+                                    ),
+                                    "result_count": len(result_event.get("results") or []),
+                                },
+                            )
+                            model_started_at = time.perf_counter()
+                            model_active = True
+                            await observer.emit("model_call_started", node_name="agent")
                         if result_event.get("filter_fallback") and result_event.get(
                             "filter_notice"
                         ):
@@ -203,6 +252,8 @@ async def stream_agent_events(
                 if "insufficient_evidence" in chunk:
                     for message in chunk["insufficient_evidence"].get("messages", []):
                         content = getattr(message, "content", "") or ""
+                        if content and observer:
+                            await observer.first_token(node_name="insufficient_evidence")
                         full_tokens.append(content)
                         yield encode_sse({"type": "token", "value": content})
 
@@ -224,6 +275,15 @@ async def stream_agent_events(
         reported_sources = cited_evidence_sources(evidence_sources, citations, answer)
         token_usage = aggregate_turn_token_usage(messages)
 
+        if observer and model_active:
+            await observer.emit(
+                "model_call_finished",
+                node_name="final_generation",
+                duration_ms=elapsed_ms(model_started_at),
+                token_usage=token_usage,
+                status="succeeded",
+            )
+
         await chat_turn_service.finalize_message(
             assistant_message_id,
             answer,
@@ -239,6 +299,15 @@ async def stream_agent_events(
         )
         finalized = True
         await chat_turn_service.touch(session_id)
+        if observer:
+            await observer.finish(
+                token_usage=token_usage,
+                public_metadata={
+                    "citation_count": len(citations),
+                    "evidence_sufficient": evidence_sufficient,
+                    "model": resolved_model,
+                },
+            )
 
         yield encode_sse(
             {
@@ -288,20 +357,28 @@ async def stream_agent_events(
         # and never reaches the handlers below).
         if not finalized and not interrupted:
             await _finalize_as_error(assistant_message_id, full_tokens)
+            if observer:
+                await observer.fail(GeneratorExit())
         raise
-    except TimeoutError:
+    except TimeoutError as exc:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
         # A failure after the successful finalize (e.g. in the suggestion
         # tail) must not retroactively mark a completed answer as errored.
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})
 
 
@@ -321,12 +398,18 @@ async def stream_direct_events(
     user_id: str | None = None,
     metadata_filters: dict | None = None,
     run_context: AgentRunContext | None = None,
+    event_sink: RunEventSink | None = None,
 ) -> AsyncGenerator[str, None]:
     """Drive the fixed one-retrieval Direct path and emit the same SSE protocol."""
 
     full_tokens: list[str] = []
     finalized = False
+    observer = RunObserver(run_context, event_sink or NullRunEventSink()) if run_context else None
     try:
+        if observer:
+            await observer.start()
+            await observer.emit("tool_call_started", tool_name="policy_search")
+        retrieval_started_at = time.perf_counter()
         state = await asyncio.wait_for(
             asyncio.to_thread(
                 direct_orchestrator.retrieve,
@@ -344,6 +427,18 @@ async def stream_direct_events(
             ),
             timeout=120.0,
         )
+        if observer:
+            await observer.emit(
+                "tool_call_finished",
+                tool_name="policy_search",
+                duration_ms=elapsed_ms(retrieval_started_at),
+                status="succeeded",
+                public_metadata={
+                    "scope": "selected",
+                    "citation_count": len(state.get("citations", [])),
+                    "evidence_sufficient": state.get("evidence_sufficient", False),
+                },
+            )
 
         citations = state.get("citations", [])
         provider, selected_model, _config = resolve_generation_target(model)
@@ -358,8 +453,13 @@ async def stream_direct_events(
                 mode=response_mode,
             )
             full_tokens.append(answer)
+            if observer:
+                await observer.first_token(node_name="insufficient_evidence")
             yield encode_sse({"type": "token", "value": answer})
         else:
+            model_started_at = time.perf_counter()
+            if observer:
+                await observer.emit("model_call_started", node_name="generate_answer")
             async for chunk in generate_answer_streaming(
                 question=question,
                 context=state.get("context", ""),
@@ -370,7 +470,16 @@ async def stream_direct_events(
                 answer_mode=answer_mode,
             ):
                 full_tokens.append(chunk)
+                if observer:
+                    await observer.first_token(node_name="generate_answer")
                 yield encode_sse({"type": "token", "value": chunk})
+            if observer:
+                await observer.emit(
+                    "model_call_finished",
+                    node_name="generate_answer",
+                    duration_ms=elapsed_ms(model_started_at),
+                    status="succeeded",
+                )
 
         answer = "".join(full_tokens)
         evidence_sufficient = state.get("evidence_sufficient", False)
@@ -390,6 +499,14 @@ async def stream_direct_events(
         )
         finalized = True
         await chat_turn_service.touch(session_id)
+        if observer:
+            await observer.finish(
+                public_metadata={
+                    "citation_count": len(citations),
+                    "evidence_sufficient": evidence_sufficient,
+                    "model": resolved_model,
+                }
+            )
 
         yield encode_sse(
             {
@@ -427,16 +544,24 @@ async def stream_direct_events(
     except GeneratorExit:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+            if observer:
+                await observer.fail(GeneratorExit())
         raise
-    except TimeoutError:
+    except TimeoutError as exc:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": "Request timed out."})
     except (FileNotFoundError, ValueError) as exc:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": str(exc)})
     except Exception as exc:
         if not finalized:
             await _finalize_as_error(assistant_message_id, full_tokens)
+        if observer:
+            await observer.fail(exc)
         yield encode_sse({"type": "error", "message": f"Model request failed: {exc}"})
