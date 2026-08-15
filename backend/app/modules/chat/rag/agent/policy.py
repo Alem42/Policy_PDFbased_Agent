@@ -6,11 +6,17 @@ from app.modules.chat.rag.agent.tools import (
     ALL_TOOLS,
     import_web_page,
     prepare_final_answer,
+    search_full_corpus,
     search_internal_documents,
 )
 
 NON_ADMIN_TOOLS = [tool for tool in ALL_TOOLS if tool is not import_web_page]
 ANALYSIS_MODE_TOOLS = [search_internal_documents, prepare_final_answer]
+LIBRARY_MODE_TOOLS = [
+    search_internal_documents,
+    search_full_corpus,
+    prepare_final_answer,
+]
 
 # Defaults -- also the fallback used until an admin overrides them via
 # Manage > Agent tool limits (see chat.agent_limits), or when the
@@ -26,11 +32,21 @@ def tools_for(
     tool_call_counts: dict[str, int] | None = None,
     *,
     limits: dict[str, int] | None = None,
+    source_policy: str | None = None,
 ) -> list:
-    """Return only tools allowed by mode, role, and remaining budget."""
+    """Return tools allowed by source boundary, role, and remaining budget.
 
-    if answer_mode != "chat":
+    ``source_policy`` is the canonical contract. ``answer_mode`` remains the
+    compatibility fallback until API and persisted-session migration happens.
+    Presentation/output format is deliberately absent from this decision.
+    """
+
+    if source_policy == "selected_only" or (
+        source_policy is None and answer_mode != "chat"
+    ):
         available = ANALYSIS_MODE_TOOLS
+    elif source_policy == "library_allowed":
+        available = LIBRARY_MODE_TOOLS
     else:
         available = ALL_TOOLS if is_admin else NON_ADMIN_TOOLS
     counts = tool_call_counts or {}
