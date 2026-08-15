@@ -8,6 +8,7 @@ import RerankingSection from "./manage/RerankingSection";
 import WebSearchSection from "./manage/WebSearchSection";
 import SuggestionsSection from "./manage/SuggestionsSection";
 import AgentToolLimitsSection from "./manage/AgentToolLimitsSection";
+import AgentRunsSection from "./manage/AgentRunsSection";
 import AdminInvitesSection from "./manage/AdminInvitesSection";
 
 const ACCENT = "#214f42";
@@ -62,6 +63,12 @@ const SECTIONS = [
     label: "Agent tool limits",
     desc: "Set how many times per turn the ReAct agent may call each tool (document search, web search, asking the user, and more).",
     Component: AgentToolLimitsSection,
+  },
+  {
+    id: "agent-runs",
+    label: "Agent run traces",
+    desc: "Inspect sanitized execution events, Tool order, latency, token usage and run outcomes.",
+    Component: AgentRunsSection,
   },
 ];
 

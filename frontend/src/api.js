@@ -506,6 +506,15 @@ export function saveAgentToolLimits(payload) {
   });
 }
 
+// ── Agent run observability (admin) ───────────────────────────────────────
+export function getAgentRuns(limit = 50) {
+  return request(`/admin/agent-runs?limit=${encodeURIComponent(limit)}`);
+}
+
+export function getAgentRun(runId) {
+  return request(`/admin/agent-runs/${encodeURIComponent(runId)}`);
+}
+
 export function getAdminInvites() {
   return request("/admin/invites");
 }
