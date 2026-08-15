@@ -22,3 +22,6 @@ frontend/dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Local LLM task plans and working notes
+.llm-tasks/
