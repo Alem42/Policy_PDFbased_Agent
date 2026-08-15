@@ -40,6 +40,7 @@ services:
       - ./backend/database/migrations/025_add_admin_invites.sql:/docker-entrypoint-initdb.d/26_migration_025.sql:ro
       - ./backend/database/migrations/026_remove_email_verification.sql:/docker-entrypoint-initdb.d/27_migration_026.sql:ro
       - ./backend/database/migrations/027_allow_shared_admin_emails.sql:/docker-entrypoint-initdb.d/28_migration_027.sql:ro
+      - ./backend/database/migrations/028_add_agent_run_events.sql:/docker-entrypoint-initdb.d/29_migration_028.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

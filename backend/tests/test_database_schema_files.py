@@ -22,6 +22,17 @@ def test_every_migration_file_is_mounted_by_compose() -> None:
     assert not missing, f"Migrations not mounted in compose.yaml: {missing}"
 
 
+def test_agent_run_observability_schema_is_available_to_fresh_databases() -> None:
+    init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
+    migration_sql = (
+        BACKEND_ROOT / "database" / "migrations" / "028_add_agent_run_events.sql"
+    ).read_text(encoding="utf-8")
+
+    for table in ("agent_runs", "agent_run_events"):
+        assert table in init_sql
+        assert table in migration_sql
+
+
 def test_email_verification_schema_is_removed() -> None:
     init_sql = (BACKEND_ROOT / "database" / "init.sql").read_text(encoding="utf-8")
     compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
