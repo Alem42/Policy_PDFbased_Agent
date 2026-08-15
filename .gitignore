@@ -25,3 +25,4 @@ frontend/dist/
 
 # Local LLM task plans and working notes
 .llm-tasks/
+backend/eval-results/
