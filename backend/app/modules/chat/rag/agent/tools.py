@@ -10,6 +10,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
+from app.modules.chat.capabilities import PolicySearchRequest, policy_search_capability
 from app.modules.chat.rag.agent.state import (
     EvidenceSource,
     add_citations,
@@ -20,8 +21,7 @@ from app.modules.chat.rag.agent.state import (
 )
 from app.modules.chat.rag.agent_tools import web_evidence
 from app.modules.documents.web_import import WebImportRequest, web_import_service
-from app.modules.retrieval.contracts import MetadataFilters, RetrievalRequest
-from app.modules.retrieval.service import retrieval_service
+from app.modules.retrieval.contracts import MetadataFilters
 from app.modules.web_search.contracts import WebSearchProviderError
 from app.modules.web_search.service import web_search_service
 
@@ -228,9 +228,9 @@ def _run_retrieval_pipeline(
     metadata_filters: dict | None = None,
 ) -> dict:
     """Compatibility adapter around the shared selected-document retriever."""
-    return retrieval_service.retrieve(
-        RetrievalRequest(
-            question=question,
+    return policy_search_capability.search(
+        PolicySearchRequest(
+            query=question,
             scope="selected",
             identifiers=tuple(identifiers),
             top_k=top_k,
@@ -355,10 +355,10 @@ async def search_full_corpus(
     """
 
     def _run():
-        return retrieval_service.retrieve(
-            RetrievalRequest(
-                question=query,
-                scope="full_corpus",
+        return policy_search_capability.search(
+            PolicySearchRequest(
+                query=query,
+                scope="library",
                 top_k=top_k or 8,
                 include_restricted=include_restricted,
                 metadata_filters=MetadataFilters.from_mapping(metadata_filters),
