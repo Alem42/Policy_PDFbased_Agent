@@ -27,6 +27,7 @@ class PDFQAState(TypedDict):
     include_restricted: NotRequired[bool]
     metadata_filters: NotRequired[dict]
     history: NotRequired[list[dict]]  # [{"role": "user"|"assistant", "content": str}, ...]
+    run_context: NotRequired[dict]
     pages: NotRequired[list[dict]]
     chunks: NotRequired[list[dict]]  # filtered (distance ≤ threshold) — used for context
     raw_chunks: NotRequired[list[dict]]  # all returned chunks — used for evidence assessment

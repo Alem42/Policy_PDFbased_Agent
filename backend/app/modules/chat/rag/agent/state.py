@@ -144,6 +144,9 @@ class AgentState(TypedDict):
     metadata_filters: NotRequired[dict]
     is_admin: NotRequired[bool]
     user_id: NotRequired[str]
+    # Immutable identity/version metadata for this logical request. It is a
+    # LastValue channel, so LangGraph checkpoints preserve it across resume.
+    run_context: NotRequired[dict]
     tool_call_counts: NotRequired[dict[str, int]]
     last_tool_call: NotRequired[dict]
     # Plain LastValue: reset by the router for each new user question. Tools

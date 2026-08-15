@@ -31,6 +31,7 @@ from app.modules.chat.orchestration.react import react_orchestrator
 from app.modules.chat.rag.generation import generate_answer_streaming, resolve_generation_target
 from app.modules.chat.rag.graph.nodes import route_after_evidence_check
 from app.modules.chat.rag.prompts import get_insufficient_evidence_message
+from app.modules.chat.runtime.context import AgentRunContext
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.generator import generate_followup_suggestions
 
@@ -319,6 +320,7 @@ async def stream_direct_events(
     assistant_message_id: str,
     user_id: str | None = None,
     metadata_filters: dict | None = None,
+    run_context: AgentRunContext | None = None,
 ) -> AsyncGenerator[str, None]:
     """Drive the fixed one-retrieval Direct path and emit the same SSE protocol."""
 
@@ -338,6 +340,7 @@ async def stream_direct_events(
                 include_restricted=include_restricted,
                 history=history,
                 metadata_filters=metadata_filters,
+                run_context=run_context.as_dict() if run_context else None,
             ),
             timeout=120.0,
         )

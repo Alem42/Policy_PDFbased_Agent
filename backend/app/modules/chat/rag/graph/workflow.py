@@ -59,6 +59,7 @@ def run_retrieval(
     include_restricted: bool = False,
     history: list[dict] | None = None,
     metadata_filters: dict | None = None,
+    run_context: dict | None = None,
 ) -> dict:
     """Run load → retrieve → evidence-check and return the raw graph state.
 
@@ -76,6 +77,7 @@ def run_retrieval(
         "include_restricted": include_restricted,
         "metadata_filters": metadata_filters or {},
         "history": history or [],
+        "run_context": run_context or {},
         "context": "",
         "truncated": False,
         "chunks": [],
@@ -112,6 +114,7 @@ def run_pdf_qa(
     include_restricted: bool = False,
     history: list[dict] | None = None,
     metadata_filters: dict | None = None,
+    run_context: dict | None = None,
 ) -> dict:
     """Invoke the compiled graph and return its final state."""
     effective_answer_mode = normalize_answer_mode(response_mode, answer_mode)
@@ -127,5 +130,6 @@ def run_pdf_qa(
             "include_restricted": include_restricted,
             "metadata_filters": metadata_filters or {},
             "history": history or [],
+            "run_context": run_context or {},
         }
     )

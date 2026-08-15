@@ -18,9 +18,11 @@ from app.modules.chat.application.turn_service import (
     SessionNotFoundError,
     chat_turn_service,
 )
+from app.modules.chat.domain.modes import profile_from_legacy
 from app.modules.chat.orchestration.direct import direct_orchestrator
 from app.modules.chat.orchestration.react import react_orchestrator
 from app.modules.chat.rag.graph.state import normalize_answer_mode
+from app.modules.chat.runtime.context import build_agent_run_context
 from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
@@ -109,6 +111,21 @@ async def chat(
         )
         session_id = turn.session_id
         history = turn.history
+        run_context = build_agent_run_context(
+            session_id=session_id,
+            assistant_message_id=None,
+            user_id=user_id,
+            is_admin=include_restricted,
+            profile=profile_from_legacy(
+                payload.response_mode, effective_answer_mode, "direct"
+            ),
+            model=payload.model,
+            configuration={
+                "top_k": payload.top_k,
+                "source_policy": "selected_only",
+                "agent_mode": "direct",
+            },
+        )
 
         # run_pdf_qa is synchronous (LangGraph + CPU-bound embedding/reranking).
         # Running it in a thread pool prevents blocking the async event loop.
@@ -125,6 +142,7 @@ async def chat(
                 include_restricted=include_restricted,
                 history=history,
                 metadata_filters=metadata_filters.as_dict(),
+                run_context=run_context.as_dict(),
             ),
             timeout=120.0,
         )
@@ -242,6 +260,24 @@ async def chat_stream(
     if assistant_message_id is None:  # defensive: requested above
         raise HTTPException(status_code=500, detail="Could not create assistant message.")
 
+    execution_profile = profile_from_legacy(
+        payload.response_mode, effective_answer_mode, payload.agent_mode
+    )
+    run_context = build_agent_run_context(
+        run_id=assistant_message_id,
+        session_id=session_id,
+        assistant_message_id=assistant_message_id,
+        user_id=user_id,
+        is_admin=is_admin,
+        profile=execution_profile,
+        model=payload.model,
+        configuration={
+            "top_k": payload.top_k,
+            "source_policy": execution_profile.source_policy,
+            "agent_mode": payload.agent_mode,
+        },
+    )
+
     if payload.agent_mode == "direct":
         return StreamingResponse(
             stream_direct_events(
@@ -258,6 +294,7 @@ async def chat_stream(
                 assistant_message_id=assistant_message_id,
                 user_id=user_id,
                 metadata_filters=metadata_filters.as_dict(),
+                run_context=run_context,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -332,6 +369,7 @@ async def chat_stream(
         # chance to write it itself.
         "web_pages_seen": existing_state.values.get("web_pages_seen", []),
         "assistant_message_id": assistant_message_id,
+        "run_context": run_context.as_dict(),
     }
 
     return StreamingResponse(
