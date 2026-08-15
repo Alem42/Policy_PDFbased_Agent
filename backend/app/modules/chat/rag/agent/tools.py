@@ -457,7 +457,7 @@ def prepare_final_answer(
     plan should briefly state what the final answer must say. Citation
     numbers must be exact source numbers already returned by search tools.
     If the response mode prescribes a heading structure (Document Analysis in
-    researcher/student/policymaker style), the plan must state that the final
+    researcher/policymaker style), the plan must state that the final
     answer uses exactly that prescribed structure, so the writer never invents
     headings.
     Do not put the final prose answer in this tool call: a separate

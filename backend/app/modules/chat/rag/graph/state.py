@@ -1,6 +1,6 @@
 from typing import Literal, NotRequired, TypedDict
 
-ResponseMode = Literal["researcher", "policymaker", "student"]
+ResponseMode = Literal["researcher", "policymaker"]
 AnswerMode = Literal["analysis", "chat"]
 
 

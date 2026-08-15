@@ -21,13 +21,6 @@ def test_researcher_analysis_prompt_is_structured() -> None:
     assert "pretrained knowledge" in prompt.lower() or "Do not use pretrained" in prompt
 
 
-def test_student_analysis_prompt_is_beginner_friendly() -> None:
-    prompt = get_system_prompt("student", "analysis")
-    assert "beginner-friendly" in prompt.lower() or "learner" in prompt.lower()
-    assert "## Relevant Cases" not in prompt
-    assert "ONLY the supplied policy document excerpts" in prompt
-
-
 def test_chat_prompt_allows_external_knowledge() -> None:
     prompt = get_system_prompt("researcher", "chat")
     assert "MAY also draw on your pretrained knowledge" in prompt
@@ -35,26 +28,14 @@ def test_chat_prompt_allows_external_knowledge() -> None:
     assert "Never present general knowledge as if it came from the selected documents" in prompt
 
 
-def test_student_chat_prompt_combines_style_and_boundary() -> None:
-    prompt = get_system_prompt("student", "chat")
-    assert "learner" in prompt.lower()
-    assert "MAY also draw on your pretrained knowledge" in prompt
-    assert "Clearly distinguish" in prompt
-
-
-def test_insufficient_evidence_messages_differ_by_mode() -> None:
+def test_researcher_insufficient_evidence_message_explains_next_steps() -> None:
     researcher = get_insufficient_evidence_message(
         "What changed?",
         REASON_LOW_RELEVANCE,
         "researcher",
     )
-    student = get_insufficient_evidence_message(
-        "What changed?",
-        REASON_LOW_RELEVANCE,
-        "student",
-    )
     assert "Insufficient Evidence" in researcher
-    assert "could not find enough information" in student
+    assert "Suggested next steps" in researcher
 
 
 def test_assess_evidence_rejects_empty_context() -> None:

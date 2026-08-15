@@ -18,7 +18,7 @@ def _identifiers(state: PDFQAState) -> list[str]:
 
 def _response_mode(state: PDFQAState) -> ResponseMode:
     mode = state.get("response_mode", "researcher")
-    if mode in {"researcher", "policymaker", "student"}:
+    if mode in {"researcher", "policymaker"}:
         return mode
     return "researcher"
 
@@ -97,7 +97,7 @@ def route_after_evidence_check(state: PDFQAState) -> str:
     # Policymaker mode is always document-grounded and must stop when evidence is weak.
     if _response_mode(state) == "policymaker":
         return "insufficient_evidence"
-    # Existing Researcher/Student Open Discussion behaviour remains unchanged.
+    # Researcher Open Discussion may continue without selected-document evidence.
     if _answer_mode(state) == "chat":
         return "generate_answer"
     return "insufficient_evidence"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-ResponseMode = Literal["researcher", "policymaker", "student"]
+ResponseMode = Literal["researcher", "policymaker"]
 AnswerMode = Literal["analysis", "chat"]
 
 # Injected into the system prompt when numbered citations are available.
@@ -64,15 +64,6 @@ Keep the brief under 250 words; use short bullets; only state what the selected
 documents support.
 """
 
-STUDENT_STYLE_PROMPT = """Writing style:
-- Assume the user is a learner.
-- Explain ideas in clear, beginner-friendly language.
-- Avoid unnecessary jargon; when a technical term is needed, briefly define it.
-- Use short paragraphs and simple examples drawn from the available material.
-- IMPORTANT: Reply in the SAME LANGUAGE as the user's question.
-  If the user wrote in English, write in English regardless of source language.
-"""
-
 RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
 (omit a section only if there is no relevant material):
 ## Relevant Cases
@@ -80,19 +71,6 @@ RESEARCHER_STRUCTURE_PROMPT = """Structure your answer with these markdown headi
 ## Risks
 ## Implementation Considerations
 ## Practical Recommendations
-"""
-
-STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
-(omit a section only if there is no relevant material):
-## Context
-- Briefly describe the background and circumstances of each case or policy.
-## Policy Approach
-- Compare the strategies, instruments, and mechanisms used.
-## Outcomes
-- Compare the results and impacts, based on the excerpts.
-  If outcomes are only stated as intended goals, say so.
-## Lessons Learned
-- What can be learned from the similarities and differences in approach and outcome.
 """
 
 def final_style_reminder(
@@ -188,20 +166,6 @@ to answer this question reliably.
 I have not filled this gap with general model knowledge or unsupported assumptions.
 """
 
-INSUFFICIENT_EVIDENCE_STUDENT = """I could not find enough information in the documents you selected
-to answer this question confidently.
-
-**Your question:** {question}
-
-**What happened:** {reason}
-
-**What you can try:**
-- Pick additional policy cases or reports from the library and add them to chat sources.
-- Ask a simpler or more specific question about what these documents actually discuss.
-- Make sure the documents match the topic you are studying.
-"""
-
-
 def get_system_prompt(
     response_mode: ResponseMode = "researcher",
     answer_mode: AnswerMode = "analysis",
@@ -219,15 +183,11 @@ def get_system_prompt(
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
-    style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     boundary = CHAT_BOUNDARY_PROMPT if answer_mode == "chat" else ANALYSIS_BOUNDARY_PROMPT
-    parts = [BASE_SYSTEM_PROMPT, style]
+    parts = [BASE_SYSTEM_PROMPT, RESEARCHER_STYLE_PROMPT]
 
-    # Preserve the existing structured layout for Researcher/Student document analysis.
     if answer_mode == "analysis":
-        is_student = response_mode == "student"
-        structure = STUDENT_STRUCTURE_PROMPT if is_student else RESEARCHER_STRUCTURE_PROMPT
-        parts.append(structure)
+        parts.append(RESEARCHER_STRUCTURE_PROMPT)
 
     parts.extend([boundary, CONTEXT_BLOCK, final_style_reminder(response_mode, answer_mode)])
     return "\n".join(part.strip() for part in parts if part.strip())
@@ -240,8 +200,6 @@ def get_insufficient_evidence_message(
 ) -> str:
     if mode == "policymaker":
         template = INSUFFICIENT_EVIDENCE_POLICYMAKER
-    elif mode == "student":
-        template = INSUFFICIENT_EVIDENCE_STUDENT
     else:
         template = INSUFFICIENT_EVIDENCE_RESEARCHER
     return template.format(question=question.strip(), reason=reason)

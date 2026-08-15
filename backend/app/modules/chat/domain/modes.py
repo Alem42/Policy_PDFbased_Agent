@@ -43,8 +43,8 @@ def profile_from_legacy(
     This is intentionally a compatibility description, not a new router.  It
     performs no I/O and does not change the behavior of existing endpoints.
     Policymaker remains selected-document grounded and becomes a policy-brief
-    presentation.  Student keeps the same execution/source behavior but loses
-    its presentation persona in the canonical representation.
+    presentation. The retired Student value remains accepted only so migration
+    and historical-data adapters can map it to the canonical adaptive profile.
     """
 
     _validate_legacy_value("response_mode", response_mode, _LEGACY_RESPONSE_MODES)

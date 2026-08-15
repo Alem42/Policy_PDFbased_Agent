@@ -97,7 +97,7 @@ def test_list_sessions_newest_first():
     user_id = _find_test_user()
 
     id_a = repo.create_session(user_id, "Session A", [], "researcher")
-    id_b = repo.create_session(user_id, "Session B", [], "student")
+    id_b = repo.create_session(user_id, "Session B", [], "researcher")
     # Touch B to make it the most-recently-updated
     repo.touch_session(id_b)
 

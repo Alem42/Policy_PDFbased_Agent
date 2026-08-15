@@ -30,7 +30,7 @@ async def list_sessions(user: CurrentUser) -> list[SessionSummary]:
             id=UUID(str(row["id"])),
             title=row["title"],
             document_ids=list(row["document_ids"] or []),
-            response_mode=row["response_mode"],
+            response_mode=_response_mode_for_api(row["response_mode"]),
             last_message_preview=row.get("last_message_preview"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -58,7 +58,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
             citations=_parse_citations(m.get("citations_json")),
             evidence_sufficient=m.get("evidence_sufficient"),
             evidence_sources=_parse_json_list(m.get("evidence_sources")),
-            response_mode=m.get("response_mode"),
+            response_mode=_response_mode_for_api(m.get("response_mode")),
             answer_mode=m.get("answer_mode"),
             agent_mode=m.get("agent_mode"),
             model=m.get("model"),
@@ -76,7 +76,7 @@ async def get_session(session_id: UUID, user: CurrentUser) -> SessionDetail:
         id=UUID(str(session["id"])),
         title=session["title"],
         document_ids=list(session["document_ids"] or []),
-        response_mode=session["response_mode"],
+        response_mode=_response_mode_for_api(session["response_mode"]),
         messages=messages,
         created_at=session["created_at"],
         updated_at=session["updated_at"],
@@ -111,6 +111,14 @@ async def rename_session(
 
 
 # ---------------------------------------------------------------------------
+
+
+def _response_mode_for_api(value: str | None) -> str | None:
+    """Read pre-migration Student history as the canonical Researcher mode."""
+
+    if value == "student":
+        return "researcher"
+    return value
 
 
 def _parse_citations(raw) -> list[Citation]:

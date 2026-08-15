@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-ResponseMode = Literal["researcher", "policymaker", "student"]
+ResponseMode = Literal["researcher", "policymaker"]
 AnswerMode = Literal["analysis", "chat"]
 # "react": multi-step tool-calling agent (web search, escalation, reasoning
 # trace). "direct": single retrieval pass + one-shot answer, no tool loop.

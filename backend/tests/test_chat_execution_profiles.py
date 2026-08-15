@@ -35,18 +35,6 @@ from app.modules.chat.domain.modes import (
             ChatExecutionProfile("quick_answer", "web_with_approval", "adaptive"),
         ),
         (
-            "student",
-            "analysis",
-            "react",
-            ChatExecutionProfile("research", "selected_only", "adaptive"),
-        ),
-        (
-            "student",
-            "chat",
-            "direct",
-            ChatExecutionProfile("quick_answer", "web_with_approval", "adaptive"),
-        ),
-        (
             "policymaker",
             "analysis",
             "react",
@@ -93,3 +81,9 @@ def test_output_format_does_not_change_source_policy() -> None:
 
     assert researcher.source_policy == policymaker.source_policy == "selected_only"
     assert researcher.output_format != policymaker.output_format
+
+
+def test_retired_student_value_maps_only_for_legacy_migration() -> None:
+    assert profile_from_legacy("student", "analysis", "react") == ChatExecutionProfile(
+        "research", "selected_only", "adaptive"
+    )

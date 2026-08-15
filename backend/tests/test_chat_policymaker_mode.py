@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.modules.chat import router as chat_router
 from app.modules.chat.rag.graph.nodes import (
@@ -71,9 +72,7 @@ def test_policymaker_insufficient_evidence_message_is_explicit() -> None:
 
 def test_existing_modes_keep_their_answer_mode_behaviour() -> None:
     assert normalize_answer_mode("researcher", "chat") == "chat"
-    assert normalize_answer_mode("student", "chat") == "chat"
     assert normalize_answer_mode("researcher", "analysis") == "analysis"
-    assert normalize_answer_mode("student", "analysis") == "analysis"
 
 
 @pytest.mark.asyncio
@@ -124,3 +123,11 @@ async def test_policymaker_router_normalizes_chat_to_analysis(
     assert captured["answer_mode"] == "analysis"
     assert response.response_mode == "policymaker"
     assert response.answer_mode == "analysis"
+def test_chat_request_rejects_retired_student_mode() -> None:
+    with pytest.raises(ValidationError):
+        ChatRequest(
+            question="Explain this",
+            document_ids=[uuid4()],
+            response_mode="student",
+        )
+

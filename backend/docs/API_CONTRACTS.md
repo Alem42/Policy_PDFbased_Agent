@@ -145,7 +145,8 @@ Example request:
 }
 ```
 
-`response_mode` accepts `researcher` or `student` (writing style).
+`response_mode` accepts `researcher` or `policymaker`. Historical `student`
+records are migrated and returned as `researcher`.
 `answer_mode` accepts `analysis` (selected documents only) or `chat`
 (open discussion that may use general knowledge). Defaults are
 `researcher` and `analysis`.

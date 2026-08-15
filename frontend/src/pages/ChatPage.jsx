@@ -112,11 +112,6 @@ const RESPONSE_MODE_OPTIONS = [
     label: "Policy Researcher",
     description: "Dense, specialist language for practitioners",
   },
-  {
-    value: "student",
-    label: "Student",
-    description: "Plain language with short explanations",
-  },
 ];
 
 const ANSWER_MODE_OPTIONS = [
@@ -796,7 +791,7 @@ export default function ChatPage({
     );
     setSessionId(String(detail.id));
     if (detail.response_mode) {
-      setResponseMode(detail.response_mode === "policymaker" ? "researcher" : detail.response_mode);
+      setResponseMode("researcher");
     }
     const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant");
     if (detail.response_mode === "policymaker") {

@@ -498,7 +498,7 @@ ALTER TABLE "public"."chat_sessions"
 
 ALTER TABLE "public"."chat_sessions"
   ADD CONSTRAINT "chat_sessions_response_mode_check"
-  CHECK (response_mode IN ('researcher', 'policymaker', 'student'));
+  CHECK (response_mode IN ('researcher', 'policymaker'));
 
 -- ----------------------------
 -- Table structure for chat_messages

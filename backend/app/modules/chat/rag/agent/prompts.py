@@ -14,8 +14,6 @@ from app.modules.chat.rag.prompts import (
     POLICYMAKER_STYLE_PROMPT,
     RESEARCHER_STRUCTURE_PROMPT,
     RESEARCHER_STYLE_PROMPT,
-    STUDENT_STRUCTURE_PROMPT,
-    STUDENT_STYLE_PROMPT,
     final_style_reminder,
 )
 
@@ -300,18 +298,14 @@ def get_agent_system_prompt(
             if part.strip()
         )
 
-    style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     is_chat_mode = answer_mode == "chat"
     boundary = CHAT_BOUNDARY_PROMPT if is_chat_mode else ANALYSIS_BOUNDARY_PROMPT
     strategy = (
         AGENT_STRATEGY_PROMPT.format_map(limits) if is_chat_mode else ANALYSIS_STRATEGY_PROMPT
     )
-    parts = [BASE_SYSTEM_PROMPT, style]
+    parts = [BASE_SYSTEM_PROMPT, RESEARCHER_STYLE_PROMPT]
     if not is_chat_mode:
-        structure = (
-            STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
-        )
-        parts.append(structure)
+        parts.append(RESEARCHER_STRUCTURE_PROMPT)
     parts.extend([boundary, budget_prompt, strategy])
 
     if is_chat_mode and not is_admin:
@@ -340,15 +334,11 @@ def get_final_answer_system_prompt(
         ]
         return "\n".join(part.strip() for part in parts if part.strip())
 
-    style = STUDENT_STYLE_PROMPT if response_mode == "student" else RESEARCHER_STYLE_PROMPT
     is_chat_mode = answer_mode == "chat"
     boundary = CHAT_BOUNDARY_PROMPT if is_chat_mode else ANALYSIS_BOUNDARY_PROMPT
-    parts = [BASE_SYSTEM_PROMPT, style]
+    parts = [BASE_SYSTEM_PROMPT, RESEARCHER_STYLE_PROMPT]
     if not is_chat_mode:
-        structure = (
-            STUDENT_STRUCTURE_PROMPT if response_mode == "student" else RESEARCHER_STRUCTURE_PROMPT
-        )
-        parts.append(structure)
+        parts.append(RESEARCHER_STRUCTURE_PROMPT)
     parts.extend(
         [
             boundary,
