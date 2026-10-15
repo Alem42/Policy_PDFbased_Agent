@@ -1,7 +1,10 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 
 from app.core.config import get_settings
 from app.core.database import database
+from app.modules.auth.dependencies import require_admin
 
 router = APIRouter(tags=["health"])
 
@@ -13,4 +16,20 @@ async def health() -> dict[str, object]:
         "status": "ok",
         "environment": settings.app_env,
         "database": database.status,
+    }
+
+
+@router.get("/admin/database-pool")
+def database_pool_status(_: Annotated[dict, Depends(require_admin)]) -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "scope": "per_process",
+        "status": database.status,
+        "limits": {
+            "min_size": settings.database_pool_min_size,
+            "max_size": settings.database_pool_max_size,
+            "timeout_seconds": settings.database_pool_timeout,
+            "max_waiting": settings.database_pool_max_waiting,
+        },
+        "stats": database.pool_stats(),
     }

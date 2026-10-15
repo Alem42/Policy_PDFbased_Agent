@@ -203,7 +203,17 @@ export async function openDocumentFile(documentId, page = null) {
   window.open(`${URL.createObjectURL(blob)}${pageFragment}`, "_blank", "noopener,noreferrer");
 }
 
+export function getUploadLimits() {
+  return request("/documents/upload-limits");
+}
+
 export async function uploadDocuments(files) {
+  const limits = await getUploadLimits();
+  const oversized = files.find((file) => file.size > limits.max_file_bytes);
+  if (oversized) {
+    const limitMiB = limits.max_file_bytes / (1024 * 1024);
+    throw new Error(`${oversized.name} is too large. Maximum file size is ${limitMiB} MiB.`);
+  }
   const uploaded = [];
   for (const file of files) {
     const formData = new FormData();

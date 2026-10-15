@@ -54,9 +54,7 @@ def test_cited_evidence_sources_only_reports_tiers_the_answer_cites() -> None:
         {"number": 1, "tier": "internal", "title": "Selected doc"},
         {"number": 2, "tier": "full_corpus", "title": "Wider-library doc"},
     ]
-    result = cited_evidence_sources(
-        ["internal", "full_corpus"], citations, "The plan does X [1]."
-    )
+    result = cited_evidence_sources(["internal", "full_corpus"], citations, "The plan does X [1].")
     assert result == ["internal"]
 
 
@@ -159,6 +157,10 @@ def test_turn_token_usage_empty_when_no_ai_messages_have_usage() -> None:
 
 @pytest.mark.asyncio
 async def test_chat_rejects_session_not_owned(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        chat_router.metadata_filter_service.repository, "list_records", lambda **_kwargs: []
+    )
+
     def fake_session_belongs_to_user(session_id: str, user_id: str) -> bool:
         return False
 

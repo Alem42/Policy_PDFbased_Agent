@@ -19,7 +19,7 @@ dependencies = [
   "lingua-language-detector>=2.0,<3",
   "pydantic-settings>=2.6,<3",
   "pillow>=11,<13",
-  "psycopg[binary]>=3.3,<4",
+  "psycopg[binary,pool]>=3.3,<4",
   "pymupdf>=1.24,<2",
   "pypdf>=6.13,<7",
   "pytesseract>=0.3,<1",
@@ -64,4 +64,5 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["integration: requires TEST_DATABASE_URL pointing to a disposable initialized database"]
 

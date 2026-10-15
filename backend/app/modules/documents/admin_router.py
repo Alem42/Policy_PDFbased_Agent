@@ -13,6 +13,7 @@ from fastapi import (
     status,
 )
 
+from app.core.database import DatabaseUnavailableError
 from app.modules.auth.dependencies import require_admin
 from app.modules.documents.admin_schemas import (
     AdminDocumentCreateResponse,
@@ -25,7 +26,7 @@ from app.modules.documents.admin_schemas import (
     WebGovernanceUpdate,
     WebLifecycleStatus,
 )
-from app.modules.documents.exceptions import DuplicateDocumentError
+from app.modules.documents.exceptions import DuplicateDocumentError, UploadTooLargeError
 from app.modules.documents.processing_queue import document_processing_queue
 from app.modules.documents.service import (
     delete_document as delete_document_record,
@@ -101,7 +102,7 @@ async def upload_document(
             "credibility_level": credibility_level,
         }
         if any(value is not None for value in metadata.values()):
-            row = update_document_metadata_record(document_id, metadata)
+            row = await asyncio.to_thread(update_document_metadata_record, document_id, metadata)
 
         # A shared FIFO queue gives all users three processing slots in total.
         # Saving the upload remains quick; extraction/embedding runs in workers.
@@ -122,6 +123,8 @@ async def upload_document(
                 "existing_filename": exc.existing_filename,
             },
         ) from exc
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -220,6 +223,8 @@ async def rescan_documents(_: AdminUser) -> dict:
         for document_id in document_ids:
             await document_processing_queue.enqueue(document_id, _run_process_document)
         return {"rescanned": True, "queued": len(document_ids)}
+    except DatabaseUnavailableError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -248,6 +253,8 @@ async def reembed_documents(_: AdminUser) -> dict:
         for document_id in document_ids:
             await document_processing_queue.enqueue(document_id, _run_reembed_document)
         return {"documents": len(document_ids), "model": model, "queued": True}
+    except DatabaseUnavailableError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -313,10 +320,15 @@ async def get_processing_status(
                 if queue_state.position
                 else "Waiting for a processing slot"
             )
-        elif queue_state and queue_state.status == "processing" and raw_status in {
-            "uploaded",
-            "ready",
-        }:
+        elif (
+            queue_state
+            and queue_state.status == "processing"
+            and raw_status
+            in {
+                "uploaded",
+                "ready",
+            }
+        ):
             processing_status = ProcessingStatus.EXTRACTING
             progress_percent = 10
             message = "Extracting document"

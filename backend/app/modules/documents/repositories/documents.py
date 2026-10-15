@@ -63,7 +63,8 @@ class DocumentRepository:
         original_filename: str,
         stored_filename: str,
         file_path: str,
-        content: bytes,
+        content: bytes | None = None,
+        file_size: int | None = None,
         checksum: str,
         mime_type: str = "application/pdf",
         upsert: bool = False,
@@ -72,6 +73,12 @@ class DocumentRepository:
         imported_by: str | None = None,
         imported_via: str | None = None,
     ) -> str:
+        if file_size is None:
+            if content is None:
+                raise ValueError("Either file_size or content is required.")
+            file_size = len(content)
+        if file_size < 0 or (content is not None and file_size != len(content)):
+            raise ValueError("file_size must match the supplied content and be non-negative.")
         conflict_sql = (
             """
             ON CONFLICT (file_path) DO UPDATE
@@ -102,7 +109,7 @@ class DocumentRepository:
                         original_filename,
                         stored_filename,
                         file_path,
-                        len(content),
+                        file_size,
                         checksum,
                         mime_type,
                         source_url,

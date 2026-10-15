@@ -66,9 +66,7 @@ def _patch_pipeline(monkeypatch, candidates, distances, reranker=5.0):
     monkeypatch.setattr(retrieval_module, "resolve_document_ids", fake_resolve)
     monkeypatch.setattr(retrieval_module.embedding, "embed_queries", fake_embed_queries)
     monkeypatch.setattr(retrieval_module.embedding, "vector_literal", lambda vector: str(vector))
-    monkeypatch.setattr(
-        retrieval_module.embedding_repository, "retrieve_many", fake_retrieve_many
-    )
+    monkeypatch.setattr(retrieval_module.embedding_repository, "retrieve_many", fake_retrieve_many)
     monkeypatch.setattr(retrieval_module.reranking, "enabled", lambda: True)
     monkeypatch.setattr(
         retrieval_module.reranking,
@@ -266,6 +264,9 @@ def test_local_provider_batches_query_embed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_stream_marks_answer_done_before_generating_suggestions(monkeypatch):
+    monkeypatch.setattr(
+        chat_router.metadata_filter_service.repository, "list_records", lambda **_kwargs: []
+    )
     session_id = str(uuid4())
     message_id = str(uuid4())
     persisted = {}

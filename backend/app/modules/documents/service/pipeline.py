@@ -17,12 +17,15 @@ import io
 import logging
 import re
 from pathlib import Path
+from typing import BinaryIO
 from uuid import uuid4
 
 from fastapi import UploadFile
+from starlette.concurrency import run_in_threadpool
 
+from app.core.config import get_settings
 from app.modules.documents.chunker import document_chunker
-from app.modules.documents.exceptions import DuplicateDocumentError
+from app.modules.documents.exceptions import DuplicateDocumentError, UploadTooLargeError
 from app.modules.documents.extraction import extract_document
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.ingestion.contextual_header import build_contextual_headers
@@ -132,42 +135,69 @@ async def save_upload(
     imported_via: str | None = None,
 ) -> dict:
     filename = document_file_store.safe_filename(upload.filename or "")
-    content = await upload.read()
-    if not document_file_store.is_valid_content(filename, content):
-        raise ValueError(f"{filename} does not look like a valid file of its type.")
+    settings = get_settings()
+    if upload.size is not None and upload.size > settings.upload_max_bytes:
+        raise UploadTooLargeError(settings.upload_max_bytes)
+    await upload.seek(0)
+    # Run the entire synchronous copy/hash/register operation off the event loop.
+    # UploadFile is already spooled by the multipart parser; never read it all
+    # back into a bytes object just to save it a second time.
+    return await run_in_threadpool(
+        _save_upload_sync,
+        upload.file,
+        filename,
+        max_bytes=settings.upload_max_bytes,
+        chunk_bytes=settings.upload_chunk_bytes,
+        source_url=source_url,
+        canonical_url=canonical_url,
+        imported_by=imported_by,
+        imported_via=imported_via,
+    )
 
-    checksum = document_file_store.checksum(content)
-    # L1 exact-duplicate guard: identical bytes -> identical SHA-256. Check before
-    # writing to disk so a duplicate never touches the filesystem or the DB.
-    # L2 (normalised-text hash) and L3 (embedding similarity) dedup run in
-    # save_web_import(), after extraction/embedding produce something to
-    # compare — see process_document()'s content_hash step and
-    # _find_near_duplicate() below.
-    existing = document_repository.find_by_checksum(checksum)
-    if existing:
-        raise DuplicateDocumentError(str(existing["id"]), existing["original_filename"])
 
-    document_id = str(uuid4())
-    path = document_file_store.save(filename, content, document_id)
+def _save_upload_sync(
+    source: BinaryIO,
+    filename: str,
+    *,
+    max_bytes: int,
+    chunk_bytes: int,
+    source_url: str | None,
+    canonical_url: str | None,
+    imported_by: str | None,
+    imported_via: str | None,
+) -> dict:
+    staged = document_file_store.stage_upload(
+        filename, source, max_bytes=max_bytes, chunk_bytes=chunk_bytes
+    )
     try:
-        document_repository.create(
-            document_id=document_id,
-            original_filename=filename,
-            stored_filename=path.name,
-            file_path=document_file_store.relative_path(path),
-            content=content,
-            checksum=checksum,
-            mime_type=document_file_store.mime_type_for(filename),
-            source_url=source_url,
-            canonical_url=canonical_url,
-            imported_by=imported_by,
-            imported_via=imported_via,
-        )
-    except Exception:
-        document_file_store.delete(path)
-        raise
-    logger.info("Upload saved: document_id=%s filename=%s", document_id, filename)
-    return row_to_metadata(document_repository.get_record(document_id))
+        # The completed hash lets us reject duplicates before publishing a file.
+        # Database UNIQUE(sha256) remains the concurrent-upload backstop.
+        existing = document_repository.find_by_checksum(staged.checksum)
+        if existing:
+            raise DuplicateDocumentError(str(existing["id"]), existing["original_filename"])
+        document_id = str(uuid4())
+        path = document_file_store.publish_upload(staged, document_id)
+        try:
+            document_repository.create(
+                document_id=document_id,
+                original_filename=filename,
+                stored_filename=path.name,
+                file_path=document_file_store.relative_path(path),
+                file_size=staged.file_size,
+                checksum=staged.checksum,
+                mime_type=document_file_store.mime_type_for(filename),
+                source_url=source_url,
+                canonical_url=canonical_url,
+                imported_by=imported_by,
+                imported_via=imported_via,
+            )
+        except Exception:
+            document_file_store.delete(path)
+            raise
+        logger.info("Upload saved: document_id=%s filename=%s", document_id, filename)
+        return row_to_metadata(document_repository.get_record(document_id))
+    finally:
+        staged.path.unlink(missing_ok=True)
 
 
 # Cosine-distance cutoff for L3 near-duplicate detection. pgvector's `<=>`

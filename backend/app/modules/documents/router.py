@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from app.core.config import get_settings
 from app.modules.auth.dependencies import get_optional_user
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.repositories.catalogue import document_catalogue_repository
@@ -63,6 +64,15 @@ async def search_documents(
         page_size=page_size,
         include_restricted=_include_restricted(user),
     )
+
+
+@router.get("/upload-limits")
+async def upload_limits() -> dict[str, int]:
+    settings = get_settings()
+    return {
+        "max_file_bytes": settings.upload_max_bytes,
+        "max_request_bytes": settings.upload_max_bytes + settings.upload_request_overhead_bytes,
+    }
 
 
 @router.get("/{document_id}", response_model=DocumentDetailRead)

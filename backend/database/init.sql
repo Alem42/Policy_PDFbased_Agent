@@ -39,7 +39,7 @@ CACHE 1;
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."app_users";
 CREATE TABLE "public"."app_users" (
-  "id" uuid NOT NULL,
+  "id" uuid NOT NULL PRIMARY KEY,
   "uid" text COLLATE "pg_catalog"."default" NOT NULL,
   "username" text COLLATE "pg_catalog"."default" NOT NULL,
   "email" text COLLATE "pg_catalog"."default",
@@ -353,7 +353,7 @@ ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_role_check" CHECK (ro
 -- ----------------------------
 -- Primary Key structure for table app_users
 -- ----------------------------
-ALTER TABLE "public"."app_users" ADD CONSTRAINT "app_users_pkey" PRIMARY KEY ("id");
+-- app_users_pkey is created inline before admin_invites references app_users.
 
 -- ----------------------------
 -- Indexes structure for table chunk_embeddings

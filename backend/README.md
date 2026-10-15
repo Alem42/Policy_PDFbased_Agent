@@ -100,8 +100,13 @@ options are:
 | `API_V1_PREFIX` | Prefix for application routes | `/api/v1` |
 | `APP_SECRET` | Optional explicit access-token signing secret | generated file |
 | `APP_SECRET_FILE` | Persisted access-token signing secret | `data/app_secret` |
-| `DATABASE_ENABLED` | Enables the async database lifecycle | `false` |
+| `DATABASE_ENABLED` | Enables database access and lifecycle | `false` |
 | `DATABASE_URL` | PostgreSQL connection URL | local `ai_policy` database |
+| `DATABASE_POOL_MIN_SIZE` / `DATABASE_POOL_MAX_SIZE` | Repository pool connections per process | `1` / `5` |
+| `DATABASE_POOL_TIMEOUT` / `DATABASE_POOL_MAX_WAITING` | Borrow wait seconds / maximum queued borrowers | `2` / `20` |
+| `UPLOAD_MAX_BYTES` / `UPLOAD_CHUNK_BYTES` | Maximum file size / bounded save buffer | `20971520` / `1048576` |
+| `UPLOAD_REQUEST_OVERHEAD_BYTES` | Extra request body budget for multipart metadata | `262144` |
+| `RUNTIME_SETTINGS_PATH` | Cached provider settings file, relative to backend or absolute | `data/settings.json` |
 | `FIRECRAWL_API_KEY` | Optional Firecrawl web-search credential | empty |
 | `EMBEDDING_MODEL_NAME` | Local embedding model for vector search | `BAAI/bge-small-en-v1.5` |
 | `DEFAULT_EMBEDDING_DIMENSIONS` | Output dimensions of the embedding model | `384` |
@@ -179,8 +184,24 @@ deployment's runtime settings and must be entered separately in the production
 admin UI.
 
 With `DATABASE_ENABLED=false`, the application can still start and expose its
-health endpoint. Routes whose repositories connect directly to PostgreSQL still
-require a working `DATABASE_URL`.
+health endpoint. Repository-backed routes return database-unavailable responses;
+enable the database and supply a working `DATABASE_URL` to use them.
+
+Repositories share a psycopg pool with bounded acquisition waits. Pool capacity
+errors return `503` with `Retry-After: 1`. Inspect per-process limits and counters
+through the admin-only `GET /api/v1/admin/database-pool`. LangGraph's checkpointer
+has a separate pool; the Repository limit is not the total server connection limit.
+
+Uploads default to 20 MiB per file. The frontend reads
+`GET /api/v1/documents/upload-limits` before sending files. The backend independently
+limits the request body and actual file size, saves with bounded buffers in a
+worker thread, and cleans failed or duplicate staged files. This is one multipart
+request per file; browser chunk uploads and resumable uploads are not implemented.
+To allow 100 MiB, set `UPLOAD_MAX_BYTES=104857600` and restart the backend.
+
+See [the Chinese implementation and learning guide](docs/CONNECTION_POOL_AND_UPLOAD_GUIDE.md)
+for database communication, pool sizing, asyncio, the complete upload journey,
+verification evidence, and interview demonstrations.
 
 ## Authentication
 
@@ -246,10 +267,15 @@ Run these commands from `backend/`:
 
 ```powershell
 pytest
-ruff check app tests
+ruff check .
+ruff format --check .
 ```
 
-Tests use mocked providers and do not perform real web searches.
+Tests use mocked providers and do not perform real web searches. Real PostgreSQL
+tests are opt-in: set `TEST_DATABASE_URL` to an initialized disposable database
+with pgvector and the numbered migrations, then run `pytest` again. They never
+fall back to the application's `.env` database. Frontend checks are `npm test`
+and `npm run build` from `frontend/`.
 
 ## Container deployment
 

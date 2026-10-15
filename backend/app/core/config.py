@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +25,16 @@ class Settings(BaseSettings):
     database_enabled: bool = False
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_policy"
     database_pool_pre_ping: bool = False
+    database_pool_min_size: int = Field(default=1, ge=1)
+    database_pool_max_size: int = Field(default=5, ge=1)
+    database_pool_timeout: float = Field(default=2.0, gt=0)
+    database_pool_max_waiting: int = Field(default=20, ge=1)
+    database_connect_timeout: int = Field(default=3, ge=1)
+    database_pool_startup_timeout: float = Field(default=5.0, gt=0)
+    upload_max_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    upload_chunk_bytes: int = Field(default=1024 * 1024, gt=0, le=8 * 1024 * 1024)
+    upload_request_overhead_bytes: int = Field(default=256 * 1024, ge=0)
+    runtime_settings_path: Path = Path("data/settings.json")
     document_storage_dir: Path = Path("data/pdfs")
     legacy_document_storage_dir: Path = Path("data/pdf")
     vector_index_dir: Path = Path("data/vector_index")
@@ -50,6 +61,12 @@ class Settings(BaseSettings):
 
     firecrawl_api_key: str | None = None
 
+    @model_validator(mode="after")
+    def validate_pool_sizes(self) -> Self:
+        if self.database_pool_min_size > self.database_pool_max_size:
+            raise ValueError("DATABASE_POOL_MIN_SIZE must not exceed DATABASE_POOL_MAX_SIZE")
+        return self
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -57,7 +74,7 @@ def get_settings() -> Settings:
 
 
 DATA_DIR = BACKEND_ROOT / "data"
-SETTINGS_PATH = DATA_DIR / "settings.json"
+SETTINGS_PATH = BACKEND_ROOT / get_settings().runtime_settings_path
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 

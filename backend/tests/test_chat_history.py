@@ -6,6 +6,8 @@ import pytest
 
 from app.modules.chat.history_repository import ChatHistoryRepository
 
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("postgres_repository")]
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

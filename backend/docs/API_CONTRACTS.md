@@ -27,6 +27,7 @@ Access levels used below:
 | Method | Path | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/health` | Public | Return service, environment, and database status. |
+| `GET` | `/api/v1/admin/database-pool` | Admin | Return per-process Repository pool limits and counters, without connection credentials. |
 
 ## Authentication
 
@@ -61,8 +62,9 @@ Register and login accept:
 }
 ```
 
-Authentication uses PostgreSQL even when `DATABASE_ENABLED=false`, so these
-routes still require a working `DATABASE_URL` and initialized schema.
+Authentication requires `DATABASE_ENABLED=true`, a working `DATABASE_URL`, and
+an initialized schema. Disabled or exhausted Repository capacity returns `503`
+with `Retry-After: 1`.
 
 ## Runtime settings
 
@@ -83,6 +85,7 @@ These routes expose the unified PostgreSQL-backed document catalogue.
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/documents?limit=100` | Public | List documents; `limit` is between 1 and 500. |
 | `GET` | `/api/v1/documents/search?q={query}&page=1&page_size=20` | Public | Search and paginate documents from PostgreSQL. Supports `status`, `policy_area`, `country_region`, `source_type`, and `sort`; `page_size` is between 1 and 100. |
+| `GET` | `/api/v1/documents/upload-limits` | Public | Return `max_file_bytes` and `max_request_bytes`; does not require database access. |
 | `GET` | `/api/v1/documents/{document_id}` | Public | Return document detail and metadata. |
 | `GET` | `/api/v1/documents/{document_id}/file` | Public | Download the original PDF. |
 | `GET` | `/api/v1/documents/{document_id}/chunks?limit=20` | Public | Return chunk previews; `limit` is between 1 and 100. |
@@ -102,7 +105,7 @@ All routes in this group require the `admin` role and PostgreSQL.
 
 | Method | Path | Success | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/admin/documents` | `202` | Upload a PDF and queue background processing. |
+| `POST` | `/api/v1/admin/documents` | `202` | Upload one PDF, DOCX, TXT, or MD file and queue background processing. |
 | `POST` | `/api/v1/admin/documents/rescan` | `200` | Rescan and reprocess the document library. |
 | `PATCH` | `/api/v1/admin/documents/{document_id}` | `200` | Partially update document metadata. |
 | `DELETE` | `/api/v1/admin/documents/{document_id}` | `204` | Delete a document. |
@@ -112,6 +115,12 @@ Upload uses `multipart/form-data`. The `file` field is required; optional fields
 are `title`, `source_organisation`, `policy_area`, `source_url`,
 `country_or_region`, `published_year`, `tags`, and `credibility_level`.
 Credibility accepts `official`, `academic`, `institutional`, or `unknown`.
+
+The default file limit is 20 MiB; the full multipart request has an additional
+256 KiB budget. Oversized uploads return `413`, invalid file content returns
+`400`, and exact duplicates return `409`. A `202` response means the saved
+document has entered the process-local background queue, not that indexing has
+finished. The client uses one multipart POST per file, without resumable chunks.
 
 Metadata updates use JSON and accept `title`, `summary`, `source_organisation`,
 `source_url`, `policy_area`, `country_or_region`, `published_year`, `tags`,

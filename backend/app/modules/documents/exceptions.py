@@ -1,6 +1,16 @@
 from __future__ import annotations
 
 
+class UploadTooLargeError(ValueError):
+    """The actual file exceeds the configured upload size limit."""
+
+    def __init__(self, max_bytes: int) -> None:
+        self.max_bytes = max_bytes
+        super().__init__(
+            f"Maximum file size is {max_bytes} bytes ({max_bytes / (1024 * 1024):g} MiB)."
+        )
+
+
 class DuplicateDocumentError(Exception):
     """Raised when an uploaded file's content already exists in the library.
 

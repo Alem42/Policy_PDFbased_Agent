@@ -15,7 +15,7 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import CloseIcon from "@mui/icons-material/Close";
-import { getDocumentDetail, getProcessingStatus, uploadDocuments } from "../api";
+import { getDocumentDetail, getProcessingStatus, getUploadLimits, uploadDocuments } from "../api";
 
 const VisuallyHiddenInput = styled("input")({
   clip: "rect(0 0 0 0)",
@@ -235,9 +235,22 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [jobs, setJobs] = useState([]);
+  const [maxUploadBytes, setMaxUploadBytes] = useState(null);
   const cancelledRefs = useRef([]);
   const dismissTimersRef = useRef(new Map());
   const hoveredJobIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    let active = true;
+    getUploadLimits()
+      .then((limits) => {
+        if (active) setMaxUploadBytes(limits.max_file_bytes);
+      })
+      .catch(() => {
+        // The upload action retries the limits request before sending any file.
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(
     () => () => {
@@ -297,11 +310,14 @@ export default function DocumentUpload({ onUploaded, compact = false }) {
   }, [jobs]);
 
   function selectFiles(fileList) {
-    setFiles(
-      Array.from(fileList).filter((file) =>
-        ACCEPTED_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)),
-      ),
+    const accepted = Array.from(fileList).filter((file) =>
+      ACCEPTED_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)),
     );
+    const oversized = accepted.find((file) => maxUploadBytes !== null && file.size > maxUploadBytes);
+    setError(oversized
+      ? `${oversized.name} is too large. Maximum file size is ${maxUploadBytes / (1024 * 1024)} MiB.`
+      : "");
+    setFiles(accepted.filter((file) => maxUploadBytes === null || file.size <= maxUploadBytes));
   }
 
   function removeFile(indexToRemove) {

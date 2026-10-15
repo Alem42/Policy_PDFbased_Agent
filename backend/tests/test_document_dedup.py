@@ -25,10 +25,14 @@ def test_normalized_content_hash_differs_for_different_content() -> None:
     assert a != b
 
 
+@pytest.mark.integration
+@pytest.mark.usefixtures("postgres_repository")
 def test_find_by_content_hash_returns_none_for_unknown_hash() -> None:
     assert document_repository.find_by_content_hash(f"nonexistent-{uuid4()}") is None
 
 
+@pytest.mark.integration
+@pytest.mark.usefixtures("postgres_repository")
 def test_find_by_source_url_returns_none_for_unknown_url() -> None:
     assert document_repository.find_by_source_url(f"https://example.com/{uuid4()}") is None
 

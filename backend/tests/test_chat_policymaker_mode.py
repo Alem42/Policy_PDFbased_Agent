@@ -80,6 +80,9 @@ def test_existing_modes_keep_their_answer_mode_behaviour() -> None:
 async def test_policymaker_router_normalizes_chat_to_analysis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        chat_router.metadata_filter_service.repository, "list_records", lambda **_kwargs: []
+    )
     session_id = str(uuid4())
     captured: dict[str, str] = {}
 
