@@ -62,6 +62,11 @@ class DocumentTaskRepository:
             ).fetchall()
             for row in expired:
                 conn.execute(
+                    "UPDATE processing_jobs SET status = 'failed', finished_at = now(), "
+                    "error_message = %s WHERE document_id = %s AND status = 'running'",
+                    (row["last_error"], row["document_id"]),
+                )
+                conn.execute(
                     "UPDATE documents SET status = 'failed', error_message = %s WHERE id = %s",
                     (row["last_error"], row["document_id"]),
                 )
@@ -146,6 +151,11 @@ class DocumentTaskRepository:
             retry = task["attempts"] < task["max_attempts"]
             delay = min(settings.document_task_retry_seconds * 2 ** (task["attempts"] - 1), 60)
             message = str(error)[:2000] or type(error).__name__
+            conn.execute(
+                "UPDATE processing_jobs SET status = 'failed', finished_at = now(), "
+                "error_message = %s WHERE document_id = %s AND status = 'running'",
+                (message, task["document_id"]),
+            )
             conn.execute(
                 """
                 UPDATE document_tasks SET status = %s, last_error = %s,

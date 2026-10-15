@@ -233,6 +233,7 @@ async def test_final_attempt_crash_is_terminal(scenario):
     with get_connection() as conn:
         conn.execute("UPDATE document_tasks SET max_attempts=1 WHERE id=%s", (row["task_id"],))
     task = tasks.claim("crashed")
+    job_id = pipeline.processing_job_repository.start(row["id"], "ingest_pdf")
     with get_connection() as conn:
         conn.execute(
             "UPDATE document_tasks SET lease_expires_at=now()-interval '1 second' WHERE id=%s",
@@ -241,6 +242,13 @@ async def test_final_attempt_crash_is_terminal(scenario):
     assert tasks.claim("replacement") is None
     assert tasks.for_document(row["id"])["status"] == "failed"
     assert document_repository.get_record(row["id"])["status"] == "failed"
+    with get_connection() as conn:
+        assert (
+            conn.execute("SELECT status FROM processing_jobs WHERE id=%s", (job_id,)).fetchone()[
+                "status"
+            ]
+            == "failed"
+        )
 
 
 async def test_heartbeat_renews_only_unexpired_current_claim(scenario):
