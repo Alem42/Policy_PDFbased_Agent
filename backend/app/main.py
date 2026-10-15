@@ -17,6 +17,7 @@ from app.core.database import DatabaseUnavailableError, database
 from app.core.upload_limits import UploadBodyLimitMiddleware
 from app.modules.chat.rag.checkpointer import close_checkpointer, init_checkpointer
 from app.modules.documents.processing_queue import document_processing_queue
+from app.modules.documents.schema import validate_document_task_schema
 
 
 @asynccontextmanager
@@ -24,6 +25,7 @@ async def lifespan(_: FastAPI):
     await database.connect()
     try:
         if get_settings().database_enabled:
+            await asyncio.to_thread(validate_document_task_schema)
             await init_checkpointer()
         await document_processing_queue.start()
         yield

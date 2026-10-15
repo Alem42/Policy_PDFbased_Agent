@@ -7,6 +7,7 @@ import logging
 from app.core.config import get_settings
 from app.core.database import database
 from app.modules.documents.processing_queue import DocumentProcessingQueue
+from app.modules.documents.schema import validate_document_task_schema
 
 
 async def run(concurrency: int, *, warmup: bool = False) -> None:
@@ -15,6 +16,7 @@ async def run(concurrency: int, *, warmup: bool = False) -> None:
     await database.connect()
     queue = DocumentProcessingQueue(max_concurrent=concurrency)
     try:
+        await asyncio.to_thread(validate_document_task_schema)
         if warmup:
             from app.modules.embedding import service as embedding
 

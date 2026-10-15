@@ -82,6 +82,20 @@ Start the API from `backend/`:
 uvicorn app.main:app --reload
 ```
 
+When upgrading an existing pre-durable-task database, first stop the API and
+document workers and run this from `backend/` with the service's environment:
+
+```powershell
+python -m app.modules.documents.migrate
+```
+
+This applies only migration 028 in a single transaction to the database selected
+by `backend/.env` and environment overrides. It preserves existing users and
+documents and recovers incomplete uploads. It does not apply earlier migrations
+or initialize a fresh database. API and standalone worker startup now check for
+the two required task tables and stop with this command if they are missing.
+Do not run `database/init.sql` against an existing database: it resets tables.
+
 The API is then available at:
 
 - Swagger UI: <http://127.0.0.1:8000/docs>
