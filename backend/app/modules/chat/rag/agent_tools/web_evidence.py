@@ -64,14 +64,10 @@ def score_web_results(
                 "passed": False,
             }
     candidates = [
-        best_per_result[index]
-        for index in range(len(results))
-        if index in best_per_result
+        best_per_result[index] for index in range(len(results)) if index in best_per_result
     ]
     relevant = [
-        candidate
-        for candidate in candidates
-        if candidate["distance"] <= max_vector_distance()
+        candidate for candidate in candidates if candidate["distance"] <= max_vector_distance()
     ]
     if not relevant:
         return False, "No web result was close enough to the question.", candidates

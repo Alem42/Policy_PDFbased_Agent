@@ -110,9 +110,7 @@ def update_public_settings(
         if selected_provider not in provider_ids:
             raise ValueError(f"Unknown provider: {selected_provider!r}.")
         if not _chat_model_ids(selected_provider):
-            raise ValueError(
-                f"Provider '{selected_provider}' has no chat endpoint."
-            )
+            raise ValueError(f"Provider '{selected_provider}' has no chat endpoint.")
         runtime.llm_provider = selected_provider
 
     effective_provider = runtime.llm_provider or DEFAULT_PROVIDER

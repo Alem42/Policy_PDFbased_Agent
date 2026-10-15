@@ -25,9 +25,7 @@ def _memory_settings(monkeypatch):
 def test_catalog_provider_key_is_saved_and_returned_masked(monkeypatch):
     state = _memory_settings(monkeypatch)
 
-    result = service.update_public_settings(
-        provider_api_keys={"zhipu": "zhipu-secret-key"}
-    )
+    result = service.update_public_settings(provider_api_keys={"zhipu": "zhipu-secret-key"})
 
     assert state["value"].provider_api_keys["zhipu"] == "zhipu-secret-key"
     assert service.get_provider_api_key("zhipu") == "zhipu-secret-key"
@@ -60,14 +58,9 @@ def test_registered_provider_can_save_a_key_without_model_endpoints(monkeypatch)
         lambda: {"deepseek", "my_internal_gateway"},
     )
 
-    service.update_public_settings(
-        provider_api_keys={"my_internal_gateway": "internal-secret"}
-    )
+    service.update_public_settings(provider_api_keys={"my_internal_gateway": "internal-secret"})
 
-    assert (
-        state["value"].provider_api_keys["my_internal_gateway"]
-        == "internal-secret"
-    )
+    assert state["value"].provider_api_keys["my_internal_gateway"] == "internal-secret"
 
 
 def test_default_chat_selection_must_match_catalog(monkeypatch):

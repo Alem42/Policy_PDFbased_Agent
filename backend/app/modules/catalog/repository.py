@@ -233,8 +233,4 @@ def catalog_entries(capability: str | None = None) -> list[dict]:
                 logger.warning("model_catalog unavailable, using in-code default: %s", exc)
                 _catalog_cache = tuple(dict(entry) for entry in DEFAULT_CATALOG)
         rows = _catalog_cache
-    return [
-        dict(entry)
-        for entry in rows
-        if not capability or entry["capability"] == capability
-    ]
+    return [dict(entry) for entry in rows if not capability or entry["capability"] == capability]

@@ -112,8 +112,8 @@ class Bm25Index:
                 continue
             idf = self._idf[term]
             for slot, term_frequency in postings:
-                length_norm = 1.0 - self._b + self._b * (
-                    self._doc_lengths[slot] / self._average_length
+                length_norm = (
+                    1.0 - self._b + self._b * (self._doc_lengths[slot] / self._average_length)
                 )
                 denominator = term_frequency + self._k1 * length_norm
                 scores[slot] = scores.get(slot, 0.0) + idf * (

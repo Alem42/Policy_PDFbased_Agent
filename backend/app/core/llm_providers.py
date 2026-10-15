@@ -9,13 +9,9 @@ def get_provider_config(provider: str | None) -> dict:
 
     provider_id = provider or DEFAULT_PROVIDER
     catalog = get_catalog("chat")
-    entries = [
-        entry for entry in catalog["entries"] if entry["provider"] == provider_id
-    ]
+    entries = [entry for entry in catalog["entries"] if entry["provider"] == provider_id]
     if not entries:
-        raise ValueError(
-            f"Provider '{provider_id}' has no chat endpoint in the model catalog."
-        )
+        raise ValueError(f"Provider '{provider_id}' has no chat endpoint in the model catalog.")
 
     provider_row = next(
         (item for item in catalog.get("providers", []) if item["id"] == provider_id),
@@ -31,11 +27,7 @@ def get_provider_config(provider: str | None) -> dict:
         "default_model": entries[0]["model"],
         # The application consumes final answer text only. DeepSeek V4 supports
         # thinking and non-thinking modes, so disable thinking for this RAG path.
-        "extra_body": (
-            {"thinking": {"type": "disabled"}}
-            if provider_id == "deepseek"
-            else {}
-        ),
+        "extra_body": ({"thinking": {"type": "disabled"}} if provider_id == "deepseek" else {}),
     }
 
 

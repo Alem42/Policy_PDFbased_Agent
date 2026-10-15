@@ -178,9 +178,7 @@ def _llm_disputes_named_instrument(name: str, evidence_text: str) -> bool:
         )
         return str(response.content).strip().upper().startswith("Y")
     except Exception:
-        logger.exception(
-            "Named-instrument LLM veto call failed; falling back to not disputing it"
-        )
+        logger.exception("Named-instrument LLM veto call failed; falling back to not disputing it")
         return False
 
 
@@ -201,9 +199,7 @@ def _unsupported_named_instrument(question: str, evidence_text: str) -> str | No
     for match in _NAMED_INSTRUMENT.finditer(question):
         name = match.group(1).strip()
         distinctive_terms = {
-            term
-            for term in _WORD.findall(name.lower())
-            if term not in _GENERIC_INSTRUMENT_TERMS
+            term for term in _WORD.findall(name.lower()) if term not in _GENERIC_INSTRUMENT_TERMS
         }
         if not distinctive_terms:
             continue
@@ -219,9 +215,7 @@ def is_chunk_relevant(question: str, chunk: dict) -> bool:
 
     distance_passes = float(chunk.get("distance", 1.0)) <= max_vector_distance()
     reranker_score = chunk.get("reranker_score")
-    reranker_passes = (
-        reranker_score is None or float(reranker_score) >= min_reranker_score()
-    )
+    reranker_passes = reranker_score is None or float(reranker_score) >= min_reranker_score()
     if distance_passes:
         return reranker_passes
 
@@ -257,7 +251,7 @@ def assess_evidence_sufficiency(
         if unsupported_name:
             return (
                 False,
-                f'The retrieved passages do not mention the explicitly named '
+                f"The retrieved passages do not mention the explicitly named "
                 f'instrument "{unsupported_name}".',
             )
         if len(context.strip()) < MIN_CONTEXT_CHARACTERS:
@@ -276,7 +270,7 @@ def assess_evidence_sufficiency(
     if unsupported_name:
         return (
             False,
-            f'The retrieved passages do not mention the explicitly named '
+            f"The retrieved passages do not mention the explicitly named "
             f'instrument "{unsupported_name}".',
         )
     if len(clean_context) < MIN_CONTEXT_CHARACTERS:

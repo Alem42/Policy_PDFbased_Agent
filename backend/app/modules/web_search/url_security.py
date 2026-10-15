@@ -17,9 +17,7 @@ async def validate_public_url(url: str) -> None:
     loop = asyncio.get_running_loop()
     addresses = await loop.run_in_executor(
         None,
-        lambda: socket.getaddrinfo(
-            parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM
-        ),
+        lambda: socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM),
     )
     for address in addresses:
         ip = ipaddress.ip_address(address[4][0])

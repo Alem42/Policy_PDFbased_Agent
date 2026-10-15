@@ -98,8 +98,12 @@ def _history_questions(history: list[dict] | None) -> set[str]:
     }
 
 
-def _clean_candidates(raw_candidates: list[str], history: list[dict] | None, cfg: SuggestionConfig,
-                      original_question: str) -> list[str]:
+def _clean_candidates(
+    raw_candidates: list[str],
+    history: list[dict] | None,
+    cfg: SuggestionConfig,
+    original_question: str,
+) -> list[str]:
     seen = _history_questions(history)
     seen.add(_normalize(original_question))
     cleaned: list[str] = []

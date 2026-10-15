@@ -245,7 +245,14 @@ async def test_search_web_tags_results_with_the_current_turn_index(
         citations=[],
         evidence_sources=[],
         turn_citation_keys=[],
-        web_pages_seen=[{"title": "Turn 1 source", "source_url": "https://t1.example", "passed": True, "turn_index": 1}],
+        web_pages_seen=[
+            {
+                "title": "Turn 1 source",
+                "source_url": "https://t1.example",
+                "passed": True,
+                "turn_index": 1,
+            }
+        ],
         messages=[
             HumanMessage(content="turn 1"),
             HumanMessage(content="turn 2"),
@@ -254,7 +261,12 @@ async def test_search_web_tags_results_with_the_current_turn_index(
     )
 
     assert command.update["web_pages_seen"] == [
-        {"title": "Turn 1 source", "source_url": "https://t1.example", "passed": True, "turn_index": 1},
+        {
+            "title": "Turn 1 source",
+            "source_url": "https://t1.example",
+            "passed": True,
+            "turn_index": 1,
+        },
         {
             "title": "Second-turn source",
             "source_url": "https://second-turn.example",
@@ -267,7 +279,11 @@ async def test_search_web_tags_results_with_the_current_turn_index(
 def test_add_web_pages_seen_deduplicates_by_url_and_caps_length() -> None:
     existing = [{"source_url": "https://a.example", "title": "A", "turn_index": 1}]
     new = [
-        {"source_url": "https://a.example", "title": "A (refetched)", "turn_index": 2},  # dup, dropped
+        {
+            "source_url": "https://a.example",
+            "title": "A (refetched)",
+            "turn_index": 2,
+        },  # dup, dropped
         {"source_url": "https://b.example", "title": "B", "turn_index": 2},
     ]
     merged = add_web_pages_seen(existing, new)
@@ -326,7 +342,7 @@ def test_resolve_web_reference_exact_match_wins_over_a_longer_title_containing_i
             "source_url": "https://whitecase.com/insight",
             "title": (
                 'White House unveils comprehensive AI strategy: "Winning the race: '
-                'America\'s AI action plan" | White & Case LLP'
+                "America's AI action plan\" | White & Case LLP"
             ),
             "turn_index": 1,
         },
@@ -477,8 +493,18 @@ async def test_import_web_page_resolves_reference_hint_without_explicit_url(
         user_id="user-1",
         citations=[],
         web_pages_seen=[
-            {"source_url": "https://t1-a.example", "title": "Turn 1 A", "passed": True, "turn_index": 1},
-            {"source_url": "https://t1-b.example", "title": "Turn 1 B", "passed": True, "turn_index": 1},
+            {
+                "source_url": "https://t1-a.example",
+                "title": "Turn 1 A",
+                "passed": True,
+                "turn_index": 1,
+            },
+            {
+                "source_url": "https://t1-b.example",
+                "title": "Turn 1 B",
+                "passed": True,
+                "turn_index": 1,
+            },
         ],
         turn_hint=1,
         reference_hint="second",

@@ -297,9 +297,7 @@ def test_assess_evidence_llm_veto_fails_open_on_error(
         raise RuntimeError("simulated provider outage")
 
     monkeypatch.setattr(evidence_module, "_llm_veto_enabled", lambda: True)
-    monkeypatch.setattr(
-        "app.core.ai.chat_models.resolve_generation_target", _boom
-    )
+    monkeypatch.setattr("app.core.ai.chat_models.resolve_generation_target", _boom)
 
     result = evidence_module._llm_disputes_named_instrument("US AI Action Plan", "irrelevant text")
     assert result is False

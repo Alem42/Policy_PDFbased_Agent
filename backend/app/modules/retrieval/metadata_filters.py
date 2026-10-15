@@ -123,32 +123,20 @@ class MetadataFilterService:
     ) -> MetadataFilters:
         explicit = explicit or {}
         rows = self.repository.list_records(include_restricted=include_restricted)
-        policy_labels = _unique(
-            [label for row in rows for label in row.get("policy_areas", [])]
-        )
-        regions = _unique(
-            [str(row["country_region"]) for row in rows if row.get("country_region")]
-        )
+        policy_labels = _unique([label for row in rows for label in row.get("policy_areas", [])])
+        regions = _unique([str(row["country_region"]) for row in rows if row.get("country_region")])
         organisations = _unique(
-            [
-                str(row["source_organisation"])
-                for row in rows
-                if row.get("source_organisation")
-            ]
+            [str(row["source_organisation"]) for row in rows if row.get("source_organisation")]
         )
 
         policy_areas = [str(explicit["policy_area"])] if explicit.get("policy_area") else []
         policy_areas.extend(label for label in policy_labels if _contains_label(question, label))
         country_regions = (
-            [str(explicit["country_or_region"])]
-            if explicit.get("country_or_region")
-            else []
+            [str(explicit["country_or_region"])] if explicit.get("country_or_region") else []
         )
         country_regions.extend(label for label in regions if _contains_label(question, label))
         source_organisations = (
-            [str(explicit["source_organisation"])]
-            if explicit.get("source_organisation")
-            else []
+            [str(explicit["source_organisation"])] if explicit.get("source_organisation") else []
         )
         source_organisations.extend(
             label for label in organisations if _contains_label(question, label)
@@ -277,8 +265,7 @@ class MetadataFilterService:
         ):
             return False
         if filters.source_organisations and not any(
-            same(row.get("source_organisation"), value)
-            for value in filters.source_organisations
+            same(row.get("source_organisation"), value) for value in filters.source_organisations
         ):
             return False
         if filters.languages and not any(

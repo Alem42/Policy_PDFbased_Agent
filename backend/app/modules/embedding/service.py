@@ -86,6 +86,7 @@ def _provider() -> EmbeddingProvider:
 # ── Embedding ────────────────────────────────────────────────────────────────
 # to the outside
 
+
 def embed_documents(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
@@ -172,9 +173,8 @@ def update_config(partial: dict) -> EmbeddingConfig:
     if "evidence_distance_threshold" in partial:
         # Explicit null means "use the selected provider's calibrated default".
         merged["evidence_distance_threshold"] = partial["evidence_distance_threshold"]
-    provider_changed = (
-        "api_provider" in partial
-        and partial.get("api_provider") != current.get("api_provider")
+    provider_changed = "api_provider" in partial and partial.get("api_provider") != current.get(
+        "api_provider"
     )
     if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")
@@ -191,9 +191,8 @@ def test_connection(partial: dict) -> dict:
     """Probe connectivity for a candidate config (merged over the stored one)."""
     current = active_config().model_dump()
     merged = {**current, **{k: v for k, v in partial.items() if v is not None}}
-    provider_changed = (
-        "api_provider" in partial
-        and partial.get("api_provider") != current.get("api_provider")
+    provider_changed = "api_provider" in partial and partial.get("api_provider") != current.get(
+        "api_provider"
     )
     if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")

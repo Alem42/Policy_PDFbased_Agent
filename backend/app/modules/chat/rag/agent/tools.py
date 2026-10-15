@@ -672,7 +672,9 @@ async def import_web_page(
         # backfill from web_pages_seen if this exact URL was already seen
         # this session, rather than importing with no title. import_page
         # tolerates a missing title on its own, so this is a nice-to-have.
-        match = next((item for item in (web_pages_seen or []) if item.get("source_url") == url), None)
+        match = next(
+            (item for item in (web_pages_seen or []) if item.get("source_url") == url), None
+        )
         if match:
             title = match["title"]
 

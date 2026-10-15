@@ -95,6 +95,7 @@ STUDENT_STRUCTURE_PROMPT = """Structure your answer with these markdown headings
 - What can be learned from the similarities and differences in approach and outcome.
 """
 
+
 def final_style_reminder(
     response_mode: ResponseMode = "researcher",
     answer_mode: AnswerMode = "analysis",
@@ -114,9 +115,9 @@ def final_style_reminder(
     if answer_mode != "analysis":
         return base
     return base + (
-        " Use exactly the prescribed markdown headings; do not rename, merge, or "
-        "add headings."
+        " Use exactly the prescribed markdown headings; do not rename, merge, or add headings."
     )
+
 
 ANALYSIS_BOUNDARY_PROMPT = """Knowledge boundary (Document Analysis):
 - Answer using ONLY the supplied policy document excerpts below.

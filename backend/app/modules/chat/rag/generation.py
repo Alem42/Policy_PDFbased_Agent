@@ -24,9 +24,7 @@ def _build_citation_instruction(citations: list[dict]) -> str:
     lines = []
     for index, citation in enumerate(citations, 1):
         page = f", page {citation['page']}" if citation.get("page") else ""
-        lines.append(
-            f"[{index}] {citation.get('title', 'Unknown document')}{page}"
-        )
+        lines.append(f"[{index}] {citation.get('title', 'Unknown document')}{page}")
     return CITATION_INSTRUCTION.format(source_list="\n".join(lines))
 
 
@@ -56,8 +54,7 @@ def _generation_messages(
     if not context and answer_mode == "analysis":
         raise ValueError("No extractable text was found in the selected PDFs.")
     system_prompt = get_system_prompt(response_mode, answer_mode).format(
-        context=context
-        or "(No relevant excerpts were retrieved from the selected documents.)",
+        context=context or "(No relevant excerpts were retrieved from the selected documents.)",
         citation_instruction=_build_citation_instruction(citations or []),
     )
     # Append the style reminder to the FINAL user message: the highest-weight
@@ -89,9 +86,7 @@ def generate_answer(
         history,
         citations,
     )
-    answer = StrOutputParser().invoke(
-        create_chat_client(provider, selected_model).invoke(messages)
-    )
+    answer = StrOutputParser().invoke(create_chat_client(provider, selected_model).invoke(messages))
     return answer, f"{provider}/{selected_model}"
 
 

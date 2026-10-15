@@ -34,9 +34,7 @@ async def get_suggestion_settings(_: AdminUser) -> dict:
 
 
 @admin_router.put("")
-async def update_suggestion_settings(
-    _: AdminUser, payload: Annotated[dict, Body()]
-) -> dict:
+async def update_suggestion_settings(_: AdminUser, payload: Annotated[dict, Body()]) -> dict:
     try:
         await asyncio.to_thread(suggestions.update_config, payload)
     except Exception as exc:

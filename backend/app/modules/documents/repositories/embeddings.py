@@ -292,9 +292,7 @@ class EmbeddingRepository:
             for row in rows
         ]
 
-    def distances_for_chunks(
-        self, query_vector: str, chunk_ids: list[str]
-    ) -> dict[str, float]:
+    def distances_for_chunks(self, query_vector: str, chunk_ids: list[str]) -> dict[str, float]:
         """Cosine distance of specific chunks to the query, keyed by chunk id.
 
         Backfills real distances for BM25-only hybrid candidates so the
@@ -341,8 +339,7 @@ class EmbeddingRepository:
         table, dim = _active_table_dim()
         cast = _vector_type(dim)
         values_sql = ", ".join(
-            f"({query_index}, %s::{cast})"
-            for query_index in range(len(query_vectors))
+            f"({query_index}, %s::{cast})" for query_index in range(len(query_vectors))
         )
         with get_connection() as connection:
             if not _table_exists(connection, table):

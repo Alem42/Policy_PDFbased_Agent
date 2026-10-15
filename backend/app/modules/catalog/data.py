@@ -169,7 +169,6 @@ DEFAULT_CATALOG: list[dict] = [
     ),
     _e("embedding", "embedding-2", "/embeddings", 1024, notes="固定 1024 维"),
     _e("rerank", "rerank", "/rerank", notes="文本重排序"),
-
     # 对话补全：当前官方接口列出的文本模型。
     *[
         _e("chat", model, "/chat/completions", notes="对话补全")
@@ -187,7 +186,6 @@ DEFAULT_CATALOG: list[dict] = [
             "glm-4-flashx-250414",
         )
     ],
-
     # Remaining Model API interfaces. Operation labels are intentional: these
     # rows are endpoint reference entries, not embedding/rerank picker options.
     _e("chat_async", "对话补全（异步）", "/async/chat/completions"),

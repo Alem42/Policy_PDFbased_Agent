@@ -32,6 +32,7 @@ def vector_table_name(model_id: str, dim: int) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", model_id.lower()).strip("_")
     return f"chunk_vectors_{slug}_{dim}"[:63]  # Postgres identifier limit
 
+
 # Local fastembed models we expose in the UI, mapped to their output dimension.
 # fastembed downloads weights + tokenizer on first use; dimension comes with it.
 # NOTE: listing a model here does NOT mean it is downloaded — only the active one
@@ -50,11 +51,7 @@ DEFAULT_API_EVIDENCE_DISTANCE = 0.50
 def default_evidence_distance(provider: str) -> float:
     """Return the demo-calibrated evidence cutoff for a provider mode."""
 
-    return (
-        DEFAULT_API_EVIDENCE_DISTANCE
-        if provider == "api"
-        else DEFAULT_LOCAL_EVIDENCE_DISTANCE
-    )
+    return DEFAULT_API_EVIDENCE_DISTANCE if provider == "api" else DEFAULT_LOCAL_EVIDENCE_DISTANCE
 
 
 class EmbeddingConfig(BaseModel):

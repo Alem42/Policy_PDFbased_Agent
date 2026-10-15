@@ -219,8 +219,7 @@ class DocumentCatalogueRepository:
                 source_type=detail.get("source_type"),
                 source_organisation=detail.get("source_organisation"),
                 source_url=(
-                    detail.get("source_url")
-                    or detail.get("metadata_json", {}).get("source_url")
+                    detail.get("source_url") or detail.get("metadata_json", {}).get("source_url")
                 ),
                 original_filename=detail.get("original_filename"),
                 mime_type=detail.get("mime_type"),

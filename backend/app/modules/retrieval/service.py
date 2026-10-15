@@ -119,11 +119,7 @@ class RetrievalService:
                 region_rows,
             )
 
-        chunks = [
-            chunk
-            for chunk in raw_chunks
-            if is_chunk_relevant(request.question, chunk)
-        ]
+        chunks = [chunk for chunk in raw_chunks if is_chunk_relevant(request.question, chunk)]
         context_items = chunks if has_embeddings else pages
         context, truncated = format_context(context_items)
         citations = self._citations(chunks, pages if not has_embeddings and not chunks else [])
@@ -272,14 +268,10 @@ class RetrievalService:
             raise RuntimeError("Batch retrieval returned an unexpected result-group count.")
 
         gate_distance = (
-            request.max_distance
-            if request.max_distance is not None
-            else max_vector_distance()
+            request.max_distance if request.max_distance is not None else max_vector_distance()
         )
         distance_survivors: list[tuple[int, str, list[dict]]] = []
-        for index, (question, chunks) in enumerate(
-            zip(questions, result_groups, strict=True)
-        ):
+        for index, (question, chunks) in enumerate(zip(questions, result_groups, strict=True)):
             if not chunks:
                 continue
             best_distance = min(float(chunk.get("distance", 1.0)) for chunk in chunks)
@@ -287,9 +279,7 @@ class RetrievalService:
                 distance_survivors.append((index, question, chunks))
 
         if not request.use_reranker or not reranking.enabled():
-            return [question for _, question, _ in distance_survivors][
-                : request.max_results
-            ]
+            return [question for _, question, _ in distance_survivors][: request.max_results]
 
         # Gate candidates concurrently for both providers: onnxruntime releases
         # the GIL during inference, so the local cross-encoder also benefits —
@@ -312,11 +302,9 @@ class RetrievalService:
                     if future.result():
                         passed_indices.add(index)
 
-        return [
-            question
-            for index, question, _ in distance_survivors
-            if index in passed_indices
-        ][: request.max_results]
+        return [question for index, question, _ in distance_survivors if index in passed_indices][
+            : request.max_results
+        ]
 
     @staticmethod
     def _passes_reranker_gate(question: str, chunks: list[dict], top_k: int) -> bool:

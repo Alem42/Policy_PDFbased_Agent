@@ -204,9 +204,7 @@ def _split_oversized_paragraph(
     return pieces
 
 
-def _hard_slice(
-    page: int, text: str, token_counter: TokenCounter, item_budget: int
-) -> list[dict]:
+def _hard_slice(page: int, text: str, token_counter: TokenCounter, item_budget: int) -> list[dict]:
     """Cut unpunctuated text into item_budget-sized pieces via binary search."""
     pieces: list[dict] = []
     remaining = text

@@ -111,9 +111,8 @@ def _merge(partial: dict) -> RerankingConfig:
     if "min_score" in partial:
         # Explicit null restores the provider-specific calibrated default.
         merged["min_score"] = partial["min_score"]
-    provider_changed = (
-        "api_provider" in partial
-        and partial.get("api_provider") != current.get("api_provider")
+    provider_changed = "api_provider" in partial and partial.get("api_provider") != current.get(
+        "api_provider"
     )
     if not (partial.get("api_key") or "").strip() and not provider_changed:
         merged["api_key"] = current.get("api_key", "")

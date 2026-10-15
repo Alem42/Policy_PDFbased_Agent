@@ -1,7 +1,7 @@
 """Admin endpoints for agent tool-call limits (Manage > Agent tool limits page).
 
-    GET /admin/agent-tool-limits  -> current per-tool call budgets
-    PUT /admin/agent-tool-limits  -> merge + persist budgets, return the new config
+GET /admin/agent-tool-limits  -> current per-tool call budgets
+PUT /admin/agent-tool-limits  -> merge + persist budgets, return the new config
 """
 
 from __future__ import annotations

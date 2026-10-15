@@ -75,6 +75,7 @@ class EmbeddingProvider(ABC):
 
 # ── Local (fastembed) ───────────────────────────────────────────────────────
 
+
 # lazy loading of fastembed model/tokenizer to avoid import errors when the package is not installed
 @lru_cache(maxsize=4)
 def _load_fastembed_model(model_name: str):
@@ -147,18 +148,14 @@ class OpenAICompatibleProvider(EmbeddingProvider):
         self._send_dimensions = not config.auto_detect_dimensions
 
     def _post(self, inputs: list[str]) -> list[list[float]]:
-        if ( not self._base_url 
-           or not self._api_key 
-           or not self.model_id ) :
+        if not self._base_url or not self._api_key or not self.model_id:
             raise ValueError("API embedding provider is missing base_url, api_key, or model.")
         payload: dict = {"model": self.model_id, "input": inputs}
         if self._send_dimensions:
             payload["dimensions"] = self.dimension
         response = httpx.post(
             _embeddings_url(self._base_url),
-            headers={
-                "Authorization": f"Bearer {self._api_key}"
-                },
+            headers={"Authorization": f"Bearer {self._api_key}"},
             json=payload,
             timeout=30.0,
         )
@@ -189,6 +186,7 @@ class OpenAICompatibleProvider(EmbeddingProvider):
         if len(vectors) != len(cleaned):
             raise RuntimeError("Embedding provider returned a different number of query vectors.")
         return vectors
+
 
 # test connection probe (used by the admin UI) to verify connectivity and report the real dimension
 def probe(config: EmbeddingConfig) -> dict:

@@ -54,9 +54,7 @@ async def test_closing_interrupt_stream_does_not_fail_paused_turn(
 ) -> None:
     class FakeGraph:
         async def astream(self, graph_input, *, config, stream_mode):
-            yield "updates", {
-                "__interrupt__": (SimpleNamespace(value={"type": "confirm_import"}),)
-            }
+            yield "updates", {"__interrupt__": (SimpleNamespace(value={"type": "confirm_import"}),)}
 
     async def message_steps(_message_id):
         return []

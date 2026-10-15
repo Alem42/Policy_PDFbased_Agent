@@ -225,9 +225,7 @@ def test_hybrid_candidates_backfills_real_distance(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         keyword_search,
         "bm25_search",
-        lambda *_args, **_kwargs: [
-            {"chunk_id": "s1", "text": "sparse hit", "bm25_score": 4.0}
-        ],
+        lambda *_args, **_kwargs: [{"chunk_id": "s1", "text": "sparse hit", "bm25_score": 4.0}],
     )
     monkeypatch.setattr(
         documents_service.embedding_repository,
@@ -251,9 +249,7 @@ def test_hybrid_candidates_defaults_to_worst_distance_when_unembedded(
     monkeypatch.setattr(
         keyword_search,
         "bm25_search",
-        lambda *_args, **_kwargs: [
-            {"chunk_id": "s1", "text": "sparse hit", "bm25_score": 4.0}
-        ],
+        lambda *_args, **_kwargs: [{"chunk_id": "s1", "text": "sparse hit", "bm25_score": 4.0}],
     )
     monkeypatch.setattr(
         documents_service.embedding_repository,

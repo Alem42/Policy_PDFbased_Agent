@@ -72,9 +72,7 @@ async def stream_suggestion_events(
     except Exception:
         logger.exception("Suggestion settings unavailable; skipping follow-ups")
 
-    yield encode_sse(
-        {"type": "answer_done", "suggestions_pending": suggestions_pending}
-    )
+    yield encode_sse({"type": "answer_done", "suggestions_pending": suggestions_pending})
 
     if suggestions_pending and sug_cfg is not None:
         suggestions: list[str] = []
@@ -262,9 +260,7 @@ async def stream_agent_events(
         )
 
         context = "\n\n".join(c.get("quote", "") for c in citations if c.get("quote"))
-        question = next(
-            (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
-        )
+        question = next((m.content for m in reversed(messages) if isinstance(m, HumanMessage)), "")
         suggestion_history = await chat_turn_service.history(session_id)
         async for event in stream_suggestion_events(
             question=question,

@@ -11,9 +11,7 @@ def test_catalog_is_filtered_by_capability():
     rerank_entries = catalog_service.get_catalog("rerank")["entries"]
 
     zhipu_embedding_models = {
-        entry["model"]
-        for entry in embedding_entries
-        if entry["provider"] == "zhipu"
+        entry["model"] for entry in embedding_entries if entry["provider"] == "zhipu"
     }
     assert zhipu_embedding_models == {
         "embedding-2",
@@ -307,9 +305,7 @@ def test_add_provider_uses_preset_and_invalidates_provider_cache(monkeypatch):
         lambda: invalidated.__setitem__("called", True),
     )
 
-    result = catalog_service.add_provider(
-        {"preset_id": "cohere", "name": "Cohere"}
-    )
+    result = catalog_service.add_provider({"preset_id": "cohere", "name": "Cohere"})
 
     assert result["id"] == "cohere"
     assert result["base_url"] == "https://api.cohere.com/v2"
