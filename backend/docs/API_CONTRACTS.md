@@ -122,6 +122,28 @@ The default file limit is 20 MiB; the full multipart request has an additional
 document has entered the process-local background queue, not that indexing has
 finished. The client uses one multipart POST per file, without resumable chunks.
 
+Uploads optionally accept `Idempotency-Key` (1–128 letters, digits, `.`, `_`, `:`,
+or `-`), scoped to the authenticated administrator. Replaying identical filename,
+content and metadata returns the same document/task IDs with `replayed=true` and
+`Idempotency-Replayed: true`; changing input with the same key returns `409`.
+The response adds `task_id` and `replayed`. Without a matching request key,
+byte-identical documents keep the existing duplicate-file `409` behavior.
+
+Document and task registration share a transaction. Task results and success
+also share a transaction. Progress responses add an optional `task` object with
+attempt, retry, heartbeat and lease timestamps; lease tokens are never returned.
+
+| Method | Path | Access | Success | Description |
+| --- | --- | --- | --- | --- |
+| `GET` | `/api/v1/admin/document-tasks?limit=50` | Admin | `200` | Recent tasks, state counts, and configured workers per API process. |
+| `POST` | `/api/v1/admin/document-tasks/{task_id}/retry` | Admin | `202` | Retry failed work with an additional attempt budget; repeated calls while active reuse the task. |
+
+Task states are `queued`, `running`, `succeeded`, and `failed`; queued retries have
+an `available_at` delay. Workers use expiring leases and fenced publication.
+Successful tasks are retained. Retrying a succeeded task returns `409`; a missing
+task returns `404`. Rescan/re-embed requests coalesce matching active work per
+document, and conflicting task types return `409`.
+
 Metadata updates use JSON and accept `title`, `summary`, `source_organisation`,
 `source_url`, `policy_area`, `country_or_region`, `published_year`, `tags`,
 `credibility_level`, `approved`, and `access_level`.

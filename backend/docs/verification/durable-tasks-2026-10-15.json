@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-15",
+  "implementation_commits": [
+    "d52fdfc",
+    "8fe3487",
+    "5749fab"
+  ],
+  "environment": {
+    "database": "local PostgreSQL 18.4 with pgvector",
+    "python": "3.12",
+    "content": "synthetic policy PDFs with real extraction and local embeddings"
+  },
+  "automated_checks": {
+    "backend_tests_passed": 352,
+    "frontend_tests_passed": 4,
+    "ruff_lint": "passed",
+    "ruff_format_files": 199,
+    "frontend_build": "passed",
+    "compose_config": "passed"
+  },
+  "real_process_verification": {
+    "run_id": "573d1d52",
+    "upload_request_survives_api_restart": {
+      "document_id": "c1f243c4-3bca-4e9d-a267-e9c21252078e",
+      "task_id": "e1f93585-458d-498c-b957-cc11a156a231"
+    },
+    "heartbeat_prevents_takeover": true,
+    "forced_worker_death_recovered": {
+      "attempts": 2,
+      "pages": 4,
+      "chunks": 1,
+      "real_content_verified": true
+    },
+    "multi_user_upload_and_reads": {
+      "reader_accounts": 4,
+      "uploader_accounts": 2,
+      "pdf_uploads": 8,
+      "read_requests": 120,
+      "all_reads_200": true,
+      "p50_read_ms": 15.0,
+      "p95_read_ms": 32.0,
+      "peak": {
+        "queued": 2,
+        "running": 2
+      }
+    },
+    "retry_budget_and_manual_repair": {
+      "failed_after_attempts": 3,
+      "succeeded_on_attempt": 4,
+      "byte_identical_file_restored": true
+    },
+    "all_script_cases_passed": true
+  },
+  "browser_ui_validation": {
+    "status": "not_completed",
+    "reason": "Offline session exposed no connected browser surface."
+  },
+  "scope": [
+    "No remote chat model calls were made.",
+    "Concurrent reads exercised document catalogue and chat history, not LLM throughput.",
+    "Local small-scale results are not production capacity claims."
+  ]
+}

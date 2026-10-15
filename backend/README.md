@@ -190,7 +190,8 @@ enable the database and supply a working `DATABASE_URL` to use them.
 Repositories share a psycopg pool with bounded acquisition waits. Pool capacity
 errors return `503` with `Retry-After: 1`. Inspect per-process limits and counters
 through the admin-only `GET /api/v1/admin/database-pool`. LangGraph's checkpointer
-has a separate pool; the Repository limit is not the total server connection limit.
+uses a separate long-lived async connection with an internal lock; the Repository
+limit is not the total server connection limit.
 
 Uploads default to 20 MiB per file. The frontend reads
 `GET /api/v1/documents/upload-limits` before sending files. The backend independently
@@ -202,6 +203,53 @@ To allow 100 MiB, set `UPLOAD_MAX_BYTES=104857600` and restart the backend.
 See [the Chinese implementation and learning guide](docs/CONNECTION_POOL_AND_UPLOAD_GUIDE.md)
 for database communication, pool sizing, asyncio, the complete upload journey,
 verification evidence, and interview demonstrations.
+
+### Durable document processing
+
+Apply `database/migrations/028_durable_document_tasks.sql` once to an existing
+database while the old backend is stopped, then start this version. Fresh Compose
+volumes include it automatically; restarting an existing volume does not apply
+new migrations. Existing incomplete document rows are backfilled with tasks.
+
+Completed file uploads commit document metadata, a `document_tasks` row, and an
+optional upload request key together. Fixed workers claim tasks using PostgreSQL
+`FOR UPDATE SKIP LOCKED`, heartbeat their leases, and retry failed/expired attempts
+within a budget. Publication checks the current lease and atomically writes the
+index together with success. This uses PostgreSQL as the durable broker.
+
+By default each backend process runs three document workers. For a separate
+worker process, start the API with `DOCUMENT_TASK_WORKERS=0`, and in another
+terminal using the same database and accessible document storage run:
+
+```powershell
+python -m app.modules.documents.worker --concurrency 3 --warmup
+```
+
+`--warmup` loads the configured embedding model before tasks are claimed. Each
+process has its own connection pool. The task lease coordinates ownership across
+processes; worker concurrency is still a per-process setting.
+
+The admin workspace shows task states, attempt counts, errors, and a retry button.
+`GET /api/v1/admin/document-tasks` lists tasks;
+`POST /api/v1/admin/document-tasks/{id}/retry` retries a failed task. Uploads accept
+`Idempotency-Key` scoped to the administrator: identical retries reuse document
+and task IDs; changed input with the same key returns `409`. Selected frontend
+File objects keep their keys across retries, without persistence across a page reload.
+
+To run real PDF, HTTP, process-crash, local-embedding, and multi-account tests
+against an initialized disposable local database ending in `_tests`:
+
+```powershell
+python scripts/verify_durable_tasks.py --database-url postgresql://user:password@127.0.0.1:5432/durable_demo_tests
+```
+
+The verifier starts and stops only its own API/worker subprocesses. It creates
+synthetic policy PDFs, kills a worker after real extraction, checks recovery,
+performs concurrent uploads and reads, restores temporarily unavailable storage,
+and saves its report under `tmp/durable-demo/`. Remote chat models are not invoked.
+See [the Chinese task, idempotency and concurrency guide](docs/DURABLE_DOCUMENT_TASKS_GUIDE.md)
+for the implementation boundaries, test results, interview demos, and a code-linked
+review of the first-stage connection pool work.
 
 ## Authentication
 
