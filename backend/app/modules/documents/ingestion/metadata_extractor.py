@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 from langchain_core.output_parsers import StrOutputParser
@@ -21,6 +22,12 @@ from app.modules.documents.taxonomy_service import get_leaf_labels, get_taxonomy
 EXCERPT_HEAD_CHARS = 9_000
 EXCERPT_MID_CHARS = 5_000
 EXCERPT_TAIL_CHARS = 2_000
+_LLM_REQUEST_TIMEOUT_SECONDS = 15
+_LLM_STAGE_TIMEOUT_SECONDS = 30
+_LLM_MAX_COMPLETION_TOKENS = 1024
+# A bounded shared executor also prevents repeated slow providers from creating
+# an unbounded number of metadata request threads.
+_LLM_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="document-metadata")
 
 METADATA_PROMPT = """You extract structured metadata from policy documents.
 Return only valid JSON. Do not wrap it in markdown.
@@ -180,7 +187,13 @@ def generate_document_metadata(
 
     try:
         provider, selected_model, _ = resolve_generation_target(model)
-        llm = create_chat_client(provider, selected_model)
+        llm = create_chat_client(
+            provider,
+            selected_model,
+            max_tokens=_LLM_MAX_COMPLETION_TOKENS,
+            timeout=_LLM_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
     except ValueError:
         metadata = normalise_metadata({}, filename, leaf_labels)
         metadata["language"] = _resolve_language(None, excerpt)
@@ -193,13 +206,23 @@ def generate_document_metadata(
         ]
     )
     chain = prompt | llm | StrOutputParser()
-    response = chain.invoke(
+    future = _LLM_POOL.submit(
+        chain.invoke,
         {
             "excerpt": excerpt,
             "filename": filename,
             "taxonomy": _format_taxonomy(tree),
-        }
+        },
     )
+    try:
+        response = future.result(timeout=_LLM_STAGE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        future.cancel()
+        # The ingestion pipeline already handles unavailable metadata by
+        # retaining filename/default metadata and continuing with the text.
+        raise TimeoutError(
+            "Optional document metadata generation exceeded its time budget."
+        ) from None
     metadata = normalise_metadata(_extract_json(response), filename, leaf_labels)
     metadata["language"] = _resolve_language(metadata.get("language"), excerpt)
     return metadata, selected_model

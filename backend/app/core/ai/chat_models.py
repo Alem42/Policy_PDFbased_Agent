@@ -29,6 +29,9 @@ def create_chat_client(
     model: str,
     temperature: float = 0,
     max_tokens: int | None = None,
+    *,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> ChatOpenAI:
     """Build an OpenAI-compatible LangChain client for any catalog provider."""
 
@@ -45,4 +48,8 @@ def create_chat_client(
     }
     if max_tokens is not None:
         options["max_tokens"] = max_tokens
+    if timeout is not None:
+        options["timeout"] = timeout
+    if max_retries is not None:
+        options["max_retries"] = max_retries
     return ChatOpenAI(**options)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 _MAX_WORKERS = 6  # parallel header calls per document
 _CHUNK_SNIPPET_CHARS = 1200  # cap excerpt sent to the LLM
 _MAX_HEADER_CHARS = 240
+_MAX_COMPLETION_TOKENS = 128
+_REQUEST_TIMEOUT_SECONDS = 10
+_STAGE_TIMEOUT_SECONDS = 20
 
 CONTEXT_PROMPT = """You situate an excerpt within its source policy document.
 Given the document title, summary, and an excerpt, write ONE short sentence
@@ -62,7 +65,13 @@ def build_contextual_headers(
 
     try:
         provider, selected_model, _ = resolve_generation_target(model)
-        llm = create_chat_client(provider, selected_model)
+        llm = create_chat_client(
+            provider,
+            selected_model,
+            max_tokens=_MAX_COMPLETION_TOKENS,
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
     except ValueError:
         return ["" for _ in chunks]
     prompt = ChatPromptTemplate.from_messages([("system", CONTEXT_PROMPT)])
@@ -84,5 +93,17 @@ def build_contextual_headers(
             logger.warning("Contextual header failed for a chunk: %s", exc)
             return ""
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-        return list(pool.map(_one, chunks))
+    pool = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
+    try:
+        futures = [pool.submit(_one, chunk) for chunk in chunks]
+        done, pending = wait(futures, timeout=_STAGE_TIMEOUT_SECONDS)
+        if pending:
+            logger.warning(
+                "Contextual header budget exceeded; embedding %d chunks without headers",
+                len(pending),
+            )
+        return [future.result() if future in done else "" for future in futures]
+    finally:
+        # The context-manager form waits for running requests on exit, defeating
+        # the stage deadline. Network timeouts bound lingering requests instead.
+        pool.shutdown(wait=False, cancel_futures=True)
