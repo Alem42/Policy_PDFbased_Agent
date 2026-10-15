@@ -1,0 +1,48 @@
+{
+  "endpoint": "http://127.0.0.1:3000/api/v1",
+  "temporary_admin_removed": true,
+  "temporary_document_removed": true,
+  "login_status": 200,
+  "original_documents_visible": 7,
+  "upload": {
+    "http_status": 202,
+    "document_id": "d53141b1-14bd-46d8-b59f-3f135baccca6",
+    "task_id": "50b34558-35b7-4011-92d4-75cbe328257a",
+    "file_bytes": 1329
+  },
+  "idempotent_replay_same_document_and_task": true,
+  "concurrent_library_reads": {
+    "requests": 24,
+    "concurrency": 8,
+    "all_200": true
+  },
+  "task": {
+    "status": "succeeded",
+    "attempts": 1,
+    "last_error": null,
+    "result_json": {
+      "page_count": 1,
+      "chunk_count": 1,
+      "metadata_model": null,
+      "embedding_model": "embedding-3"
+    }
+  },
+  "processing_seconds": 27.75,
+  "real_extracted_content_verified": true,
+  "database": "testdb",
+  "actual_vectors": {
+    "vectors": 1,
+    "dimensions": 2048
+  },
+  "download_matches_uploaded_bytes": true,
+  "pool_endpoint_status": 200,
+  "passed": true,
+  "original_records_unchanged_after_cleanup": true,
+  "original_counts_after_cleanup": {
+    "app_users": 6,
+    "documents": 7
+  },
+  "backend_tests_passed": 359,
+  "browser_ui_validation": false,
+  "optional_metadata_fell_back": true
+}
