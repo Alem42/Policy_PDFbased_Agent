@@ -16,7 +16,7 @@ from app.modules.auth.repository import user_repository
 from app.modules.documents.file_store import document_file_store
 from app.modules.documents.repositories import tasks as task_module
 from app.modules.documents.repositories.documents import document_repository
-from app.modules.documents.repositories.tasks import LostTaskLease
+from app.modules.documents.repositories.tasks import ActiveDocumentTask, LostTaskLease
 from app.modules.documents.repositories.tasks import document_task_repository as tasks
 from app.modules.documents.service import pipeline
 from app.modules.documents.upload_registration import IdempotencyConflict
@@ -222,6 +222,7 @@ async def test_retry_budget_and_manual_retry_keep_attempt_history(scenario):
     assert tasks.claim("nothing-left") is None
     retried = tasks.retry(row["task_id"])
     assert retried["attempts"] == 3 and retried["max_attempts"] == 6
+    assert tasks.retry(row["task_id"])["max_attempts"] == 6
     pipeline.execute_document_task(tasks.claim("repaired-worker"))
     assert tasks.for_document(row["id"])["status"] == "succeeded"
 
@@ -296,3 +297,36 @@ def test_task_operations_are_admin_only():
             assert client.post(f"/api/v1/admin/document-tasks/{uuid4()}/retry").status_code == 403
         finally:
             app.dependency_overrides.pop(get_current_user, None)
+
+
+async def test_active_tasks_coalesce_but_different_operations_conflict(scenario):
+    upload, _, _ = scenario
+    row = await upload()
+    assert str(tasks.enqueue(row["id"])["id"]) == row["task_id"]
+    with pytest.raises(ActiveDocumentTask):
+        tasks.enqueue(row["id"], "reembed")
+
+
+async def test_reembed_retry_preserves_chunks_and_returns_to_embedding_state(scenario):
+    upload, _, _ = scenario
+    row = await upload()
+    pipeline.execute_document_task(tasks.claim("ingest"))
+    before = dict(counts(row["id"]))
+    with get_connection() as conn:
+        chunk_ids = conn.execute(
+            "SELECT id FROM document_chunks WHERE document_id=%s ORDER BY id", (row["id"],)
+        ).fetchall()
+    tasks.enqueue(row["id"], "reembed")
+    attempt = tasks.claim("reembed-failure")
+    tasks.fail(attempt, RuntimeError("Transient model error"))
+    assert document_repository.get_record(row["id"])["status"] == "annotated"
+    pipeline.execute_document_task(tasks.claim("reembed-retry"))
+    assert tasks.for_document(row["id"])["status"] == "succeeded"
+    assert dict(counts(row["id"])) == before
+    with get_connection() as conn:
+        assert (
+            conn.execute(
+                "SELECT id FROM document_chunks WHERE document_id=%s ORDER BY id", (row["id"],)
+            ).fetchall()
+            == chunk_ids
+        )

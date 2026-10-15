@@ -158,7 +158,13 @@ class DocumentTaskRepository:
             )
             conn.execute(
                 "UPDATE documents SET status = %s, error_message = %s WHERE id = %s",
-                ("uploaded" if retry else "failed", message, task["document_id"]),
+                (
+                    ("annotated" if task["task_type"] == "reembed" else "uploaded")
+                    if retry
+                    else "failed",
+                    message,
+                    task["document_id"],
+                ),
             )
 
     def retry(self, task_id: str) -> dict:
@@ -193,8 +199,11 @@ class DocumentTaskRepository:
                 (get_settings().document_task_max_attempts, task_id),
             ).fetchone()
             conn.execute(
-                "UPDATE documents SET status = 'uploaded', error_message = NULL WHERE id = %s",
-                (task["document_id"],),
+                "UPDATE documents SET status = %s, error_message = NULL WHERE id = %s",
+                (
+                    "annotated" if task["task_type"] == "reembed" else "uploaded",
+                    task["document_id"],
+                ),
             )
         return dict(task)
 

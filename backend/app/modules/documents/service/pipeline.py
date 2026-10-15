@@ -167,6 +167,7 @@ def execute_document_task(task: dict) -> None:
     if task["task_type"] == "ingest":
         process_document(document_id, task=task)
     elif task["task_type"] == "reembed":
+        document_task_repository.progress(task, "annotated")
         with embedding.snapshot():
             rows = embedding_repository.chunks_for_reembed(document_id)
             inputs = [
