@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -99,7 +100,7 @@ async def generate_answer_streaming(
     citations: list[dict] | None = None,
     answer_mode: AnswerMode = "analysis",
 ) -> AsyncGenerator[str, None]:
-    provider, selected_model, _ = resolve_generation_target(model)
+    provider, selected_model, _ = await asyncio.to_thread(resolve_generation_target, model)
     messages = _generation_messages(
         question,
         context,
@@ -108,6 +109,7 @@ async def generate_answer_streaming(
         history,
         citations,
     )
-    async for chunk in create_chat_client(provider, selected_model).astream(messages):
+    client = await asyncio.to_thread(create_chat_client, provider, selected_model)
+    async for chunk in client.astream(messages):
         if chunk.content:
             yield str(chunk.content)

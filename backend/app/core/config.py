@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     upload_chunk_bytes: int = Field(default=1024 * 1024, gt=0, le=8 * 1024 * 1024)
     upload_request_overhead_bytes: int = Field(default=256 * 1024, ge=0)
     runtime_settings_path: Path = Path("data/settings.json")
+    document_task_workers: int = Field(default=3, ge=0, le=16)
+    document_task_poll_seconds: float = Field(default=1, gt=0)
+    document_task_lease_seconds: float = Field(default=30, ge=3)
+    document_task_heartbeat_seconds: float = Field(default=5, gt=0)
+    document_task_max_attempts: int = Field(default=3, ge=1, le=20)
+    document_task_retry_seconds: float = Field(default=2, ge=0)
+    document_task_execution_timeout_seconds: float = Field(default=300, ge=1)
     document_storage_dir: Path = Path("data/pdfs")
     legacy_document_storage_dir: Path = Path("data/pdf")
     vector_index_dir: Path = Path("data/vector_index")
@@ -65,6 +72,8 @@ class Settings(BaseSettings):
     def validate_pool_sizes(self) -> Self:
         if self.database_pool_min_size > self.database_pool_max_size:
             raise ValueError("DATABASE_POOL_MIN_SIZE must not exceed DATABASE_POOL_MAX_SIZE")
+        if self.document_task_heartbeat_seconds * 2 >= self.document_task_lease_seconds:
+            raise ValueError("DOCUMENT_TASK_HEARTBEAT_SECONDS must be less than half the lease")
         return self
 
 

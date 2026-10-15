@@ -1,4 +1,5 @@
 const API_PREFIX = "/api/v1";
+const uploadRequestKeys = new WeakMap();
 
 function apiPath(path) {
   return `${API_PREFIX}${path}`;
@@ -216,11 +217,13 @@ export async function uploadDocuments(files) {
   }
   const uploaded = [];
   for (const file of files) {
+    if (!uploadRequestKeys.has(file)) uploadRequestKeys.set(file, crypto.randomUUID());
     const formData = new FormData();
     formData.append("file", file);
     uploaded.push(
       await request("/admin/documents", {
         method: "POST",
+        headers: { "Idempotency-Key": uploadRequestKeys.get(file) },
         body: formData,
       }),
     );
@@ -405,6 +408,14 @@ export function saveSettings(settings) {
 
 export function getProcessingStatus(documentId) {
   return request(`/admin/documents/${encodeURIComponent(documentId)}/processing-status`);
+}
+
+export function getDocumentTasks() {
+  return request("/admin/document-tasks");
+}
+
+export function retryDocumentTask(taskId) {
+  return request(`/admin/document-tasks/${taskId}/retry`, { method: "POST" });
 }
 
 // ── Embedding settings (admin) ─────────────────────────────────────────────

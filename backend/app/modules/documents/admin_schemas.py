@@ -31,6 +31,8 @@ class WebLifecycleStatus(StrEnum):
 class AdminDocumentCreateResponse(BaseModel):
     id: UUID
     processing_status: ProcessingStatus = ProcessingStatus.QUEUED
+    task_id: UUID | None = None
+    replayed: bool = False
 
 
 class AdminWebImportRequest(BaseModel):
@@ -91,3 +93,4 @@ class DocumentProcessingStatus(BaseModel):
     message: str | None = None
     error: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    task: dict | None = None

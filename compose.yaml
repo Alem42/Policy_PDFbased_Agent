@@ -40,6 +40,7 @@ services:
       - ./backend/database/migrations/025_add_admin_invites.sql:/docker-entrypoint-initdb.d/26_migration_025.sql:ro
       - ./backend/database/migrations/026_remove_email_verification.sql:/docker-entrypoint-initdb.d/27_migration_026.sql:ro
       - ./backend/database/migrations/027_allow_shared_admin_emails.sql:/docker-entrypoint-initdb.d/28_migration_027.sql:ro
+      - ./backend/database/migrations/028_durable_document_tasks.sql:/docker-entrypoint-initdb.d/29_migration_028.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s
@@ -74,6 +75,13 @@ services:
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-20971520}
       UPLOAD_CHUNK_BYTES: ${UPLOAD_CHUNK_BYTES:-1048576}
       UPLOAD_REQUEST_OVERHEAD_BYTES: ${UPLOAD_REQUEST_OVERHEAD_BYTES:-262144}
+      DOCUMENT_TASK_WORKERS: ${DOCUMENT_TASK_WORKERS:-3}
+      DOCUMENT_TASK_POLL_SECONDS: ${DOCUMENT_TASK_POLL_SECONDS:-1}
+      DOCUMENT_TASK_LEASE_SECONDS: ${DOCUMENT_TASK_LEASE_SECONDS:-30}
+      DOCUMENT_TASK_HEARTBEAT_SECONDS: ${DOCUMENT_TASK_HEARTBEAT_SECONDS:-5}
+      DOCUMENT_TASK_MAX_ATTEMPTS: ${DOCUMENT_TASK_MAX_ATTEMPTS:-3}
+      DOCUMENT_TASK_RETRY_SECONDS: ${DOCUMENT_TASK_RETRY_SECONDS:-2}
+      DOCUMENT_TASK_EXECUTION_TIMEOUT_SECONDS: ${DOCUMENT_TASK_EXECUTION_TIMEOUT_SECONDS:-300}
       DOCUMENT_STORAGE_DIR: data/pdfs
       VECTOR_INDEX_DIR: data/vector_index
     volumes:

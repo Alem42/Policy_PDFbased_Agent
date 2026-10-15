@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 from uuid import uuid4
 
 from app.core.database import get_connection
@@ -11,8 +12,8 @@ from app.modules.documents.repositories.processing_jobs import processing_job_re
 class DocumentContentRepository:
     """Persists extracted pages, generated metadata, and document content views."""
 
-    def replace_pages(self, document_id: str, pages: list[dict]) -> None:
-        with get_connection() as connection:
+    def replace_pages(self, document_id: str, pages: list[dict], *, connection=None) -> None:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute("DELETE FROM document_pages WHERE document_id = %s", (document_id,))
             for page in pages:
                 text = page["text"]
@@ -23,15 +24,16 @@ class DocumentContentRepository:
                     """,
                     (str(uuid4()), document_id, page["page"], text, len(text)),
                 )
-            connection.commit()
 
     def upsert_generated_metadata(
         self,
         document_id: str,
         metadata: dict,
         generated_by_model: str | None,
+        *,
+        connection=None,
     ) -> None:
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute(
                 """
                 INSERT INTO document_metadata (
@@ -101,7 +103,6 @@ class DocumentContentRepository:
                     generated_by_model,
                 ),
             )
-            connection.commit()
 
     def get_detail_record(self, identifier: str, *, include_restricted: bool = False) -> dict:
         document = document_repository.get_record(
@@ -206,14 +207,14 @@ class DocumentContentRepository:
             for row in rows
         ]
 
-    def update_metadata(self, identifier: str, payload: dict) -> dict:
+    def update_metadata(self, identifier: str, payload: dict, *, connection=None) -> dict:
         """Partial metadata update, shared by the admin edit dialog and the
         optional metadata form fields on upload. Accepts both the current
         column-matching keys (country_region, year, policy_areas, keywords,
         ...) and the legacy upload-form keys (country_or_region,
         published_year, policy_area singular, tags, ...) for compatibility.
         """
-        document = document_repository.get_record(identifier)
+        document = document_repository.get_record(identifier, connection=connection)
 
         country_region = payload.get("country_region") or payload.get("country_or_region")
         year = payload.get("year")
@@ -226,8 +227,8 @@ class DocumentContentRepository:
         if keywords is None:
             keywords = payload.get("tags")
 
-        with get_connection() as connection:
-            connection.execute(
+        with nullcontext(connection) if connection is not None else get_connection() as conn:
+            conn.execute(
                 """
                 INSERT INTO document_metadata (
                     document_id, title, summary, source_type, source_organisation,
@@ -271,13 +272,14 @@ class DocumentContentRepository:
                     keywords,
                 ),
             )
-            connection.commit()
         if payload.get("approved") is not None or payload.get("access_level") is not None:
             document_repository.update_governance(
                 str(document["id"]),
                 approved=payload.get("approved"),
                 access_level=payload.get("access_level"),
             )
+        if connection is not None:
+            return document
         return self.get_detail_record(str(document["id"]), include_restricted=True)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from uuid import uuid4
@@ -218,9 +219,11 @@ async def agent_node(state: AgentState) -> dict:
     answer_mode = state.get("answer_mode", "analysis")
     is_admin = state.get("is_admin", False)
 
-    provider, selected_model, _config = resolve_generation_target(state.get("model"))
-    client = create_chat_client(provider, selected_model)
-    tool_limits = active_limits()
+    provider, selected_model, _config = await asyncio.to_thread(
+        resolve_generation_target, state.get("model")
+    )
+    client = await asyncio.to_thread(create_chat_client, provider, selected_model)
+    tool_limits = await asyncio.to_thread(active_limits)
     available_tools = _tools_for(
         is_admin,
         answer_mode,
@@ -544,8 +547,10 @@ async def final_generation_node(state: AgentState) -> dict:
     """Write the final answer without tools so its content streams normally."""
     response_mode = state.get("response_mode", "researcher")
     answer_mode = state.get("answer_mode", "analysis")
-    provider, selected_model, _config = resolve_generation_target(state.get("model"))
-    client = create_chat_client(provider, selected_model)
+    provider, selected_model, _config = await asyncio.to_thread(
+        resolve_generation_target, state.get("model")
+    )
+    client = await asyncio.to_thread(create_chat_client, provider, selected_model)
     system_prompt = get_final_answer_system_prompt(response_mode, answer_mode)
     messages = [
         SystemMessage(content=system_prompt),

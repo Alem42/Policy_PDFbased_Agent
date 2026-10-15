@@ -24,6 +24,7 @@ from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
+from app.core.database import get_connection
 from app.modules.documents.chunker import document_chunker
 from app.modules.documents.exceptions import DuplicateDocumentError, UploadTooLargeError
 from app.modules.documents.extraction import extract_document
@@ -36,6 +37,8 @@ from app.modules.documents.repositories.documents import document_repository
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.repositories.helpers import row_to_metadata
 from app.modules.documents.repositories.processing_jobs import processing_job_repository
+from app.modules.documents.repositories.tasks import LostTaskLease, document_task_repository
+from app.modules.documents.upload_registration import register_staged_upload
 from app.modules.embedding import service as embedding
 
 from . import library
@@ -43,26 +46,36 @@ from . import library
 logger = logging.getLogger(__name__)
 
 
-def process_document(document_id: str) -> None:
-    """Orchestrate extraction, enrichment, chunking, and indexing."""
+def process_document(document_id: str, *, task: dict | None = None) -> None:
+    """Compute outside a transaction; publish the complete index in one transaction."""
+    with embedding.snapshot():
+        _process_document(document_id, task=task)
+
+
+def _process_document(document_id: str, *, task: dict | None = None) -> None:
     logger.info("Processing started: document_id=%s", document_id)
-    job_id = processing_job_repository.start(document_id, "ingest_pdf")
+    ownership = document_task_repository.owned(task) if task else get_connection()
+    with ownership as conn:
+        job_id = processing_job_repository.start(document_id, "ingest_pdf", connection=conn)
+
+    def progress(status):
+        if task:
+            document_task_repository.progress(task, status)
+        else:
+            document_repository.set_status(document_id, status)
+
     try:
         document = document_repository.get_record(document_id)
         path = document_file_store.resolve(document["file_path"])
         pages = extract_document(
             path,
-            on_ocr_start=lambda: document_repository.set_status(document_id, "ocr"),
+            on_ocr_start=lambda: progress("ocr"),
         )
-        document_content_repository.replace_pages(document_id, pages)
-        document_repository.set_status(document_id, "parsed")
+        progress("parsed")
         # L2 dedup support: hash of the normalised extracted text, distinct from
         # the L1 sha256 (exact bytes) — catches re-saved/reformatted copies.
         extracted_text = "\n".join(page.get("text") or "" for page in pages)
-        if extracted_text.strip():
-            document_repository.set_content_hash(
-                document_id, document_file_store.normalized_content_hash(extracted_text)
-            )
+        content_hash = document_file_store.normalized_content_hash(extracted_text)
 
         try:
             metadata, model_name = generate_document_metadata(
@@ -72,8 +85,7 @@ def process_document(document_id: str) -> None:
             logger.warning("Metadata generation failed, using defaults: %s", exc)
             metadata = _default_metadata(document["original_filename"], str(exc))
             model_name = None
-        document_content_repository.upsert_generated_metadata(document_id, metadata, model_name)
-        document_repository.set_status(document_id, "annotated")
+        progress("annotated")
 
         # Admin-tunable chunk size (Manage > Embedding). Clamped to a sane ceiling;
         # if it exceeds the model's input limit, the model truncates/errs per chunk.
@@ -98,32 +110,87 @@ def process_document(document_id: str) -> None:
             chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
         chunk_vectors = embedding.embed_documents(embed_inputs)
         embeddings = [embedding.vector_literal(vector) for vector in chunk_vectors]
-        embedding_repository.replace_document_chunks(
-            document_id,
-            chunks,
-            embeddings,
-            language=doc_language,
+        target = (
+            embedding.active_vector_table(),
+            embedding.active_dimension(),
+            embedding.active_model_id(),
         )
-        document_repository.set_status(document_id, "ready")
-        processing_job_repository.finish(
-            job_id,
-            details={
-                "page_count": len(pages),
-                "chunk_count": len(chunks),
-                "metadata_model": model_name,
-            },
-        )
+        details = {
+            "page_count": len(pages),
+            "chunk_count": len(chunks),
+            "metadata_model": model_name,
+            "embedding_model": target[2],
+        }
+        ownership = document_task_repository.owned(task) if task else get_connection()
+        with ownership as conn:
+            document_content_repository.replace_pages(document_id, pages, connection=conn)
+            document_content_repository.upsert_generated_metadata(
+                document_id, metadata, model_name, connection=conn
+            )
+            if extracted_text.strip():
+                document_repository.set_content_hash(document_id, content_hash, connection=conn)
+            embedding_repository.replace_document_chunks(
+                document_id,
+                chunks,
+                embeddings,
+                language=doc_language,
+                connection=conn,
+                target=target,
+            )
+            document_repository.set_status(document_id, "ready", connection=conn)
+            processing_job_repository.finish(job_id, details=details, connection=conn)
+            if task:
+                document_task_repository.succeed(task, details, connection=conn)
         logger.info(
             "Processing complete: document_id=%s pages=%d chunks=%d",
             document_id,
             len(pages),
             len(chunks),
         )
+    except LostTaskLease:
+        raise
     except Exception as exc:
         logger.error("Processing failed: document_id=%s error=%s", document_id, exc)
-        document_repository.set_status(document_id, "failed", str(exc))
-        processing_job_repository.finish(job_id, status="failed", error_message=str(exc))
+        ownership = document_task_repository.owned(task) if task else get_connection()
+        with ownership as conn:
+            if not task:
+                document_repository.set_status(document_id, "failed", str(exc), connection=conn)
+            processing_job_repository.finish(
+                job_id, status="failed", error_message=str(exc), connection=conn
+            )
         raise
+
+
+def execute_document_task(task: dict) -> None:
+    """Only registered durable task types can execute; no serialized Python callbacks."""
+    document_id = str(task["document_id"])
+    if task["task_type"] == "ingest":
+        process_document(document_id, task=task)
+    elif task["task_type"] == "reembed":
+        with embedding.snapshot():
+            rows = embedding_repository.chunks_for_reembed(document_id)
+            inputs = [
+                f"{row['context_header']}\n\n{row['text']}"
+                if row.get("context_header")
+                else row["text"]
+                for row in rows
+            ]
+            vectors = [embedding.vector_literal(v) for v in embedding.embed_documents(inputs)]
+            target = (
+                embedding.active_vector_table(),
+                embedding.active_dimension(),
+                embedding.active_model_id(),
+            )
+            with document_task_repository.owned(task) as conn:
+                embedding_repository.store_vectors(
+                    [row["chunk_id"] for row in rows], vectors, connection=conn, target=target
+                )
+                document_repository.set_status(document_id, "ready", connection=conn)
+                document_task_repository.succeed(
+                    task, {"chunk_count": len(rows), "embedding_model": target[2]}, connection=conn
+                )
+    else:
+        raise ValueError("Unknown document task type.")
 
 
 async def save_upload(
@@ -133,6 +200,9 @@ async def save_upload(
     canonical_url: str | None = None,
     imported_by: str | None = None,
     imported_via: str | None = None,
+    durable: bool = False,
+    metadata: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> dict:
     filename = document_file_store.safe_filename(upload.filename or "")
     settings = get_settings()
@@ -152,6 +222,9 @@ async def save_upload(
         canonical_url=canonical_url,
         imported_by=imported_by,
         imported_via=imported_via,
+        durable=durable,
+        metadata=metadata or {},
+        idempotency_key=idempotency_key,
     )
 
 
@@ -165,11 +238,25 @@ def _save_upload_sync(
     canonical_url: str | None,
     imported_by: str | None,
     imported_via: str | None,
+    durable: bool = False,
+    metadata: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> dict:
     staged = document_file_store.stage_upload(
         filename, source, max_bytes=max_bytes, chunk_bytes=chunk_bytes
     )
     try:
+        if durable:
+            return register_staged_upload(
+                staged,
+                str(uuid4()),
+                metadata=metadata or {},
+                source_url=source_url,
+                canonical_url=canonical_url,
+                imported_by=imported_by,
+                imported_via=imported_via,
+                idempotency_key=idempotency_key,
+            )
         # The completed hash lets us reject duplicates before publishing a file.
         # Database UNIQUE(sha256) remains the concurrent-upload backstop.
         existing = document_repository.find_by_checksum(staged.checksum)
@@ -286,11 +373,13 @@ async def save_web_import(
           cosine-similarity >0.95 (L3) against the rest of the corpus ->
           reuse the existing document, discard the new one.
     """
-    existing_by_url = document_repository.find_by_source_url(url)
+    existing_by_url = await asyncio.to_thread(document_repository.find_by_source_url, url)
     if existing_by_url:
         return (
-            document_content_repository.get_detail_record(
-                existing_by_url["id"], include_restricted=True
+            await asyncio.to_thread(
+                document_content_repository.get_detail_record,
+                existing_by_url["id"],
+                include_restricted=True,
             ),
             True,
         )
@@ -309,7 +398,8 @@ async def save_web_import(
         # A different URL may produce byte-identical Markdown. Treat the L1
         # collision exactly like every other duplicate layer.
         return (
-            document_content_repository.get_detail_record(
+            await asyncio.to_thread(
+                document_content_repository.get_detail_record,
                 exc.existing_id,
                 include_restricted=True,
             ),
@@ -330,8 +420,10 @@ async def save_web_import(
         if duplicate is not None:
             await asyncio.to_thread(library.delete_document, document_id)
             return (
-                document_content_repository.get_detail_record(
-                    duplicate["id"], include_restricted=True
+                await asyncio.to_thread(
+                    document_content_repository.get_detail_record,
+                    duplicate["id"],
+                    include_restricted=True,
                 ),
                 True,
             )
@@ -339,7 +431,8 @@ async def save_web_import(
         # The fetched/site title is an explicit source fact. Persist it after
         # generated metadata so the LLM cannot silently replace the requested
         # display title.
-        return document_content_repository.update_metadata(
+        return await asyncio.to_thread(
+            document_content_repository.update_metadata,
             document_id,
             {"title": title},
         ), False
@@ -382,6 +475,7 @@ def sync_existing_documents() -> list[str]:
                 checksum=document_file_store.checksum(content),
                 mime_type=document_file_store.mime_type_for(path.name),
                 upsert=True,
+                enqueue_task=True,
             )
         except DuplicateDocumentError:
             continue
@@ -392,7 +486,7 @@ def sync_existing_documents() -> list[str]:
 def mark_document_queued(document_id: str) -> None:
     """Flip a row back to the 'uploaded' (queued) state so the library UI
     shows the full upload-style processing lifecycle for a rescan."""
-    document_repository.set_status(document_id, "uploaded")
+    document_task_repository.enqueue(document_id)
 
 
 def prepare_full_rescan() -> list[str]:
@@ -404,8 +498,6 @@ def prepare_full_rescan() -> list[str]:
     """
     sync_existing_documents()
     document_ids = document_repository.all_document_ids()
-    for document_id in document_ids:
-        mark_document_queued(document_id)
     return document_ids
 
 
@@ -418,8 +510,6 @@ def prepare_reembed() -> tuple[list[str], str]:
     """
     rows = document_repository.list_records(include_restricted=True)
     document_ids = [str(row["id"]) for row in rows if row.get("status") == "ready"]
-    for document_id in document_ids:
-        document_repository.set_status(document_id, "annotated")
     return document_ids, embedding.active_model_id()
 
 

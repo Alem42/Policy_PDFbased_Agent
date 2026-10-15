@@ -16,6 +16,10 @@ provider is cheap unless the model actually changed.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+from threading import RLock
+
 from app.modules.embedding import providers, tokens
 from app.modules.embedding.providers import (
     EmbeddingProvider,
@@ -32,6 +36,8 @@ from app.modules.embedding.settings import (
 
 # Lazy singleton cache of the active config + provider.
 _cache: dict = {"config": None, "provider": None}
+_cache_lock = RLock()
+_snapshot: ContextVar[tuple | None] = ContextVar("embedding_snapshot", default=None)
 
 
 def _resolved_config(config: EmbeddingConfig) -> EmbeddingConfig:
@@ -61,23 +67,43 @@ def _build_provider(config: EmbeddingConfig) -> EmbeddingProvider:
 
 
 def _reload() -> None:
-    config = embedding_settings_repository.load()
-    _cache["config"] = config
-    _cache["provider"] = _build_provider(config)
+    with _cache_lock:
+        config = embedding_settings_repository.load()
+        provider = _build_provider(config)
+        _cache.update(config=config, provider=provider)
 
 
 def invalidate_provider_cache() -> None:
     """Rebuild the provider on next use (notably after a central key change)."""
-    _cache["provider"] = None
+    with _cache_lock:
+        _cache["provider"] = None
+
+
+@contextmanager
+def snapshot():
+    """Pin one attempt's config/provider so a settings change cannot mislabel vectors."""
+    with _cache_lock:
+        if _cache["config"] is None or _cache["provider"] is None:
+            _reload()
+        current = (_cache["config"].model_copy(deep=True), _cache["provider"])
+    token = _snapshot.set(current)
+    try:
+        yield
+    finally:
+        _snapshot.reset(token)
 
 
 def active_config() -> EmbeddingConfig:
+    if current := _snapshot.get():
+        return current[0]
     if _cache["config"] is None:
         _reload()
     return _cache["config"]
 
 
 def _provider() -> EmbeddingProvider:
+    if current := _snapshot.get():
+        return current[1]
     if _cache["provider"] is None:
         _reload()
     return _cache["provider"]

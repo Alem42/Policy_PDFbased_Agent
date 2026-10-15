@@ -8,7 +8,9 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
@@ -28,21 +30,20 @@ from app.modules.documents.admin_schemas import (
 )
 from app.modules.documents.exceptions import DuplicateDocumentError, UploadTooLargeError
 from app.modules.documents.processing_queue import document_processing_queue
+from app.modules.documents.repositories.tasks import ActiveDocumentTask
 from app.modules.documents.service import (
     delete_document as delete_document_record,
 )
 from app.modules.documents.service import (
     get_document_detail,
-    mark_document_queued,
     prepare_full_rescan,
     prepare_reembed,
-    process_document,
-    reembed_and_mark,
     save_upload,
 )
 from app.modules.documents.service import (
     update_document_metadata as update_document_metadata_record,
 )
+from app.modules.documents.upload_registration import IdempotencyConflict
 from app.modules.documents.web_governance import web_governance_service
 from app.modules.documents.web_import import (
     WebImportRequest,
@@ -71,6 +72,10 @@ def _processing_status(status_value: str) -> ProcessingStatus:
 async def upload_document(
     file: Annotated[UploadFile, File()],
     admin: AdminUser,
+    response: Response,
+    idempotency_key: Annotated[
+        str | None, Header(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    ] = None,
     title: Annotated[str | None, Form()] = None,
     source_organisation: Annotated[str | None, Form()] = None,
     policy_area: Annotated[str | None, Form()] = None,
@@ -82,15 +87,6 @@ async def upload_document(
 ) -> AdminDocumentCreateResponse:
     try:
         clean_source_url = source_url.strip() if source_url and source_url.strip() else None
-        row = await save_upload(
-            file,
-            source_url=clean_source_url,
-            canonical_url=clean_source_url,
-            imported_by=str(admin["id"]),
-            imported_via="file_upload_admin",
-        )
-        document_id = row["id"]
-
         metadata = {
             "title": title,
             "source_organisation": source_organisation,
@@ -101,17 +97,28 @@ async def upload_document(
             "tags": tags,
             "credibility_level": credibility_level,
         }
-        if any(value is not None for value in metadata.values()):
-            row = await asyncio.to_thread(update_document_metadata_record, document_id, metadata)
+        row = await save_upload(
+            file,
+            source_url=clean_source_url,
+            canonical_url=clean_source_url,
+            imported_by=str(admin["id"]),
+            imported_via="file_upload_admin",
+            durable=True,
+            metadata=metadata,
+            idempotency_key=idempotency_key,
+        )
+        document_id = row["id"]
 
-        # A shared FIFO queue gives all users three processing slots in total.
-        # Saving the upload remains quick; extraction/embedding runs in workers.
-        await document_processing_queue.enqueue(document_id, _run_process_document)
+        # The durable task already committed with the document. Notification is only a hint.
+        document_processing_queue.notify()
+        response.headers["Idempotency-Replayed"] = str(row.get("replayed", False)).lower()
         logger.info("Document %s queued for background processing", document_id)
 
         return AdminDocumentCreateResponse(
             id=document_id,
             processing_status=_processing_status(row.get("status", "uploaded")),
+            task_id=row.get("task_id"),
+            replayed=row.get("replayed", False),
         )
     except DuplicateDocumentError as exc:
         # 409 Conflict: identical content already in the library (L1 dedup).
@@ -125,16 +132,10 @@ async def upload_document(
         ) from exc
     except UploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-def _run_process_document(document_id: str) -> None:
-    """Process one document inside a queue worker thread."""
-    try:
-        process_document(document_id)
-    except Exception as exc:
-        logger.error("Background processing failed for %s: %s", document_id, exc)
 
 
 @router.post(
@@ -221,20 +222,14 @@ async def rescan_documents(_: AdminUser) -> dict:
         logger.info("Full library rescan requested; queueing every document")
         document_ids = await asyncio.to_thread(prepare_full_rescan)
         for document_id in document_ids:
-            await document_processing_queue.enqueue(document_id, _run_process_document)
+            await document_processing_queue.enqueue(document_id)
         return {"rescanned": True, "queued": len(document_ids)}
+    except ActiveDocumentTask as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-def _run_reembed_document(document_id: str) -> None:
-    """Re-embed one document inside a queue worker thread."""
-    try:
-        reembed_and_mark(document_id)
-    except Exception as exc:
-        logger.error("Background re-embed failed for %s: %s", document_id, exc)
 
 
 @router.post("/reembed", status_code=status.HTTP_202_ACCEPTED)
@@ -251,8 +246,10 @@ async def reembed_documents(_: AdminUser) -> dict:
         logger.info("Library re-embed requested; queueing per-document jobs")
         document_ids, model = await asyncio.to_thread(prepare_reembed)
         for document_id in document_ids:
-            await document_processing_queue.enqueue(document_id, _run_reembed_document)
+            await document_processing_queue.enqueue(document_id, "reembed")
         return {"documents": len(document_ids), "model": model, "queued": True}
+    except ActiveDocumentTask as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:
         raise
     except Exception as exc:
@@ -270,8 +267,10 @@ async def rescan_document(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     # Same lifecycle as a fresh upload: queued -> extracting -> ... -> ready.
-    await asyncio.to_thread(mark_document_queued, str(document_id))
-    await document_processing_queue.enqueue(str(document_id), _run_process_document)
+    try:
+        await document_processing_queue.enqueue(str(document_id))
+    except ActiveDocumentTask as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     logger.info("Single-document rescan queued: %s", document_id)
     return {"id": str(document_id), "processing_status": "queued"}
 
@@ -309,7 +308,7 @@ async def get_processing_status(
     _: AdminUser,
 ) -> DocumentProcessingStatus:
     try:
-        queue_state = document_processing_queue.state(str(document_id))
+        queue_state = await document_processing_queue.state(str(document_id))
         row = await asyncio.to_thread(get_document_detail, str(document_id), True)
         raw_status = row.get("status", "uploaded")
         if queue_state and queue_state.status == "queued":
@@ -358,6 +357,9 @@ async def get_processing_status(
             progress_percent=progress_percent,
             message=message,
             error=row.get("error_message") if raw_status == "failed" else None,
+            task={key: value for key, value in queue_state.task.items() if key != "lease_token"}
+            if queue_state and queue_state.task
+            else None,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -22,7 +24,6 @@ def test_admin_upload_persists_source_provenance(monkeypatch) -> None:
             "status": "uploaded",
         },
     )
-    monkeypatch.setattr(admin_router, "_run_process_document", lambda document_id: None)
     app.dependency_overrides[require_admin] = lambda: {
         "id": "admin-1",
         "role": "admin",
@@ -41,7 +42,12 @@ def test_admin_upload_persists_source_provenance(monkeypatch) -> None:
         app.dependency_overrides.pop(require_admin, None)
 
     assert response.status_code == 202
-    assert captured == {
+    assert captured["durable"] is True
+    assert captured["metadata"]["title"] == "Policy"
+    assert captured["idempotency_key"] is None
+    assert {
+        key: captured[key] for key in ("source_url", "canonical_url", "imported_by", "imported_via")
+    } == {
         "source_url": "https://example.gov/policy.pdf",
         "canonical_url": "https://example.gov/policy.pdf",
         "imported_by": "admin-1",
@@ -63,7 +69,7 @@ def test_processing_status_reports_real_queue_position(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_router.document_processing_queue,
         "state",
-        lambda requested_id: QueueState(status="queued", position=2),
+        AsyncMock(return_value=QueueState(status="queued", position=2)),
     )
     app.dependency_overrides[require_admin] = lambda: {
         "id": "admin-1",

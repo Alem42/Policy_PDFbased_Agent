@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from psycopg.errors import UniqueViolation
 
 from app.core.database import get_connection
@@ -8,9 +10,9 @@ from app.modules.documents.repositories.helpers import looks_like_uuid
 class DocumentRepository:
     """Persists document identity, visibility, status, and file metadata."""
 
-    def find_by_checksum(self, checksum: str) -> dict | None:
+    def find_by_checksum(self, checksum: str, *, connection=None) -> dict | None:
         """Return the existing document with this SHA-256, or None (L1 dedup)."""
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             row = connection.execute(
                 "SELECT id, original_filename FROM documents WHERE sha256 = %s LIMIT 1",
                 (checksum,),
@@ -48,13 +50,12 @@ class DocumentRepository:
             ).fetchone()
         return dict(row) if row else None
 
-    def set_content_hash(self, document_id: str, content_hash: str) -> None:
-        with get_connection() as connection:
+    def set_content_hash(self, document_id: str, content_hash: str, *, connection=None) -> None:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute(
                 "UPDATE documents SET content_hash = %s WHERE id = %s",
                 (content_hash, document_id),
             )
-            connection.commit()
 
     def create(
         self,
@@ -72,6 +73,8 @@ class DocumentRepository:
         canonical_url: str | None = None,
         imported_by: str | None = None,
         imported_via: str | None = None,
+        connection=None,
+        enqueue_task: bool = False,
     ) -> str:
         if file_size is None:
             if content is None:
@@ -92,8 +95,8 @@ class DocumentRepository:
             else ""
         )
         try:
-            with get_connection() as connection:
-                row = connection.execute(
+            with nullcontext(connection) if connection is not None else get_connection() as conn:
+                row = conn.execute(
                     f"""
                     INSERT INTO documents (
                         id, original_filename, stored_filename, file_path,
@@ -118,8 +121,14 @@ class DocumentRepository:
                         imported_via,
                     ),
                 ).fetchone()
-                connection.commit()
+                if enqueue_task:
+                    from app.modules.documents.repositories.tasks import document_task_repository
+
+                    document_task_repository.enqueue(str(row["id"]), connection=conn)
         except UniqueViolation as exc:
+            if connection is not None:
+                # The outer registration transaction must roll back before looking up duplicates.
+                raise
             # Backstop for the L1 pre-check racing with a concurrent identical
             # upload (or a same-content file under a different path): the
             # sha256 UNIQUE constraint serialises it here.
@@ -143,9 +152,11 @@ class DocumentRepository:
         document_id: str,
         status: str,
         error_message: str | None = None,
+        *,
+        connection=None,
     ) -> None:
         processed_sql = ", processed_at = now()" if status == "ready" else ""
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute(
                 f"""
                 UPDATE documents
@@ -154,7 +165,6 @@ class DocumentRepository:
                 """,
                 (status, error_message, document_id),
             )
-            connection.commit()
 
     def known_file_paths(self) -> set[str]:
         with get_connection() as connection:
@@ -313,11 +323,13 @@ class DocumentRepository:
             values.extend([pattern] * 9)
         return clauses, values
 
-    def get_record(self, identifier: str, *, include_restricted: bool = True) -> dict:
+    def get_record(
+        self, identifier: str, *, include_restricted: bool = True, connection=None
+    ) -> dict:
         visibility_sql = (
             "" if include_restricted else "AND approved = true AND access_level = 'public'"
         )
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             if looks_like_uuid(identifier):
                 row = connection.execute(
                     f"SELECT * FROM documents WHERE id = %s {visibility_sql}",
@@ -340,6 +352,15 @@ class DocumentRepository:
     def delete(self, identifier: str) -> dict:
         document = self.get_record(identifier)
         with get_connection() as connection:
+            # Match publication's task -> document lock order, and serialize enqueue/retry.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"document-task:{document['id']}",),
+            )
+            connection.execute(
+                "SELECT id FROM document_tasks WHERE document_id = %s ORDER BY id FOR UPDATE",
+                (document["id"],),
+            ).fetchall()
             connection.execute("DELETE FROM documents WHERE id = %s", (document["id"],))
             connection.commit()
         return document

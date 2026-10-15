@@ -1,5 +1,6 @@
 import { Box, Typography, Button, Card, CardContent, Grid, Skeleton } from "@mui/material";
 import DocumentUpload from "../components/DocumentUpload";
+import DocumentTasks from "../components/DocumentTasks";
 import { formatDate, formatSize } from "../utils/format";
 
 export default function AdminDashboard({
@@ -89,6 +90,7 @@ export default function AdminDashboard({
         </Box>
 
         <DocumentUpload onUploaded={onDocumentsChanged} />
+        <DocumentTasks />
 
         <Box sx={{ display: "grid", gap: "10px" }}>
           {loading ? (

@@ -54,4 +54,14 @@ test("valid files still use one multipart POST per file", async (t) => {
   assert.equal(calls[1].options.method, "POST");
   assert.equal(calls[1].options.body.get("file").name, "small.txt");
   assert.equal(calls[1].options.body.get("file").size, file.size);
+  assert.ok(calls[1].options.headers.get("Idempotency-Key"));
+});
+
+test("retrying the same selected File keeps its request key", async (t) => {
+  const calls = mockRequests(t);
+  const file = new File(["policy text"], "policy.txt");
+  await uploadDocuments([file]);
+  await uploadDocuments([file]);
+  assert.equal(calls[1].options.headers.get("Idempotency-Key"),
+    calls[3].options.headers.get("Idempotency-Key"));
 });

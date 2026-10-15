@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 from uuid import uuid4
 
 from app.core.database import get_connection
@@ -7,9 +8,9 @@ from app.core.database import get_connection
 class ProcessingJobRepository:
     """Persistence boundary for document processing jobs."""
 
-    def start(self, document_id: str, job_type: str) -> str:
+    def start(self, document_id: str, job_type: str, *, connection=None) -> str:
         job_id = str(uuid4())
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute(
                 """
                 INSERT INTO processing_jobs (id, document_id, job_type, status)
@@ -17,7 +18,6 @@ class ProcessingJobRepository:
                 """,
                 (job_id, document_id, job_type),
             )
-            connection.commit()
         return job_id
 
     def finish(
@@ -27,8 +27,9 @@ class ProcessingJobRepository:
         status: str = "completed",
         error_message: str | None = None,
         details: dict | None = None,
+        connection=None,
     ) -> None:
-        with get_connection() as connection:
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute(
                 """
                 UPDATE processing_jobs
@@ -38,7 +39,6 @@ class ProcessingJobRepository:
                 """,
                 (status, error_message, json.dumps(details or {}), job_id),
             )
-            connection.commit()
 
     def list_for_document(self, document_id: str, limit: int = 10) -> list[dict]:
         with get_connection() as connection:

@@ -10,6 +10,7 @@ from app.modules.chat.suggestions.router import admin_router as suggestions_admi
 from app.modules.chat.suggestions.router import user_router as suggestions_user_router
 from app.modules.documents.admin_router import router as admin_documents_router
 from app.modules.documents.router import router as documents_router
+from app.modules.documents.task_router import router as document_tasks_router
 from app.modules.documents.taxonomy_router import router as taxonomy_router
 from app.modules.embedding.router import router as embedding_admin_router
 from app.modules.reranking.router import router as reranking_admin_router
@@ -27,6 +28,7 @@ api_router.include_router(suggestions_admin_router)
 api_router.include_router(suggestions_user_router)
 api_router.include_router(documents_router)
 api_router.include_router(admin_documents_router)
+api_router.include_router(document_tasks_router)
 api_router.include_router(embedding_admin_router)
 api_router.include_router(reranking_admin_router)
 api_router.include_router(agent_tool_limits_router)

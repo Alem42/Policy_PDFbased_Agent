@@ -22,7 +22,7 @@ MIGRATION_MESSAGE = (
 
 
 @router.get("", response_model=list[AdminInviteResponse])
-async def admin_invites(_: AdminUser) -> list[dict]:
+def admin_invites(_: AdminUser) -> list[dict]:
     try:
         return list_invites()
     except SCHEMA_ERRORS as exc:
@@ -34,7 +34,7 @@ async def admin_invites(_: AdminUser) -> list[dict]:
     response_model=AdminInviteCreatedResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def issue_admin_invite(payload: AdminInviteCreateRequest, admin: AdminUser) -> dict:
+def issue_admin_invite(payload: AdminInviteCreateRequest, admin: AdminUser) -> dict:
     try:
         return create_invite(
             created_by_user_id=admin["id"],
@@ -45,7 +45,7 @@ async def issue_admin_invite(payload: AdminInviteCreateRequest, admin: AdminUser
 
 
 @router.delete("/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_admin_invite(invite_id: UUID, _: AdminUser) -> Response:
+def delete_admin_invite(invite_id: UUID, _: AdminUser) -> Response:
     try:
         revoke_invite(str(invite_id))
     except ValueError as exc:

@@ -1,127 +1,143 @@
-from __future__ import annotations
+"""Fixed background workers poll PostgreSQL; pending tasks survive process death."""
 
 import asyncio
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
+from uuid import uuid4
+
+from app.core.config import get_settings
+from app.modules.documents.repositories.tasks import LostTaskLease, document_task_repository
 
 logger = logging.getLogger(__name__)
-
-MAX_CONCURRENT_DOCUMENT_JOBS = 3
-DocumentProcessor = Callable[[str], None]
 
 
 @dataclass(frozen=True)
 class QueueState:
     status: str
     position: int | None = None
-
-
-@dataclass(frozen=True)
-class _QueueItem:
-    document_id: str
-    processor: DocumentProcessor
+    task: dict | None = None
 
 
 class DocumentProcessingQueue:
-    """FIFO worker queue shared by every request handled by this app instance."""
+    STOP_DRAIN_TIMEOUT_SECONDS = 10
 
-    def __init__(self, max_concurrent: int = MAX_CONCURRENT_DOCUMENT_JOBS) -> None:
-        if max_concurrent < 1:
-            raise ValueError("max_concurrent must be at least 1")
+    def __init__(self, max_concurrent: int | None = None, *, repository=None, processor=None):
         self.max_concurrent = max_concurrent
-        self._queue: asyncio.Queue[_QueueItem] | None = None
-        self._workers: list[asyncio.Task[None]] = []
-        self._queued_ids: list[str] = []
-        self._active_ids: set[str] = set()
+        self.repository = repository or document_task_repository
+        self.processor = processor
+        self._workers: list[asyncio.Task] = []
+        self._wakeup: asyncio.Event | None = None
+        self._stopping = False
+        self.instance_id = str(uuid4())
 
     async def start(self) -> None:
-        if self._workers:
+        if self._workers or not get_settings().database_enabled:
             return
-        self._queue = asyncio.Queue()
+        count = self.max_concurrent
+        if count is None:
+            count = get_settings().document_task_workers
+        self._stopping = False
+        self._wakeup = asyncio.Event()
         self._workers = [
             asyncio.create_task(self._worker(index), name=f"document-worker-{index + 1}")
-            for index in range(self.max_concurrent)
+            for index in range(count)
         ]
-        logger.info("Document processing queue started with %d workers", self.max_concurrent)
-
-    # Give in-flight jobs a bounded grace period on shutdown; a single stuck
-    # OCR job must not block application shutdown indefinitely.
-    STOP_DRAIN_TIMEOUT_SECONDS = 30.0
+        logger.info(
+            "Durable document workers started: instance=%s count=%d", self.instance_id, count
+        )
 
     async def stop(self) -> None:
+        self._stopping = True
+        self.notify()
         if not self._workers:
             return
-        try:
-            await asyncio.wait_for(self.join(), timeout=self.STOP_DRAIN_TIMEOUT_SECONDS)
-        except TimeoutError:
-            logger.warning(
-                "Document queue did not drain within %.0fs; cancelling workers with "
-                "jobs still pending",
-                self.STOP_DRAIN_TIMEOUT_SECONDS,
-            )
-        workers, self._workers = self._workers, []
-        for worker in workers:
+        _, pending = await asyncio.wait(self._workers, timeout=self.STOP_DRAIN_TIMEOUT_SECONDS)
+        for worker in pending:
             worker.cancel()
-        await asyncio.gather(*workers, return_exceptions=True)
-        self._queue = None
-        self._queued_ids.clear()
-        self._active_ids.clear()
-        logger.info("Document processing queue stopped")
+        await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers.clear()
+        # No task is removed from PostgreSQL. Unfinished claims recover after lease expiry.
 
-    async def enqueue(self, document_id: str, processor: DocumentProcessor) -> QueueState:
-        if not self._workers or self._queue is None:
-            await self.start()
-        if document_id in self._active_ids:
-            return QueueState(status="processing")
-        if document_id in self._queued_ids:
-            return QueueState(status="queued", position=self._queued_ids.index(document_id) + 1)
+    def notify(self) -> None:
+        if self._wakeup is not None:
+            self._wakeup.set()
 
-        self._queued_ids.append(document_id)
-        await self._queue.put(_QueueItem(document_id=document_id, processor=processor))
-        state = self.state(document_id) or QueueState(status="queued")
-        logger.info(
-            "Document %s entered processing queue (position=%s)",
-            document_id,
-            state.position,
-        )
-        return state
+    async def enqueue(self, document_id: str, task_type: str = "ingest") -> QueueState:
+        task = await asyncio.to_thread(self.repository.enqueue, document_id, task_type)
+        self.notify()
+        return QueueState("processing" if task["status"] == "running" else "queued", task=task)
 
-    def state(self, document_id: str) -> QueueState | None:
-        if document_id in self._active_ids:
-            return QueueState(status="processing")
-        try:
-            return QueueState(status="queued", position=self._queued_ids.index(document_id) + 1)
-        except ValueError:
+    async def state(self, document_id: str) -> QueueState | None:
+        task = await asyncio.to_thread(self.repository.for_document, document_id)
+        if task is None:
             return None
+        position = None
+        if task["status"] == "queued":
+            position = await asyncio.to_thread(self.repository.queue_position, task)
+        status = "processing" if task["status"] == "running" else task["status"]
+        return QueueState(status, position, task)
 
-    async def join(self) -> None:
-        if self._queue is not None:
-            await self._queue.join()
+    async def _heartbeat(self, task: dict) -> None:
+        while True:
+            await asyncio.sleep(get_settings().document_task_heartbeat_seconds)
+            try:
+                if not await asyncio.to_thread(self.repository.heartbeat, task):
+                    return
+            except Exception:
+                logger.exception("Task heartbeat failed: task=%s", task["id"])
 
     async def _worker(self, index: int) -> None:
-        assert self._queue is not None
-        while True:
-            item = await self._queue.get()
+        from app.modules.documents.service.pipeline import execute_document_task
+
+        processor = self.processor or execute_document_task
+        worker_id = f"{self.instance_id}:{index + 1}"
+        while not self._stopping:
             try:
-                try:
-                    self._queued_ids.remove(item.document_id)
-                except ValueError:
-                    pass
-                self._active_ids.add(item.document_id)
+                task = await asyncio.to_thread(self.repository.claim, worker_id)
+                if task is None:
+                    self._wakeup.clear()
+                    try:
+                        await asyncio.wait_for(
+                            self._wakeup.wait(), timeout=get_settings().document_task_poll_seconds
+                        )
+                    except TimeoutError:
+                        pass
+                    continue
                 logger.info(
-                    "Document worker %d started %s (%d/%d slots active)",
-                    index + 1,
-                    item.document_id,
-                    len(self._active_ids),
-                    self.max_concurrent,
+                    "Claimed document task: task=%s document=%s attempt=%d worker=%s",
+                    task["id"],
+                    task["document_id"],
+                    task["attempts"],
+                    worker_id,
                 )
-                await asyncio.to_thread(item.processor, item.document_id)
+                heartbeat = asyncio.create_task(self._heartbeat(task))
+                try:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(processor, task),
+                        timeout=get_settings().document_task_execution_timeout_seconds,
+                    )
+                except LostTaskLease:
+                    logger.warning("Discarded stale document task attempt: %s", task["id"])
+                except Exception as exc:
+                    if isinstance(exc, TimeoutError) and not str(exc):
+                        exc = TimeoutError(
+                            "Document processing exceeded the configured execution time limit."
+                        )
+                    try:
+                        await asyncio.to_thread(self.repository.fail, task, exc)
+                        logger.warning(
+                            "Document task attempt failed: task=%s error=%s", task["id"], exc
+                        )
+                    except LostTaskLease:
+                        logger.warning("Failed attempt no longer owns task: %s", task["id"])
+                finally:
+                    heartbeat.cancel()
+                    await asyncio.gather(heartbeat, return_exceptions=True)
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                logger.exception("Queued document processing failed for %s", item.document_id)
-            finally:
-                self._active_ids.discard(item.document_id)
-                self._queue.task_done()
+                logger.exception("Document worker polling failed: worker=%s", worker_id)
+                await asyncio.sleep(get_settings().document_task_poll_seconds)
 
 
 document_processing_queue = DocumentProcessingQueue()

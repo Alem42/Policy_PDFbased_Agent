@@ -20,6 +20,9 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 SET search_path = public, pg_catalog;
 
+DROP TABLE IF EXISTS public.document_upload_requests;
+DROP TABLE IF EXISTS public.document_tasks;
+
 
 
 
@@ -634,3 +637,41 @@ ALTER TABLE public.chat_messages
 -- ----------------------------
 ALTER TABLE public.chat_messages
     ADD COLUMN IF NOT EXISTS agent_mode text DEFAULT 'react';
+
+-- Durable document scheduling (migration 028 also upgrades existing databases).
+CREATE TABLE IF NOT EXISTS document_tasks (
+    id uuid PRIMARY KEY,
+    document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    task_type text NOT NULL CHECK (task_type IN ('ingest', 'reembed')),
+    status text NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+    attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    max_attempts integer NOT NULL CHECK (max_attempts >= 1),
+    available_at timestamptz NOT NULL DEFAULT now(),
+    worker_id text,
+    lease_token uuid,
+    lease_expires_at timestamptz,
+    heartbeat_at timestamptz,
+    last_error text,
+    result_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_document_tasks_active_document
+    ON document_tasks(document_id) WHERE status IN ('queued', 'running');
+CREATE INDEX IF NOT EXISTS ix_document_tasks_claim
+    ON document_tasks(status, available_at, created_at);
+CREATE INDEX IF NOT EXISTS ix_document_tasks_expired
+    ON document_tasks(lease_expires_at) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS ix_document_tasks_document
+    ON document_tasks(document_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS document_upload_requests (
+    actor_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 128),
+    fingerprint text NOT NULL,
+    document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    task_id uuid NOT NULL REFERENCES document_tasks(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (actor_id, idempotency_key)
+);

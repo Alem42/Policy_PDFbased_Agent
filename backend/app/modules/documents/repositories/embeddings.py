@@ -14,6 +14,7 @@ other models' vectors.
 """
 
 import json
+from contextlib import nullcontext
 from uuid import uuid4
 
 from app.core.database import get_connection
@@ -84,6 +85,8 @@ class EmbeddingRepository:
         embeddings: list[str],
         *,
         language: str | None,
+        connection=None,
+        target: tuple[str, int, str] | None = None,
     ) -> None:
         """Full (re)ingest: replace chunk text and write the active model's vectors.
 
@@ -93,9 +96,12 @@ class EmbeddingRepository:
         """
         if len(chunks) != len(embeddings):
             raise ValueError("Each chunk must have exactly one embedding.")
-        table, dim = _active_table_dim()
-        model_id = embedding.active_model_id()
-        with get_connection() as connection:
+        if target is None:
+            table, dim = _active_table_dim()
+            model_id = embedding.active_model_id()
+        else:
+            table, dim, model_id = target
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             connection.execute("DELETE FROM document_chunks WHERE document_id = %s", (document_id,))
             ensure_vector_table(connection, table, dim)
             for chunk, embedding_literal in zip(chunks, embeddings, strict=True):
@@ -126,7 +132,6 @@ class EmbeddingRepository:
                     f"VALUES (%s, %s::{_vector_type(dim)}, %s)",
                     (chunk_id, embedding_literal, model_id),
                 )
-            connection.commit()
 
     def chunks_for_reembed(self, document_id: str) -> list[dict]:
         """Existing chunks (id + text + stored context header) for re-embedding."""
@@ -147,7 +152,14 @@ class EmbeddingRepository:
             for row in rows
         ]
 
-    def store_vectors(self, chunk_ids: list[str], embeddings: list[str]) -> None:
+    def store_vectors(
+        self,
+        chunk_ids: list[str],
+        embeddings: list[str],
+        *,
+        connection=None,
+        target: tuple[str, int, str] | None = None,
+    ) -> None:
         """Write vectors for existing chunks into the active model's table.
 
         Used by re-embed: does not touch document_chunks, so other models' tables
@@ -155,9 +167,14 @@ class EmbeddingRepository:
         """
         if not chunk_ids:
             return
-        table, dim = _active_table_dim()
-        model_id = embedding.active_model_id()
-        with get_connection() as connection:
+        if len(chunk_ids) != len(embeddings):
+            raise ValueError("Each chunk must have exactly one embedding.")
+        if target is None:
+            table, dim = _active_table_dim()
+            model_id = embedding.active_model_id()
+        else:
+            table, dim, model_id = target
+        with nullcontext(connection) if connection is not None else get_connection() as connection:
             ensure_vector_table(connection, table, dim)
             connection.execute(
                 f'DELETE FROM "{table}" WHERE chunk_id = ANY(%s::uuid[])', (chunk_ids,)
@@ -168,7 +185,6 @@ class EmbeddingRepository:
                     f"VALUES (%s, %s::{_vector_type(dim)}, %s)",
                     (chunk_id, embedding_literal, model_id),
                 )
-            connection.commit()
 
     def list_for_document(self, document_id: str, limit: int | None = None) -> list[dict]:
         table, _ = _active_table_dim()

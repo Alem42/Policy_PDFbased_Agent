@@ -11,12 +11,12 @@ AdminUser = Annotated[dict, Depends(require_admin)]
 
 
 @router.get("", response_model=SettingsResponse)
-async def get_settings(_: AdminUser) -> dict:
+def get_settings(_: AdminUser) -> dict:
     return get_public_settings()
 
 
 @router.put("", response_model=SettingsResponse)
-async def update_settings(
+def update_settings(
     payload: SettingsUpdate,
     _: AdminUser,
 ) -> dict:
