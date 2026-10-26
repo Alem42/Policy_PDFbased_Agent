@@ -27,6 +27,7 @@ dependencies = [
   "tiktoken>=0.7,<1",
   "python-dotenv>=1.2,<2",
   "python-multipart>=0.0.12,<1",
+  "redis>=6.4,<7",
   "sqlalchemy[asyncio]>=2.0,<3",
   "uvicorn[standard]>=0.32,<1",
 ]
