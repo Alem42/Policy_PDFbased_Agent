@@ -31,6 +31,7 @@ from app.modules.chat.schemas import (
 )
 from app.modules.chat.suggestions import service as suggestions_service
 from app.modules.chat.suggestions.generator import generate_followup_suggestions
+from app.modules.rate_limits.service import rate_limiter
 from app.modules.retrieval.metadata_filters import metadata_filter_service
 from app.modules.settings.service import get_provider_api_key
 
@@ -87,6 +88,7 @@ async def chat(
     identifiers = doc_ids or filenames
 
     user_id = str(user["id"])
+    await rate_limiter.enforce(user_id, "chat")
     include_restricted = user["role"] == "admin"
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
     metadata_filters = await asyncio.to_thread(
@@ -214,6 +216,7 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="At least one document must be selected.")
 
     user_id = str(user["id"])
+    await rate_limiter.enforce(user_id, "chat")
     is_admin = user["role"] == "admin"
     effective_answer_mode = normalize_answer_mode(payload.response_mode, payload.answer_mode)
     metadata_filters = await asyncio.to_thread(
@@ -364,6 +367,7 @@ async def chat_resume(
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    await rate_limiter.enforce(user_id, "resume")
     config = {"configurable": {"thread_id": session_id}}
     graph = get_agent_graph()
     state = await graph.aget_state(config)

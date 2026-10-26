@@ -87,6 +87,7 @@ class RedisRuntime:
             "status": self.status,
             "enabled": bool(self.settings and self.settings.redis_enabled),
             "cache_enabled": bool(self.settings and self.settings.taxonomy_cache_enabled),
+            "rate_limit_enabled": bool(self.settings and self.settings.rate_limit_enabled),
             "counters": {"taxonomy_loader_calls": 0, **counters},
             "limits": {
                 "max_connections": self.settings.redis_max_connections if self.settings else 0,

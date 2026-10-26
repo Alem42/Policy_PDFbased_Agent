@@ -49,6 +49,7 @@ from app.modules.documents.web_import import (
     WebImportRequest,
     web_import_service,
 )
+from app.modules.rate_limits.service import rate_limiter
 from app.modules.web_search.contracts import WebSearchProviderError
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ async def upload_document(
     tags: Annotated[list[str] | None, Form()] = None,
     credibility_level: Annotated[str, Form()] = "unknown",
 ) -> AdminDocumentCreateResponse:
+    await rate_limiter.enforce(str(admin["id"]), "upload")
     try:
         clean_source_url = source_url.strip() if source_url and source_url.strip() else None
         metadata = {
