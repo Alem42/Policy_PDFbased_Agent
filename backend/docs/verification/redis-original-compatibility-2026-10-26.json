@@ -1,0 +1,24 @@
+{
+  "scope": "Original working tree with existing Qwen/evaluation changes, isolated compatibility DB",
+  "passed": true,
+  "health": 200,
+  "login": 200,
+  "taxonomy_cache": [
+    "MISS",
+    "HIT"
+  ],
+  "demo_statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    429
+  ],
+  "redis_status": "healthy"
+}

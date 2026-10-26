@@ -1,0 +1,63 @@
+{
+  "run_id": "cd7cab1537d4",
+  "mode": "outage",
+  "started_at_utc": "2026-10-26T12:41:26.376453+00:00",
+  "environment": {
+    "base_url": "http://127.0.0.1:8000/api/v1",
+    "peer_url": "http://127.0.0.1:8002/api/v1",
+    "baseline_url": null,
+    "database_name": "redis_demo_tests",
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379
+  },
+  "checks": {
+    "authenticated_across_instances": {
+      "instances": 2
+    },
+    "redis_outage_chat_and_stream_deny_before_business": {
+      "statuses": {
+        "/chat": 503,
+        "/chat/stream": 503
+      },
+      "database_counts_unchanged": true,
+      "note": "No answer-quality claim; admission denied before model execution."
+    },
+    "redis_outage_upload_denies_before_registration": {
+      "http_status": 503,
+      "database_counts_unchanged": true,
+      "note": "Multipart reception may precede route admission; byte middleware remains necessary."
+    },
+    "redis_outage_cache_falls_back_and_expensive_admission_fails_closed": {
+      "taxonomy_status": 200,
+      "cache_status": "BYPASS",
+      "limited_ping_status": 503,
+      "catalogue_status": 200
+    },
+    "frontend_proxy_auth_and_reads_during_redis_outage": {
+      "origin": "http://127.0.0.1:3000",
+      "login_status": 200,
+      "taxonomy_status": 200,
+      "taxonomy_cache": "BYPASS",
+      "taxonomy_elapsed_ms": 213.497,
+      "catalogue_status": 200,
+      "taxonomy_groups": 16
+    }
+  },
+  "scope": [
+    "Real HTTP authentication, Redis commands and PostgreSQL records.",
+    "Synthetic PDF with real extraction and persisted model vectors.",
+    "Catalogue/taxonomy timings are not LLM-generation performance.",
+    "No original library records or application database are deleted or initialized."
+  ],
+  "passed": true,
+  "cleanup": {
+    "kept_fixtures": false,
+    "errors": []
+  },
+  "original_records_unchanged": true,
+  "original_counts": {
+    "app_users": 1,
+    "documents": 0
+  },
+  "finished_at_utc": "2026-10-26T12:41:28.489460+00:00"
+}

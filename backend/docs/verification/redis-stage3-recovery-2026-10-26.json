@@ -1,0 +1,66 @@
+{
+  "run_id": "519115efae5e",
+  "mode": "recovery",
+  "started_at_utc": "2026-10-26T12:43:00.963263+00:00",
+  "environment": {
+    "base_url": "http://127.0.0.1:8000/api/v1",
+    "peer_url": "http://127.0.0.1:8002/api/v1",
+    "baseline_url": null,
+    "frontend_url": "http://127.0.0.1:3000/api/v1",
+    "database_name": "redis_demo_tests",
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379
+  },
+  "checks": {
+    "authenticated_across_instances": {
+      "instances": 2
+    },
+    "redis_recovery_cache_operational": {
+      "primary_cache": "MISS",
+      "peer_cache": "HIT",
+      "redis_status": "healthy"
+    },
+    "redis_recovery_new_demo_window": {
+      "http_statuses": [
+        200,
+        200
+      ],
+      "remaining": [
+        9,
+        8
+      ],
+      "ttl_ms": 59996,
+      "preexisting_test_key_reset": false,
+      "note": "Verifies admission after restart; does not claim restart clears persisted counters or natural TTL expiry."
+    },
+    "frontend_proxy_cache_recovered": {
+      "origin": "http://127.0.0.1:3000/api/v1",
+      "statuses": [
+        200,
+        200
+      ],
+      "cache_statuses": [
+        "HIT",
+        "HIT"
+      ],
+      "same_payload": true
+    }
+  },
+  "scope": [
+    "Real HTTP authentication, Redis commands and PostgreSQL records.",
+    "Synthetic PDF with real extraction and persisted model vectors.",
+    "Catalogue/taxonomy timings are not LLM-generation performance.",
+    "No original library records or application database are deleted or initialized."
+  ],
+  "passed": true,
+  "cleanup": {
+    "kept_fixtures": false,
+    "errors": []
+  },
+  "original_records_unchanged": true,
+  "original_counts": {
+    "app_users": 1,
+    "documents": 0
+  },
+  "finished_at_utc": "2026-10-26T12:43:01.299597+00:00"
+}

@@ -347,3 +347,18 @@ deployment overrides are documented in the root `.env.example`; backend files an
 generated token-signing secret persist under `backend/data`.
 
 See the repository root README for the first-administrator invitation workflow.
+
+
+## Optional Redis cache and admission demo
+
+Redis is optional and disabled by default. Enable `REDIS_ENABLED` for taxonomy caching;
+add `RATE_LIMIT_ENABLED` for shared per-user chat/resume/upload admission. Native API
+processes can run with `python scripts/run_native_api.py --port 8000` and port 8002;
+Docker is not required. Use a shared database, Redis prefix, signing secret and file
+storage path across processes. See [.env.example](.env.example) for limits and timeouts.
+
+The [beginner guide](docs/REDIS_FROM_ZERO_AND_INTERVIEW.zh-CN.md) explains the implementation,
+native startup, actual measurements and interview answers. The
+[acceptance record](docs/REDIS_IMPLEMENTATION_AND_ACCEPTANCE.zh-CN.md) links real HTTP/PDF,
+two-instance concurrency and Redis outage/recovery reports. Run
+`python scripts/verify_redis_journey.py --help` for the reproducible verifier.

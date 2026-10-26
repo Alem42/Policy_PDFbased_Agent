@@ -63,3 +63,22 @@
 - Windows原生API启动脚本支持Selector事件循环，避免异步psycopg与默认Proactor不兼容。
 - 限流控制的是业务处理准入；multipart在进入路由之前可能已被解析/临时落盘，仍需原有上传大小限制或网关防护。
 - 原始HTTP验收报告：`verification/redis-stage2-2026-10-26.json`。
+
+### 阶段三验收（2026-10-26）
+
+- 独立agent以真实HTTP邀请注册账号并上传真实2页2528字节PDF，跨实例幂等重放仍为同文档/任务；1次attempt、1.87秒完成。核验原文标识/预算637421、1chunk/1条384维向量、peer下载SHA256一致。
+- 任务running期间3账号60次真实浏览全部200，P50 8.398ms、P95 70.054ms。没有远端LLM调用，不以此宣称答案质量、问答吞吐或100MB性能。
+- 专用Redis真实停止：分类200/BYPASS、目录200；demo及真实chat/stream/上传503，业务PG计数不变；前端3000代理登录及读取通过。
+- 重启后primary MISS→peer HIT、状态healthy，共享demo新窗口remaining9→8，前端代理连续HIT。API未重启。
+- 每次测试清理自己的账号/文件/任务，原1用户/0文档摘要未变。
+- 前端已原生运行于3000，两个API于8000/8002，缓存关闭基线8003；构建及4项前端测试通过。
+- 可复现脚本：`scripts/verify_redis_journey.py`；原始报告：`verification/redis-stage3-{functional,outage,recovery}-2026-10-26.json`。
+- 初学者与面试文档：`REDIS_FROM_ZERO_AND_INTERVIEW.zh-CN.md`。原工作树兼容检查结果待完成后追加。
+
+### 最终集成结果
+
+- Redis增量已同步原工作树；原Qwen/评测未提交文件保持，只有main.py及pyproject.toml与Redis内容合并，README追加说明。未替换用户其他文件。
+- 原工作树在另建隔离库（包含029/030评测迁移）完成500项后端测试，全部通过；Redis涉及文件Ruff通过。
+- 另起原工作树API8004进行真实HTTP兼容验证：登录200、taxonomy MISS→HIT、demo前10次200/第11次429、Redis healthy。该临时进程已停止。
+- 工作树原有feature/qwen-evaluation分支与未提交工作保留；Redis三个阶段提交在独立feature/redis-interview分支，推送到Alem42/Policy_PDFbased_Agent。原工作树中的Redis增量未混入其他工作提交。
+- 学习文档另复制到项目外的`Redis_实战与面试_2026-10-26.md`。
