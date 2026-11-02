@@ -64,7 +64,10 @@ class DocumentFileStore:
 
     @staticmethod
     def relative_path(path: Path) -> str:
-        return str(path.resolve().relative_to(BACKEND_ROOT.resolve()))
+        # A storage directory outside the backend, such as a shared mount, stays absolute.
+        resolved = path.resolve()
+        root = BACKEND_ROOT.resolve()
+        return str(resolved.relative_to(root) if resolved.is_relative_to(root) else resolved)
 
     def save(self, filename: str, content: bytes, document_id: str | None = None) -> Path:
         safe_name = self.safe_filename(filename)

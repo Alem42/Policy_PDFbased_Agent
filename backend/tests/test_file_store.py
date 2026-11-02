@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.modules.documents.file_store import DocumentFileStore
@@ -52,3 +54,14 @@ def test_is_valid_content_accepts_decodable_text():
 
 def test_is_valid_content_rejects_binary_garbage_for_text_files():
     assert not DocumentFileStore.is_valid_content("notes.txt", b"\x00\x01\x02binary")
+
+
+def test_storage_outside_backend_round_trips_through_stored_path(tmp_path):
+    stored = tmp_path / "shared-mount" / "doc" / "policy.pdf"
+    stored.parent.mkdir(parents=True)
+    stored.write_bytes(b"%PDF-1.4")
+
+    recorded = DocumentFileStore.relative_path(stored)
+
+    assert Path(recorded).is_absolute()
+    assert DocumentFileStore().resolve(recorded) == stored.resolve()
