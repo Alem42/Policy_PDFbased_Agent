@@ -73,6 +73,47 @@ class EmbeddingProvider(ABC):
         return None
 
 
+class QwenEmbeddingProvider(EmbeddingProvider):
+    """Qwen's asymmetric query instruction and normalized last-token vectors."""
+
+    dimension = 1024
+    is_symmetric = False
+
+    def __init__(self, config: EmbeddingConfig):
+        self.config = config
+        self.model_id = config.local_model
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        from app.modules.local_models.runtime import local_model_runtime
+
+        if not texts:
+            return []
+        if any(not text.strip() for text in texts):
+            raise ValueError("Document text must not be blank.")
+        vectors = local_model_runtime.call(
+            "embed", model=self.model_id, texts=texts,
+            batch_size=min(self.config.batch_size, 8),
+            idle_seconds=self.config.local_idle_seconds,
+        )
+        if len(vectors) != len(texts):
+            raise RuntimeError("Local model returned an unexpected vector count.")
+        return [_vector_to_list(v, self.dimension) for v in vectors]
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        from app.modules.local_models.runtime import QUERY_INSTRUCTION
+
+        if any(not text.strip() for text in texts):
+            raise ValueError("Query text must not be blank.")
+        return self.embed_documents([
+            f"Instruct: {QUERY_INSTRUCTION}\nQuery: {text.strip()}" for text in texts
+        ])
+
+    def count_tokens(self, text: str) -> int:
+        from app.modules.local_models.runtime import count_tokens
+
+        return max(1, count_tokens(text, self.model_id))
+
+
 # ── Local (fastembed) ───────────────────────────────────────────────────────
 
 
@@ -197,8 +238,11 @@ def probe(config: EmbeddingConfig) -> dict:
     """
     started = time.perf_counter()
     if config.provider == "local":
-        model = _load_fastembed_model(config.local_model)
-        vector = list(model.query_embed("connection test"))[0]
+        if config.local_model == "Qwen/Qwen3-Embedding-0.6B":
+            vector = QwenEmbeddingProvider(config).embed_query("connection test")
+        else:
+            model = _load_fastembed_model(config.local_model)
+            vector = list(model.query_embed("connection test"))[0]
         dim = len(list(vector))
     else:
         payload: dict = {"model": config.api_model, "input": ["connection test"]}

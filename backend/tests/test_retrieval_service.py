@@ -102,7 +102,7 @@ def test_metadata_filter_fallback_uses_original_scope_and_exposes_notice(monkeyp
     assert result.filter_notice == notice
 
 
-def test_metadata_subset_with_weak_evidence_retries_original_scope(monkeypatch) -> None:
+def test_metadata_subset_with_weak_evidence_never_expands_explicit_scope(monkeypatch) -> None:
     monkeypatch.setattr(
         retrieval_module.metadata_filter_service,
         "apply",
@@ -141,13 +141,9 @@ def test_metadata_subset_with_weak_evidence_retries_original_scope(monkeypatch) 
         )
     )
 
-    assert seen_identifiers == [
-        ["doc-filtered"],
-        ["doc-filtered", "doc-original"],
-    ]
-    assert result.evidence.sufficient is True
-    assert result.filter_fallback is True
-    assert "expanded to the original document scope" in result.filter_notice
+    assert seen_identifiers == [["doc-filtered"]]
+    assert result.evidence.sufficient is False
+    assert result.filter_fallback is False
 
 
 def test_multi_region_comparison_supplements_each_requested_region(monkeypatch) -> None:

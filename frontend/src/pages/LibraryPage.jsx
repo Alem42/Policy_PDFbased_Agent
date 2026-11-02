@@ -791,6 +791,7 @@ export default function LibraryPage({
                   {document.language || "Unknown language"}
                 </Typography>
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                  {(document.keywords || []).includes("test-corpus") && <Chip label="Test document" size="small" color="info" />}
                   {(document.policy_areas || []).slice(0, 3).map((area) => (
                     <Chip key={area} label={area} size="small" variant="outlined" />
                   ))}

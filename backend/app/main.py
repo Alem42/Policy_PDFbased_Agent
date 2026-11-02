@@ -14,25 +14,36 @@ if sys.platform == "win32":
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import DatabaseUnavailableError, database
+from app.core.redis_client import redis_runtime
 from app.core.upload_limits import UploadBodyLimitMiddleware
+from app.modules.cache.taxonomy import taxonomy_cache
 from app.modules.chat.rag.checkpointer import close_checkpointer, init_checkpointer
 from app.modules.documents.processing_queue import document_processing_queue
 from app.modules.documents.schema import validate_document_task_schema
+from app.modules.evaluation.service import evaluation_worker
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await database.connect()
     try:
+        await redis_runtime.start()
+        taxonomy_cache.reset()
         if get_settings().database_enabled:
             await asyncio.to_thread(validate_document_task_schema)
             await init_checkpointer()
         await document_processing_queue.start()
+        await evaluation_worker.start()
         yield
     finally:
+        await evaluation_worker.stop()
         await document_processing_queue.stop()
         await close_checkpointer()
+        await redis_runtime.close()
         await database.disconnect()
+        from app.modules.local_models.runtime import local_model_runtime
+
+        await asyncio.to_thread(local_model_runtime.unload)
 
 
 settings = get_settings()

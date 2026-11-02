@@ -1,4 +1,24 @@
 const API_PREFIX = "/api/v1";
+const evaluationPath = "/admin/evaluation";
+
+export const getEvaluation = () => request(evaluationPath);
+export const saveEvaluationSettings = (payload) => request(evaluationPath, {
+  method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+});
+export const importEvaluationCorpus = () => request(`${evaluationPath}/corpus`, { method: "POST" });
+export const startEvaluation = (payload) => request(`${evaluationPath}/runs`, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+});
+export const getEvaluationRun = (id) => request(`${evaluationPath}/runs/${id}`);
+export const cancelEvaluationRun = (id) => request(`${evaluationPath}/runs/${id}/cancel`, { method: "POST" });
+export const reviewEvaluationCase = (id, caseId, payload) => request(`${evaluationPath}/runs/${id}/reviews/${caseId}`, {
+  method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+});
+export const unloadLocalModels = () => request(`${evaluationPath}/unload`, { method: "POST" });
+export const saveEvidenceValidation = (payload) => request(`${evaluationPath}/validation`, {
+  method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+});
+export const applyEvaluationConfiguration = (id) => request(`${evaluationPath}/runs/${id}/apply`, { method: "POST" });
 const uploadRequestKeys = new WeakMap();
 
 function apiPath(path) {

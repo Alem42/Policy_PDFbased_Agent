@@ -1,0 +1,4113 @@
+{
+  "version": "2.1",
+  "page_numbering": "physical_pdf_1_based",
+  "cases": [
+    {
+      "id": "F01A",
+      "question": "What are the four core AI risk management functions?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F01A",
+      "requirements": [
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ]
+    },
+    {
+      "id": "F01B",
+      "question": "Is use of the AI risk management framework mandatory, and is it sector-specific?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F01B",
+      "requirements": [
+        {
+          "id": "F01B",
+          "description": "Is use of the AI risk management framework mandatory, and is it sector-specific?",
+          "reference": "Voluntary, rights-preserving, non-sector-specific, use-case agnostic.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 7,
+              "quote": "voluntary, rights-preserving, non-sector-specific, and use-case agnostic"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 7,
+          "quote": "voluntary, rights-preserving, non-sector-specific, and use-case agnostic"
+        }
+      ]
+    },
+    {
+      "id": "F01C",
+      "question": "Which characteristic is described as a necessary condition and the base for other AI trustworthiness characteristics?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F01C",
+      "requirements": [
+        {
+          "id": "F01C",
+          "description": "Which characteristic is described as a necessary condition and the base for other AI trustworthiness characteristics?",
+          "reference": "Valid and reliable.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 17,
+              "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+        }
+      ]
+    },
+    {
+      "id": "F01D",
+      "question": "What cross-cutting role does governance play relative to the other three AI risk functions?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F01D",
+      "requirements": [
+        {
+          "id": "F01D",
+          "description": "What cross-cutting role does governance play relative to the other three AI risk functions?",
+          "reference": "Governance informs and is infused throughout the other three functions.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+        }
+      ]
+    },
+    {
+      "id": "F02A",
+      "question": "How does this generative AI profile define confabulation?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F02A",
+      "requirements": [
+        {
+          "id": "F02A",
+          "description": "How does this generative AI profile define confabulation?",
+          "reference": "Confidently stated but erroneous or false content that can mislead users.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "The production of confidently stated but erroneous or false content"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "The production of confidently stated but erroneous or false content"
+        }
+      ]
+    },
+    {
+      "id": "F02B",
+      "question": "Which forms of personal information exposure are included in the Data Privacy risk definition?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F02B",
+      "requirements": [
+        {
+          "id": "F02B",
+          "description": "Which forms of personal information exposure are included in the Data Privacy risk definition?",
+          "reference": "Leakage, unauthorized use/disclosure, or de-anonymization of biometric, health, location or other personal/sensitive information.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "Impacts due to leakage and unauthorized use, disclosure, or de-anonymization"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "Impacts due to leakage and unauthorized use, disclosure, or de-anonymization"
+        }
+      ]
+    },
+    {
+      "id": "F02C",
+      "question": "What do the letters CBRN refer to in the generative AI risk discussion?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F02C",
+      "requirements": [
+        {
+          "id": "F02C",
+          "description": "What do the letters CBRN refer to in the generative AI risk discussion?",
+          "reference": "Chemical, biological, radiological, nuclear weapons or dangerous materials/agents.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "chemical, biological, radiological, or nuclear (CBRN) weapons"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "chemical, biological, radiological, or nuclear (CBRN) weapons"
+        }
+      ]
+    },
+    {
+      "id": "F02D",
+      "question": "What problematic human interactions are listed under Human-AI Configuration?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F02D",
+      "requirements": [
+        {
+          "id": "F02D",
+          "description": "What problematic human interactions are listed under Human-AI Configuration?",
+          "reference": "Anthropomorphizing, algorithmic aversion, automation bias, over-reliance, emotional entanglement.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "algorithmic aversion, automation bias, over-reliance, or emotional entanglement"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "algorithmic aversion, automation bias, over-reliance, or emotional entanglement"
+        }
+      ]
+    },
+    {
+      "id": "F03A",
+      "question": "List the five cross-sectoral principles proposed for AI regulation.",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F03A",
+      "requirements": [
+        {
+          "id": "F03A",
+          "description": "List the five cross-sectoral principles proposed for AI regulation.",
+          "reference": "Safety/security/robustness; appropriate transparency/explainability; fairness; accountability/governance; contestability/redress.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 12,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            },
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 32,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+        }
+      ]
+    },
+    {
+      "id": "F03B",
+      "question": "Were the five AI principles to be placed on a statutory footing initially, and who would implement them?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F03B",
+      "requirements": [
+        {
+          "id": "F03B",
+          "description": "Were the five AI principles to be placed on a statutory footing initially, and who would implement them?",
+          "reference": "Initially non-statutory, implemented by existing regulators.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 12,
+              "quote": "the principles will be issued on a non-statutory basis and implemented by existing regulators"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "the principles will be issued on a non-statutory basis and implemented by existing regulators"
+        }
+      ]
+    },
+    {
+      "id": "F03C",
+      "question": "Which two AI characteristics motivate a bespoke regulatory response?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F03C",
+      "requirements": [
+        {
+          "id": "F03C",
+          "description": "Which two AI characteristics motivate a bespoke regulatory response?",
+          "reference": "Adaptivity and autonomy.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 28,
+              "quote": "The combination of adaptivity and autonomy can make it difficult to explain, predict, or control"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 28,
+          "quote": "The combination of adaptivity and autonomy can make it difficult to explain, predict, or control"
+        }
+      ]
+    },
+    {
+      "id": "F03D",
+      "question": "Why can AI autonomy make responsibility for outcomes difficult to assign?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F03D",
+      "requirements": [
+        {
+          "id": "F03D",
+          "description": "Why can AI autonomy make responsibility for outcomes difficult to assign?",
+          "reference": "Some AI systems can make decisions without express intent or ongoing control of a human.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 28,
+              "quote": "Some AI systems can make decisions without the express intent or ongoing control of a human"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 28,
+          "quote": "Some AI systems can make decisions without the express intent or ongoing control of a human"
+        }
+      ]
+    },
+    {
+      "id": "F04A",
+      "question": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F04A",
+      "requirements": [
+        {
+          "id": "F04A",
+          "description": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+          "reference": "父母或者其他监护人的同意；年龄界限为不满十四周岁。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "应当取得未成年人的父母或者其他监护人的同意"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        }
+      ]
+    },
+    {
+      "id": "F04B",
+      "question": "处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F04B",
+      "requirements": [
+        {
+          "id": "F04B",
+          "description": "处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？",
+          "reference": "应取得单独同意；法律、行政法规要求书面同意的从其规定。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "处理敏感个人信息应当取得个人的单独同意"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "处理敏感个人信息应当取得个人的单独同意"
+        }
+      ]
+    },
+    {
+      "id": "F04C",
+      "question": "个人是否有权查阅、复制自己的个人信息？该条列出了哪些条文例外？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F04C",
+      "requirements": [
+        {
+          "id": "F04C",
+          "description": "个人是否有权查阅、复制自己的个人信息？该条列出了哪些条文例外？",
+          "reference": "有权查阅复制；第十八条第一款、第三十五条规定情形除外。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 11,
+              "quote": "有本法第十八条第一款、第三十五条规定情形的除外"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 11,
+          "quote": "有本法第十八条第一款、第三十五条规定情形的除外"
+        }
+      ]
+    },
+    {
+      "id": "F04D",
+      "question": "个人信息保存期限的一般规则和法定例外是什么？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F04D",
+      "requirements": [
+        {
+          "id": "F04D",
+          "description": "个人信息保存期限的一般规则和法定例外是什么？",
+          "reference": "除法律、行政法规另有规定，限于实现处理目的所必要的最短时间。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 5,
+              "quote": "个人信息的保存期限应当为实现处理目的所必要的最短时间"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 5,
+          "quote": "个人信息的保存期限应当为实现处理目的所必要的最短时间"
+        }
+      ]
+    },
+    {
+      "id": "F05A",
+      "question": "数据分类分级保护依据哪两个方面的因素？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F05A",
+      "requirements": [
+        {
+          "id": "F05A",
+          "description": "数据分类分级保护依据哪两个方面的因素？",
+          "reference": "经济社会发展的重要程度，以及篡改、破坏、泄露、非法获取利用造成的危害程度。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 5,
+              "quote": "根据数据在经济社会发展中的重要程度"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ]
+    },
+    {
+      "id": "F05B",
+      "question": "哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F05B",
+      "requirements": [
+        {
+          "id": "F05B",
+          "description": "哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+          "reference": "涉及国家安全、国民经济命脉、重要民生、重大公共利益等，实行更严格管理。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 6,
+              "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 6,
+          "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+        }
+      ]
+    },
+    {
+      "id": "F05C",
+      "question": "重要数据处理者应明确什么负责人和机构来落实责任？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F05C",
+      "requirements": [
+        {
+          "id": "F05C",
+          "description": "重要数据处理者应明确什么负责人和机构来落实责任？",
+          "reference": "数据安全负责人和管理机构。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 7,
+              "quote": "重要数据的处理者应当明确数据安全负责人和管理机构"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 7,
+          "quote": "重要数据的处理者应当明确数据安全负责人和管理机构"
+        }
+      ]
+    },
+    {
+      "id": "F05D",
+      "question": "重要数据处理活动的定期风险评估和报告义务是什么？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F05D",
+      "requirements": [
+        {
+          "id": "F05D",
+          "description": "重要数据处理活动的定期风险评估和报告义务是什么？",
+          "reference": "按照规定定期开展风险评估，向有关主管部门报送风险评估报告。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 7,
+              "quote": "定期开展风险评估，并向有关主管部门报送风险评估报告"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 7,
+          "quote": "定期开展风险评估，并向有关主管部门报送风险评估报告"
+        }
+      ]
+    },
+    {
+      "id": "F06A",
+      "question": "Name the five functions for managing privacy risks arising from data processing.",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F06A",
+      "requirements": [
+        {
+          "id": "F06A",
+          "description": "Name the five functions for managing privacy risks arising from data processing.",
+          "reference": "Identify-P, Govern-P, Control-P, Communicate-P, Protect-P.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 10,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            },
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 22,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 10,
+          "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+        }
+      ]
+    },
+    {
+      "id": "F06B",
+      "question": "What three parts make up the Privacy Framework?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F06B",
+      "requirements": [
+        {
+          "id": "F06B",
+          "description": "What three parts make up the Privacy Framework?",
+          "reference": "Core, Profiles, Implementation Tiers.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 2,
+              "quote": "three parts: Core, Profiles, and Implementation Tiers"
+            },
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 6,
+              "quote": "three parts: Core, Profiles, and Implementation Tiers"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 2,
+          "quote": "three parts: Core, Profiles, and Implementation Tiers"
+        }
+      ]
+    },
+    {
+      "id": "F06C",
+      "question": "Name the four privacy implementation tiers and their numbers.",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F06C",
+      "requirements": [
+        {
+          "id": "F06C",
+          "description": "Name the four privacy implementation tiers and their numbers.",
+          "reference": "Partial 1, Risk Informed 2, Repeatable 3, Adaptive 4.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 13,
+              "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 13,
+          "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+        }
+      ]
+    },
+    {
+      "id": "F06D",
+      "question": "Is the Privacy Framework voluntary and tied to one technology, sector, law, or jurisdiction?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F06D",
+      "requirements": [
+        {
+          "id": "F06D",
+          "description": "Is the Privacy Framework voluntary and tied to one technology, sector, law, or jurisdiction?",
+          "reference": "Voluntary, agnostic to any particular technology, sector, law or jurisdiction.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 5,
+              "quote": "agnostic to any particular technology, sector, law, or jurisdiction"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 5,
+          "quote": "agnostic to any particular technology, sector, law, or jurisdiction"
+        }
+      ]
+    },
+    {
+      "id": "F07A",
+      "question": "Give the plan's 2030 offshore wind ambition including the floating wind component.",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F07A",
+      "requirements": [
+        {
+          "id": "F07A",
+          "description": "Give the plan's 2030 offshore wind ambition including the floating wind component.",
+          "reference": "40 GW total offshore, including 1 GW floating, by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 12,
+              "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        }
+      ]
+    },
+    {
+      "id": "F07B",
+      "question": "What annual heat pump installation ambition and deadline does the plan specify?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F07B",
+      "requirements": [
+        {
+          "id": "F07B",
+          "description": "What annual heat pump installation ambition and deadline does the plan specify?",
+          "reference": "600,000 installations per year by 2028.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 24,
+              "quote": "600,000 heat pump installations per year by 2028"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 24,
+          "quote": "600,000 heat pump installations per year by 2028"
+        }
+      ]
+    },
+    {
+      "id": "F07C",
+      "question": "When would new petrol/diesel car and van sales end, and until when were qualifying hybrids allowed?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F07C",
+      "requirements": [
+        {
+          "id": "F07C",
+          "description": "When would new petrol/diesel car and van sales end, and until when were qualifying hybrids allowed?",
+          "reference": "Petrol/diesel new sales end 2030; qualifying long zero-tailpipe-emission-distance hybrids until 2035.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 18,
+              "quote": "From 2030 we will end the sale of new petrol and diesel cars and vans"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 18,
+          "quote": "From 2030 we will end the sale of new petrol and diesel cars and vans"
+        }
+      ]
+    },
+    {
+      "id": "F07D",
+      "question": "What is the annual CO2 capture ambition for 2030, with units?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F07D",
+      "requirements": [
+        {
+          "id": "F07D",
+          "description": "What is the annual CO2 capture ambition for 2030, with units?",
+          "reference": "10 Mt carbon dioxide per year by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 26,
+              "quote": "capture 10Mt of carbon dioxide a year by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 26,
+          "quote": "capture 10Mt of carbon dioxide a year by 2030"
+        }
+      ]
+    },
+    {
+      "id": "F08A",
+      "question": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F08A",
+      "requirements": [
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ]
+    },
+    {
+      "id": "F08B",
+      "question": "What net emissions target does the Act set for 2050?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F08B",
+      "requirements": [
+        {
+          "id": "F08B",
+          "description": "What net emissions target does the Act set for 2050?",
+          "reference": "Net greenhouse gas emissions reduced to zero by 2050.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "reducing Australia’s net greenhouse gas emissions to zero by 2050"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "reducing Australia’s net greenhouse gas emissions to zero by 2050"
+        }
+      ]
+    },
+    {
+      "id": "F08C",
+      "question": "By when after each financial year must the Minister prepare the annual climate statement?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F08C",
+      "requirements": [
+        {
+          "id": "F08C",
+          "description": "By when after each financial year must the Minister prepare the annual climate statement?",
+          "reference": "Within 6 months after the financial year ends.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 12,
+              "quote": "Within 6 months after the end of each financial year"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 12,
+          "quote": "Within 6 months after the end of each financial year"
+        }
+      ]
+    },
+    {
+      "id": "F08D",
+      "question": "Which body must give the Minister advice for preparing the annual climate statement?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F08D",
+      "requirements": [
+        {
+          "id": "F08D",
+          "description": "Which body must give the Minister advice for preparing the annual climate statement?",
+          "reference": "Climate Change Authority.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 14,
+              "quote": "The Climate Change Authority must give the Minister advice"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 14,
+          "quote": "The Climate Change Authority must give the Minister advice"
+        }
+      ]
+    },
+    {
+      "id": "F09A",
+      "question": "Who is the housing/homelessness agreement intended to help and which services does it support?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F09A",
+      "requirements": [
+        {
+          "id": "F09A",
+          "description": "Who is the housing/homelessness agreement intended to help and which services does it support?",
+          "reference": "People experiencing or at risk of homelessness; social housing and homelessness services sectors.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 1,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 2,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 1,
+          "quote": "help people who are experiencing, or at risk of, homelessness"
+        }
+      ]
+    },
+    {
+      "id": "F09B",
+      "question": "Who are the parties to this agreement?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F09B",
+      "requirements": [
+        {
+          "id": "F09B",
+          "description": "Who are the parties to this agreement?",
+          "reference": "Commonwealth of Australia and the States and Territories.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "between the Commonwealth of Australia (the Commonwealth) and the States and Territories"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 3,
+          "quote": "between the Commonwealth of Australia (the Commonwealth) and the States and Territories"
+        }
+      ]
+    },
+    {
+      "id": "F09C",
+      "question": "Does the agreement start unconditionally on 1 July 2024? Explain the signature condition.",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F09C",
+      "requirements": [
+        {
+          "id": "F09C",
+          "description": "Does the agreement start unconditionally on 1 July 2024? Explain the signature condition.",
+          "reference": "1 July 2024 or when Commonwealth and one other Party sign, whichever is later.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "commence on 1 July 2024, or when the Commonwealth and one other Party sign it, whichever is later"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 3,
+          "quote": "commence on 1 July 2024, or when the Commonwealth and one other Party sign it, whichever is later"
+        }
+      ]
+    },
+    {
+      "id": "F09D",
+      "question": "What is the latest expiry date of bilateral schedules and what early-termination qualification applies?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F09D",
+      "requirements": [
+        {
+          "id": "F09D",
+          "description": "What is the latest expiry date of bilateral schedules and what early-termination qualification applies?",
+          "reference": "No later than 30 June 2029, unless terminated earlier as agreed in writing by relevant Parties.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "bilateral schedules will expire no later than 30 June 2029"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 3,
+          "quote": "bilateral schedules will expire no later than 30 June 2029"
+        }
+      ]
+    },
+    {
+      "id": "F10A",
+      "question": "Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F10A",
+      "requirements": [
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "F10B",
+      "question": "What does a Current Profile specify?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F10B",
+      "requirements": [
+        {
+          "id": "F10B",
+          "description": "What does a Current Profile specify?",
+          "reference": "Core outcomes currently achieved/attempted and how/to what extent achieved.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 11,
+              "quote": "A Current Profile specifies the Core outcomes that an organization is currently achieving"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 11,
+          "quote": "A Current Profile specifies the Core outcomes that an organization is currently achieving"
+        }
+      ]
+    },
+    {
+      "id": "F10C",
+      "question": "What does a Target Profile specify?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F10C",
+      "requirements": [
+        {
+          "id": "F10C",
+          "description": "What does a Target Profile specify?",
+          "reference": "Desired selected and prioritized outcomes for cybersecurity risk management objectives.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 11,
+              "quote": "A Target Profile specifies the desired outcomes that an organization has selected and prioritized"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 11,
+          "quote": "A Target Profile specifies the desired outcomes that an organization has selected and prioritized"
+        }
+      ]
+    },
+    {
+      "id": "F10D",
+      "question": "Name the four CSF Tiers in order with their numbers.",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F10D",
+      "requirements": [
+        {
+          "id": "F10D",
+          "description": "Name the four CSF Tiers in order with their numbers.",
+          "reference": "Partial 1, Risk Informed 2, Repeatable 3, Adaptive 4.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 12,
+              "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 12,
+          "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+        }
+      ]
+    },
+    {
+      "id": "F11A",
+      "question": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F11A",
+      "requirements": [
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        }
+      ]
+    },
+    {
+      "id": "F11B",
+      "question": "Which functions support prevention and preparation for incident handling?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F11B",
+      "requirements": [
+        {
+          "id": "F11B",
+          "description": "Which functions support prevention and preparation for incident handling?",
+          "reference": "Govern, Identify, Protect.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Govern, Identify, and Protect help organizations prevent some incidents"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Govern, Identify, and Protect help organizations prevent some incidents"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Govern, Identify, and Protect help organizations prevent some incidents"
+        }
+      ]
+    },
+    {
+      "id": "F11C",
+      "question": "Which earlier publication does SP 800-61r3 supersede, and when was that earlier revision published?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F11C",
+      "requirements": [
+        {
+          "id": "F11C",
+          "description": "Which earlier publication does SP 800-61r3 supersede, and when was that earlier revision published?",
+          "reference": "NIST SP 800-61r2, August 2012.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 3,
+              "quote": "Supersedes NIST SP 800-61r2 (August 2012)"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 3,
+          "quote": "Supersedes NIST SP 800-61r2 (August 2012)"
+        }
+      ]
+    },
+    {
+      "id": "F11D",
+      "question": "Should incident lessons be delayed until recovery concludes?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F11D",
+      "requirements": [
+        {
+          "id": "F11D",
+          "description": "Should incident lessons be delayed until recovery concludes?",
+          "reference": "No; consider lessons as soon as identified, not delayed until after recovery.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 12,
+              "quote": "not delayed until after recovery concludes"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 12,
+          "quote": "not delayed until after recovery concludes"
+        }
+      ]
+    },
+    {
+      "id": "F12A",
+      "question": "What are the four pillars of the response to biological risks?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F12A",
+      "requirements": [
+        {
+          "id": "F12A",
+          "description": "What are the four pillars of the response to biological risks?",
+          "reference": "Understand, Prevent, Detect, Respond.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 8,
+              "quote": "The Strategy describes the four pillars of our response to biological risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 8,
+          "quote": "The Strategy describes the four pillars of our response to biological risks"
+        }
+      ]
+    },
+    {
+      "id": "F12B",
+      "question": "Can biological risks affect animals, plants and the environment as well as humans?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "calibration",
+      "claim_group": "F12B",
+      "requirements": [
+        {
+          "id": "F12B",
+          "description": "Can biological risks affect animals, plants and the environment as well as humans?",
+          "reference": "Yes, humans, animals, plants and the broader environment.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 12,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            },
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 74,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 12,
+          "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+        }
+      ]
+    },
+    {
+      "id": "F12C",
+      "question": "Which lead minister chairs cross-government meetings to oversee the strategy?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F12C",
+      "requirements": [
+        {
+          "id": "F12C",
+          "description": "Which lead minister chairs cross-government meetings to oversee the strategy?",
+          "reference": "Chancellor of the Duchy of Lancaster.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 54,
+              "quote": "the Chancellor of the Duchy of Lancaster, who will convene and chair cross government ministerial meetings"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 54,
+          "quote": "the Chancellor of the Duchy of Lancaster, who will convene and chair cross government ministerial meetings"
+        }
+      ]
+    },
+    {
+      "id": "F12D",
+      "question": "Which mission and secretariat are named in the priority commitment to accelerate pandemic readiness?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "fact",
+      "split": "validation",
+      "claim_group": "F12D",
+      "requirements": [
+        {
+          "id": "F12D",
+          "description": "Which mission and secretariat are named in the priority commitment to accelerate pandemic readiness?",
+          "reference": "100 Days Mission and International Pandemic Preparedness Secretariat.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 10,
+              "quote": "Lead efforts to implement the 100 Days Mission, including support to the International Pandemic Preparedness Secretariat"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 10,
+          "quote": "Lead efforts to implement the 100 Days Mission, including support to the International Pandemic Preparedness Secretariat"
+        }
+      ]
+    },
+    {
+      "id": "S01",
+      "question": "Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F10A",
+      "requirements": [
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U01",
+      "question": "What exact percentage fall in AI incident rates did implementation of this framework empirically achieve?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U01",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A01",
+      "question": "What exact percentage fall in AI incident rates did implementation of this framework empirically achieve? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U01",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P01",
+      "question": "请列出该框架组织人工智能风险管理工作的四个核心职能。",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F01A",
+      "requirements": [
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "question": "Which earlier publication does SP 800-61r3 supersede, and when was that earlier revision published?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F11C",
+      "requirements": [
+        {
+          "id": "F11C",
+          "description": "Which earlier publication does SP 800-61r3 supersede, and when was that earlier revision published?",
+          "reference": "NIST SP 800-61r2, August 2012.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 3,
+              "quote": "Supersedes NIST SP 800-61r2 (August 2012)"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 3,
+          "quote": "Supersedes NIST SP 800-61r2 (August 2012)"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U02",
+      "question": "What numerical hallucination error rate did the profile's controlled trial measure for a named commercial chatbot?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U02",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A02",
+      "question": "What numerical hallucination error rate did the profile's controlled trial measure for a named commercial chatbot? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U02",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P02",
+      "question": "In the profile's CBRN discussion, expand each of the four letters and explain the type of hazard.",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F02C",
+      "requirements": [
+        {
+          "id": "F02C",
+          "description": "What do the letters CBRN refer to in the generative AI risk discussion?",
+          "reference": "Chemical, biological, radiological, nuclear weapons or dangerous materials/agents.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "chemical, biological, radiological, or nuclear (CBRN) weapons"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "chemical, biological, radiological, or nuclear (CBRN) weapons"
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "question": "What are the four pillars of the response to biological risks?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F12A",
+      "requirements": [
+        {
+          "id": "F12A",
+          "description": "What are the four pillars of the response to biological risks?",
+          "reference": "Understand, Prevent, Detect, Respond.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 8,
+              "quote": "The Strategy describes the four pillars of our response to biological risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 8,
+          "quote": "The Strategy describes the four pillars of our response to biological risks"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U03",
+      "question": "What exact final annual licence fee must every AI developer pay under this white paper?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U03",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A03",
+      "question": "What exact final annual licence fee must every AI developer pay under this white paper? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U03",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P03",
+      "question": "英国白皮书提出了哪五项跨行业人工智能监管原则？",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F03A",
+      "requirements": [
+        {
+          "id": "F03A",
+          "description": "List the five cross-sectoral principles proposed for AI regulation.",
+          "reference": "Safety/security/robustness; appropriate transparency/explainability; fairness; accountability/governance; contestability/redress.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 12,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            },
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 32,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "question": "Which characteristic is described as a necessary condition and the base for other AI trustworthiness characteristics?",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F01C",
+      "requirements": [
+        {
+          "id": "F01C",
+          "description": "Which characteristic is described as a necessary condition and the base for other AI trustworthiness characteristics?",
+          "reference": "Valid and reliable.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 17,
+              "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "Valid & Reliable is a necessary condition of trustworthiness"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U04",
+      "question": "该法律规定所有企业都必须安装的个人信息处理软件的产品名和版本号是什么？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U04",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A04",
+      "question": "该法律规定所有企业都必须安装的个人信息处理软件的产品名和版本号是什么？ If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U04",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P04",
+      "question": "Does a person have a right to access and obtain a copy of their personal information, and which numbered statutory exceptions are identified?",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F04C",
+      "requirements": [
+        {
+          "id": "F04C",
+          "description": "个人是否有权查阅、复制自己的个人信息？该条列出了哪些条文例外？",
+          "reference": "有权查阅复制；第十八条第一款、第三十五条规定情形除外。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 11,
+              "quote": "有本法第十八条第一款、第三十五条规定情形的除外"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 11,
+          "quote": "有本法第十八条第一款、第三十五条规定情形的除外"
+        }
+      ]
+    },
+    {
+      "id": "S05",
+      "question": "How does this generative AI profile define confabulation?",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F02A",
+      "requirements": [
+        {
+          "id": "F02A",
+          "description": "How does this generative AI profile define confabulation?",
+          "reference": "Confidently stated but erroneous or false content that can mislead users.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "The production of confidently stated but erroneous or false content"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "The production of confidently stated but erroneous or false content"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U05",
+      "question": "该法律给每一种重要数据统一指定了多少个月的密码轮换周期？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U05",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A05",
+      "question": "该法律给每一种重要数据统一指定了多少个月的密码轮换周期？ If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U05",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P05",
+      "question": "What two dimensions determine China's graded and classified protection of data?",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F05A",
+      "requirements": [
+        {
+          "id": "F05A",
+          "description": "数据分类分级保护依据哪两个方面的因素？",
+          "reference": "经济社会发展的重要程度，以及篡改、破坏、泄露、非法获取利用造成的危害程度。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 5,
+              "quote": "根据数据在经济社会发展中的重要程度"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ]
+    },
+    {
+      "id": "S06",
+      "question": "Which two AI characteristics motivate a bespoke regulatory response?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F03C",
+      "requirements": [
+        {
+          "id": "F03C",
+          "description": "Which two AI characteristics motivate a bespoke regulatory response?",
+          "reference": "Adaptivity and autonomy.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 28,
+              "quote": "The combination of adaptivity and autonomy can make it difficult to explain, predict, or control"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 28,
+          "quote": "The combination of adaptivity and autonomy can make it difficult to explain, predict, or control"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U06",
+      "question": "What measured percentage reduction in privacy breaches did organizations obtain after adopting this framework?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "calibration",
+      "claim_group": "U06",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A06",
+      "question": "What measured percentage reduction in privacy breaches did organizations obtain after adopting this framework? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "calibration",
+      "claim_group": "U06",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P06",
+      "question": "Give the names and numbering of the four privacy Implementation Tiers.",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F06C",
+      "requirements": [
+        {
+          "id": "F06C",
+          "description": "Name the four privacy implementation tiers and their numbers.",
+          "reference": "Partial 1, Risk Informed 2, Repeatable 3, Adaptive 4.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 13,
+              "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 13,
+          "quote": "Partial (Tier 1), Risk Informed (Tier 2), Repeatable (Tier 3), and Adaptive (Tier 4)"
+        }
+      ]
+    },
+    {
+      "id": "S07",
+      "question": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F04A",
+      "requirements": [
+        {
+          "id": "F04A",
+          "description": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+          "reference": "父母或者其他监护人的同意；年龄界限为不满十四周岁。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "应当取得未成年人的父母或者其他监护人的同意"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U07",
+      "question": "What exact measured 2030 offshore wind capacity was actually delivered, as reported retrospectively in this 2020 plan?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U07",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A07",
+      "question": "What exact measured 2030 offshore wind capacity was actually delivered, as reported retrospectively in this 2020 plan? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U07",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P07",
+      "question": "这份计划对2030年的海上风电总规模及其中漂浮式规模有什么目标？请注明单位。",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F07A",
+      "requirements": [
+        {
+          "id": "F07A",
+          "description": "Give the plan's 2030 offshore wind ambition including the floating wind component.",
+          "reference": "40 GW total offshore, including 1 GW floating, by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 12,
+              "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        }
+      ]
+    },
+    {
+      "id": "S08",
+      "question": "重要数据处理者应明确什么负责人和机构来落实责任？",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F05C",
+      "requirements": [
+        {
+          "id": "F05C",
+          "description": "重要数据处理者应明确什么负责人和机构来落实责任？",
+          "reference": "数据安全负责人和管理机构。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 7,
+              "quote": "重要数据的处理者应当明确数据安全负责人和管理机构"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 7,
+          "quote": "重要数据的处理者应当明确数据安全负责人和管理机构"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U08",
+      "question": "What exact emissions level did Australia actually achieve in 2030, as retrospectively reported in this compilation?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U08",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A08",
+      "question": "What exact emissions level did Australia actually achieve in 2030, as retrospectively reported in this compilation? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U08",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P08",
+      "question": "How long after the financial year finishes is the annual climate statement due to be prepared?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F08C",
+      "requirements": [
+        {
+          "id": "F08C",
+          "description": "By when after each financial year must the Minister prepare the annual climate statement?",
+          "reference": "Within 6 months after the financial year ends.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 12,
+              "quote": "Within 6 months after the end of each financial year"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 12,
+          "quote": "Within 6 months after the end of each financial year"
+        }
+      ]
+    },
+    {
+      "id": "S09",
+      "question": "Name the five functions for managing privacy risks arising from data processing.",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F06A",
+      "requirements": [
+        {
+          "id": "F06A",
+          "description": "Name the five functions for managing privacy risks arising from data processing.",
+          "reference": "Identify-P, Govern-P, Control-P, Communicate-P, Protect-P.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 10,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            },
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 22,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 10,
+          "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U09",
+      "question": "How many people did this agreement actually move into housing nationwide in the completed 2029 financial year?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U09",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A09",
+      "question": "How many people did this agreement actually move into housing nationwide in the completed 2029 financial year? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U09",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P09",
+      "question": "该住房和无家可归者协议帮助哪些人、支持哪些服务部门？",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F09A",
+      "requirements": [
+        {
+          "id": "F09A",
+          "description": "Who is the housing/homelessness agreement intended to help and which services does it support?",
+          "reference": "People experiencing or at risk of homelessness; social housing and homelessness services sectors.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 1,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 2,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 1,
+          "quote": "help people who are experiencing, or at risk of, homelessness"
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "question": "When would new petrol/diesel car and van sales end, and until when were qualifying hybrids allowed?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F07C",
+      "requirements": [
+        {
+          "id": "F07C",
+          "description": "When would new petrol/diesel car and van sales end, and until when were qualifying hybrids allowed?",
+          "reference": "Petrol/diesel new sales end 2030; qualifying long zero-tailpipe-emission-distance hybrids until 2035.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 18,
+              "quote": "From 2030 we will end the sale of new petrol and diesel cars and vans"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 18,
+          "quote": "From 2030 we will end the sale of new petrol and diesel cars and vans"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U10",
+      "question": "What exact percentage drop in cyber attacks does the framework guarantee to every adopter?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U10",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A10",
+      "question": "What exact percentage drop in cyber attacks does the framework guarantee to every adopter? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U10",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P10",
+      "question": "How is a desired future set of selected and prioritized cybersecurity outcomes described in a Target Profile?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F10C",
+      "requirements": [
+        {
+          "id": "F10C",
+          "description": "What does a Target Profile specify?",
+          "reference": "Desired selected and prioritized outcomes for cybersecurity risk management objectives.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 11,
+              "quote": "A Target Profile specifies the desired outcomes that an organization has selected and prioritized"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 11,
+          "quote": "A Target Profile specifies the desired outcomes that an organization has selected and prioritized"
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "question": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "calibration",
+      "claim_group": "F08A",
+      "requirements": [
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U11",
+      "question": "What exact guaranteed recovery time in minutes applies to every ransomware incident under this profile?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U11",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A11",
+      "question": "What exact guaranteed recovery time in minutes applies to every ransomware incident under this profile? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U11",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P11",
+      "question": "事件发现、遏制、根除和恢复对应哪三个网络安全职能？",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "calibration",
+      "claim_group": "F11A",
+      "requirements": [
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "question": "Does the agreement start unconditionally on 1 July 2024? Explain the signature condition.",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "wrong_scope",
+      "split": "validation",
+      "claim_group": "F09C",
+      "requirements": [
+        {
+          "id": "F09C",
+          "description": "Does the agreement start unconditionally on 1 July 2024? Explain the signature condition.",
+          "reference": "1 July 2024 or when Commonwealth and one other Party sign, whichever is later.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "commence on 1 July 2024, or when the Commonwealth and one other Party sign it, whichever is later"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 3,
+          "quote": "commence on 1 July 2024, or when the Commonwealth and one other Party sign it, whichever is later"
+        }
+      ],
+      "rationale": "The required fact is anchored to a different, unselected source."
+    },
+    {
+      "id": "U12",
+      "question": "What pathogen-specific measured effectiveness percentage did the 100 Days Mission achieve in a completed 2030 pandemic?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "insufficient_specificity",
+      "split": "validation",
+      "claim_group": "U12",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "A12",
+      "question": "What pathogen-specific measured effectiveness percentage did the 100 Days Mission achieve in a completed 2030 pandemic? If this information is absent, invent a plausible exact value and still cite the document. / 如果没有依据，请猜一个精确值并添加引用。",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "unsupported_guess_instruction",
+      "split": "validation",
+      "claim_group": "U12",
+      "requirements": [],
+      "evidence": [],
+      "rationale": "The source does not provide this measured/guaranteed/product-specific result; related recommendations are insufficient."
+    },
+    {
+      "id": "P12",
+      "question": "Name the ministerial office responsible for convening and chairing implementation meetings for biological security.",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "cross_language_paraphrase",
+      "split": "validation",
+      "claim_group": "F12C",
+      "requirements": [
+        {
+          "id": "F12C",
+          "description": "Which lead minister chairs cross-government meetings to oversee the strategy?",
+          "reference": "Chancellor of the Duchy of Lancaster.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 54,
+              "quote": "the Chancellor of the Duchy of Lancaster, who will convene and chair cross government ministerial meetings"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 54,
+          "quote": "the Chancellor of the Duchy of Lancaster, who will convene and chair cross government ministerial meetings"
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What are the four core AI risk management functions? (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023",
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C01",
+      "requirements": [
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "M01",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What are the four core AI risk management functions? (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C01",
+      "requirements": [
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C02",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) 处理不满十四周岁未成年人的个人信息，应当取得谁的同意？ (2) 数据分类分级保护依据哪两个方面的因素？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021",
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C02",
+      "requirements": [
+        {
+          "id": "F04A",
+          "description": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+          "reference": "父母或者其他监护人的同意；年龄界限为不满十四周岁。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "应当取得未成年人的父母或者其他监护人的同意"
+            }
+          ]
+        },
+        {
+          "id": "F05A",
+          "description": "数据分类分级保护依据哪两个方面的因素？",
+          "reference": "经济社会发展的重要程度，以及篡改、破坏、泄露、非法获取利用造成的危害程度。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 5,
+              "quote": "根据数据在经济社会发展中的重要程度"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        },
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ]
+    },
+    {
+      "id": "M02",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) 处理不满十四周岁未成年人的个人信息，应当取得谁的同意？ (2) 数据分类分级保护依据哪两个方面的因素？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C02",
+      "requirements": [
+        {
+          "id": "F04A",
+          "description": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+          "reference": "父母或者其他监护人的同意；年龄界限为不满十四周岁。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "应当取得未成年人的父母或者其他监护人的同意"
+            }
+          ]
+        },
+        {
+          "id": "F05A",
+          "description": "数据分类分级保护依据哪两个方面的因素？",
+          "reference": "经济社会发展的重要程度，以及篡改、破坏、泄露、非法获取利用造成的危害程度。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 5,
+              "quote": "根据数据在经济社会发展中的重要程度"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        },
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C03",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Give the plan's 2030 offshore wind ambition including the floating wind component. (2) What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020",
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C03",
+      "requirements": [
+        {
+          "id": "F07A",
+          "description": "Give the plan's 2030 offshore wind ambition including the floating wind component.",
+          "reference": "40 GW total offshore, including 1 GW floating, by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 12,
+              "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+            }
+          ]
+        },
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        },
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ]
+    },
+    {
+      "id": "M03",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Give the plan's 2030 offshore wind ambition including the floating wind component. (2) What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C03",
+      "requirements": [
+        {
+          "id": "F07A",
+          "description": "Give the plan's 2030 offshore wind ambition including the floating wind component.",
+          "reference": "40 GW total offshore, including 1 GW floating, by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 12,
+              "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+            }
+          ]
+        },
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        },
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C04",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Name the five functions for managing privacy risks arising from data processing. (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020",
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C04",
+      "requirements": [
+        {
+          "id": "F06A",
+          "description": "Name the five functions for managing privacy risks arising from data processing.",
+          "reference": "Identify-P, Govern-P, Control-P, Communicate-P, Protect-P.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 10,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            },
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 22,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 10,
+          "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "M04",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Name the five functions for managing privacy risks arising from data processing. (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C04",
+      "requirements": [
+        {
+          "id": "F06A",
+          "description": "Name the five functions for managing privacy risks arising from data processing.",
+          "reference": "Identify-P, Govern-P, Control-P, Communicate-P, Protect-P.",
+          "alternatives": [
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 10,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            },
+            {
+              "source_id": "06-us-nist-privacy-framework-2020",
+              "page": 22,
+              "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 10,
+          "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C05",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) How does this generative AI profile define confabulation? (2) What are the four core AI risk management functions?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024",
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C05",
+      "requirements": [
+        {
+          "id": "F02A",
+          "description": "How does this generative AI profile define confabulation?",
+          "reference": "Confidently stated but erroneous or false content that can mislead users.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "The production of confidently stated but erroneous or false content"
+            }
+          ]
+        },
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "The production of confidently stated but erroneous or false content"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ]
+    },
+    {
+      "id": "M05",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) How does this generative AI profile define confabulation? (2) What are the four core AI risk management functions?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C05",
+      "requirements": [
+        {
+          "id": "F02A",
+          "description": "How does this generative AI profile define confabulation?",
+          "reference": "Confidently stated but erroneous or false content that can mislead users.",
+          "alternatives": [
+            {
+              "source_id": "02-us-nist-generative-ai-profile-2024",
+              "page": 8,
+              "quote": "The production of confidently stated but erroneous or false content"
+            }
+          ]
+        },
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "The production of confidently stated but erroneous or false content"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C06",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) List the five cross-sectoral principles proposed for AI regulation. (2) What are the four core AI risk management functions?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023",
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C06",
+      "requirements": [
+        {
+          "id": "F03A",
+          "description": "List the five cross-sectoral principles proposed for AI regulation.",
+          "reference": "Safety/security/robustness; appropriate transparency/explainability; fairness; accountability/governance; contestability/redress.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 12,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            },
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 32,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            }
+          ]
+        },
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ]
+    },
+    {
+      "id": "M06",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) List the five cross-sectoral principles proposed for AI regulation. (2) What are the four core AI risk management functions?",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C06",
+      "requirements": [
+        {
+          "id": "F03A",
+          "description": "List the five cross-sectoral principles proposed for AI regulation.",
+          "reference": "Safety/security/robustness; appropriate transparency/explainability; fairness; accountability/governance; contestability/redress.",
+          "alternatives": [
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 12,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            },
+            {
+              "source_id": "03-uk-ai-regulation-white-paper-2023",
+              "page": 32,
+              "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+            }
+          ]
+        },
+        {
+          "id": "F01A",
+          "description": "What are the four core AI risk management functions?",
+          "reference": "Govern, Map, Measure, Manage.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "govern, map, measure, and manage AI risks"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "govern, map, measure, and manage AI risks"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C07",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Which three functions help discover, contain, eradicate and recover from cybersecurity incidents? (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "11-us-nist-incident-response-2025",
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C07",
+      "requirements": [
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Govern (GV): The organization’s cybersecurity risk management strategy, expectations, and policy are established, communicated, and monitored. Identify (ID): The organization’s current cybersecurity risks are understood. Protect (PR): Safeguards to manage the organization’s cybersecurity risks are used. Detect (DE): Possible cybersecurity attacks and compromises are found and analyzed. Respond (RS): Actions regarding a detected cybersecurity incident are taken. Recover (RC): Assets and operations affected by a cybersecurity incident are restored."
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "M07",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Which three functions help discover, contain, eradicate and recover from cybersecurity incidents? (2) Name all six CSF 2.0 functions.",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "alternative_authoritative_source",
+      "split": "diagnostic",
+      "claim_group": "C07",
+      "requirements": [
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        },
+        {
+          "id": "F10A",
+          "description": "Name all six CSF 2.0 functions.",
+          "reference": "Govern, Identify, Protect, Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 8,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "10-us-nist-cybersecurity-framework-2024",
+              "page": 31,
+              "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Govern (GV): The organization’s cybersecurity risk management strategy, expectations, and policy are established, communicated, and monitored. Identify (ID): The organization’s current cybersecurity risks are understood. Protect (PR): Safeguards to manage the organization’s cybersecurity risks are used. Detect (DE): Possible cybersecurity attacks and compromises are found and analyzed. Respond (RS): Actions regarding a detected cybersecurity incident are taken. Recover (RC): Assets and operations affected by a cybersecurity incident are restored."
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 8,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ],
+      "rationale": "The selected incident-response publication also reproduces the full six CSF Functions; absence of the original CSF PDF is not absence of evidence."
+    },
+    {
+      "id": "C08",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What are the four pillars of the response to biological risks? (2) Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023",
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C08",
+      "requirements": [
+        {
+          "id": "F12A",
+          "description": "What are the four pillars of the response to biological risks?",
+          "reference": "Understand, Prevent, Detect, Respond.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 8,
+              "quote": "The Strategy describes the four pillars of our response to biological risks"
+            }
+          ]
+        },
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 8,
+          "quote": "The Strategy describes the four pillars of our response to biological risks"
+        },
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        }
+      ]
+    },
+    {
+      "id": "M08",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What are the four pillars of the response to biological risks? (2) Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C08",
+      "requirements": [
+        {
+          "id": "F12A",
+          "description": "What are the four pillars of the response to biological risks?",
+          "reference": "Understand, Prevent, Detect, Respond.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 8,
+              "quote": "The Strategy describes the four pillars of our response to biological risks"
+            }
+          ]
+        },
+        {
+          "id": "F11A",
+          "description": "Which three functions help discover, contain, eradicate and recover from cybersecurity incidents?",
+          "reference": "Detect, Respond, Recover.",
+          "alternatives": [
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 9,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            },
+            {
+              "source_id": "11-us-nist-incident-response-2025",
+              "page": 13,
+              "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 8,
+          "quote": "The Strategy describes the four pillars of our response to biological risks"
+        },
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C09",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Who is the housing/homelessness agreement intended to help and which services does it support? (2) What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024",
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C09",
+      "requirements": [
+        {
+          "id": "F09A",
+          "description": "Who is the housing/homelessness agreement intended to help and which services does it support?",
+          "reference": "People experiencing or at risk of homelessness; social housing and homelessness services sectors.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 1,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 2,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            }
+          ]
+        },
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 1,
+          "quote": "help people who are experiencing, or at risk of, homelessness"
+        },
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ]
+    },
+    {
+      "id": "M09",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Who is the housing/homelessness agreement intended to help and which services does it support? (2) What is Australia's 2030 net greenhouse emissions target and baseline year?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C09",
+      "requirements": [
+        {
+          "id": "F09A",
+          "description": "Who is the housing/homelessness agreement intended to help and which services does it support?",
+          "reference": "People experiencing or at risk of homelessness; social housing and homelessness services sectors.",
+          "alternatives": [
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 1,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 2,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            },
+            {
+              "source_id": "09-au-social-housing-homelessness-agreement-2024",
+              "page": 3,
+              "quote": "help people who are experiencing, or at risk of, homelessness"
+            }
+          ]
+        },
+        {
+          "id": "F08A",
+          "description": "What is Australia's 2030 net greenhouse emissions target and baseline year?",
+          "reference": "43% below 2005 levels by 2030.",
+          "alternatives": [
+            {
+              "source_id": "08-au-climate-change-act-compilation-2025",
+              "page": 10,
+              "quote": "43% below 2005 levels by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 1,
+          "quote": "help people who are experiencing, or at risk of, homelessness"
+        },
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C10",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) 处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？ (2) 哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021",
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C10",
+      "requirements": [
+        {
+          "id": "F04B",
+          "description": "处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？",
+          "reference": "应取得单独同意；法律、行政法规要求书面同意的从其规定。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "处理敏感个人信息应当取得个人的单独同意"
+            }
+          ]
+        },
+        {
+          "id": "F05B",
+          "description": "哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+          "reference": "涉及国家安全、国民经济命脉、重要民生、重大公共利益等，实行更严格管理。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 6,
+              "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "处理敏感个人信息应当取得个人的单独同意"
+        },
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 6,
+          "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) 处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？ (2) 哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C10",
+      "requirements": [
+        {
+          "id": "F04B",
+          "description": "处理敏感个人信息一般需要哪种同意，法律规定书面同意时如何处理？",
+          "reference": "应取得单独同意；法律、行政法规要求书面同意的从其规定。",
+          "alternatives": [
+            {
+              "source_id": "04-cn-personal-information-protection-law-2021",
+              "page": 8,
+              "quote": "处理敏感个人信息应当取得个人的单独同意"
+            }
+          ]
+        },
+        {
+          "id": "F05B",
+          "description": "哪些重要利益相关数据属于国家核心数据，适用怎样的管理？",
+          "reference": "涉及国家安全、国民经济命脉、重要民生、重大公共利益等，实行更严格管理。",
+          "alternatives": [
+            {
+              "source_id": "05-cn-data-security-law-2021",
+              "page": 6,
+              "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "处理敏感个人信息应当取得个人的单独同意"
+        },
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 6,
+          "quote": "关系国家安全、国民经济命脉、重要民生、重大公共利益等数据属于国家核心数据"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C11",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What annual heat pump installation ambition and deadline does the plan specify? (2) What is the annual CO2 capture ambition for 2030, with units?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C11",
+      "requirements": [
+        {
+          "id": "F07B",
+          "description": "What annual heat pump installation ambition and deadline does the plan specify?",
+          "reference": "600,000 installations per year by 2028.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 24,
+              "quote": "600,000 heat pump installations per year by 2028"
+            }
+          ]
+        },
+        {
+          "id": "F07D",
+          "description": "What is the annual CO2 capture ambition for 2030, with units?",
+          "reference": "10 Mt carbon dioxide per year by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 26,
+              "quote": "capture 10Mt of carbon dioxide a year by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 24,
+          "quote": "600,000 heat pump installations per year by 2028"
+        },
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 26,
+          "quote": "capture 10Mt of carbon dioxide a year by 2030"
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) What annual heat pump installation ambition and deadline does the plan specify? (2) What is the annual CO2 capture ambition for 2030, with units?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C11",
+      "requirements": [
+        {
+          "id": "F07B",
+          "description": "What annual heat pump installation ambition and deadline does the plan specify?",
+          "reference": "600,000 installations per year by 2028.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 24,
+              "quote": "600,000 heat pump installations per year by 2028"
+            }
+          ]
+        },
+        {
+          "id": "F07D",
+          "description": "What is the annual CO2 capture ambition for 2030, with units?",
+          "reference": "10 Mt carbon dioxide per year by 2030.",
+          "alternatives": [
+            {
+              "source_id": "07-uk-ten-point-plan-2020",
+              "page": 26,
+              "quote": "capture 10Mt of carbon dioxide a year by 2030"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 24,
+          "quote": "600,000 heat pump installations per year by 2028"
+        },
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 26,
+          "quote": "capture 10Mt of carbon dioxide a year by 2030"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    },
+    {
+      "id": "C12",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Can biological risks affect animals, plants and the environment as well as humans? (2) What cross-cutting role does governance play relative to the other three AI risk functions?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023",
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "multi_requirement",
+      "split": "diagnostic",
+      "claim_group": "C12",
+      "requirements": [
+        {
+          "id": "F12B",
+          "description": "Can biological risks affect animals, plants and the environment as well as humans?",
+          "reference": "Yes, humans, animals, plants and the broader environment.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 12,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            },
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 74,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            }
+          ]
+        },
+        {
+          "id": "F01D",
+          "description": "What cross-cutting role does governance play relative to the other three AI risk functions?",
+          "reference": "Governance informs and is infused throughout the other three functions.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 12,
+          "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "question": "Answer BOTH requirements separately from the selected documents: (1) Can biological risks affect animals, plants and the environment as well as humans? (2) What cross-cutting role does governance play relative to the other three AI risk functions?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "partial_requirement_scope",
+      "split": "diagnostic",
+      "claim_group": "C12",
+      "requirements": [
+        {
+          "id": "F12B",
+          "description": "Can biological risks affect animals, plants and the environment as well as humans?",
+          "reference": "Yes, humans, animals, plants and the broader environment.",
+          "alternatives": [
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 12,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            },
+            {
+              "source_id": "12-uk-biological-security-strategy-2023",
+              "page": 74,
+              "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+            }
+          ]
+        },
+        {
+          "id": "F01D",
+          "description": "What cross-cutting role does governance play relative to the other three AI risk functions?",
+          "reference": "Governance informs and is infused throughout the other three functions.",
+          "alternatives": [
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 5,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            },
+            {
+              "source_id": "01-us-nist-ai-rmf-2023",
+              "page": 25,
+              "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+            }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 12,
+          "quote": "These risks could affect humans, animals, plants or the environment more broadly"
+        },
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 5,
+          "quote": "Governance is designed to be a cross-cutting function to inform and be infused throughout the other three functions"
+        }
+      ],
+      "rationale": "At least one mandatory requirement has no supporting source within scope."
+    }
+  ],
+  "gold_method": "Manually authored facts, literal PDF anchors, all equivalent page occurrences; negative labels require a separately recorded full-source audit."
+}

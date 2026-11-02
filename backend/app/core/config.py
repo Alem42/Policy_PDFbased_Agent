@@ -31,6 +31,24 @@ class Settings(BaseSettings):
     database_pool_max_waiting: int = Field(default=20, ge=1)
     database_connect_timeout: int = Field(default=3, ge=1)
     database_pool_startup_timeout: float = Field(default=5.0, gt=0)
+    redis_enabled: bool = False
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_key_prefix: str = Field(default="policy:dev", pattern=r"^[A-Za-z0-9:_-]{1,100}$")
+    redis_max_connections: int = Field(default=20, ge=1, le=500)
+    redis_connect_timeout_seconds: float = Field(default=0.2, gt=0, le=5)
+    redis_socket_timeout_seconds: float = Field(default=0.2, gt=0, le=5)
+    redis_operation_budget_seconds: float = Field(default=0.3, gt=0, le=5)
+    taxonomy_cache_enabled: bool = True
+    taxonomy_cache_ttl_seconds: int = Field(default=60, ge=1, le=3600)
+    taxonomy_cache_wait_seconds: float = Field(default=0.5, gt=0, le=5)
+    taxonomy_cache_max_bytes: int = Field(default=256 * 1024, ge=1024, le=1024 * 1024)
+    rate_limit_enabled: bool = False
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    rate_limit_chat_limit: int = Field(default=10, ge=1, le=10000)
+    rate_limit_resume_limit: int = Field(default=20, ge=1, le=10000)
+    rate_limit_upload_limit: int = Field(default=5, ge=1, le=10000)
+    redis_demo_enabled: bool = False
+    redis_demo_limit: int = Field(default=10, ge=1, le=10000)
     upload_max_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
     upload_chunk_bytes: int = Field(default=1024 * 1024, gt=0, le=8 * 1024 * 1024)
     upload_request_overhead_bytes: int = Field(default=256 * 1024, ge=0)
@@ -72,6 +90,8 @@ class Settings(BaseSettings):
     def validate_pool_sizes(self) -> Self:
         if self.database_pool_min_size > self.database_pool_max_size:
             raise ValueError("DATABASE_POOL_MIN_SIZE must not exceed DATABASE_POOL_MAX_SIZE")
+        if self.rate_limit_enabled and not self.redis_enabled:
+            raise ValueError("RATE_LIMIT_ENABLED requires REDIS_ENABLED")
         if self.document_task_heartbeat_seconds * 2 >= self.document_task_lease_seconds:
             raise ValueError("DOCUMENT_TASK_HEARTBEAT_SECONDS must be less than half the lease")
         return self

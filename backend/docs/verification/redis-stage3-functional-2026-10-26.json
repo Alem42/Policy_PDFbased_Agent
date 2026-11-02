@@ -1,0 +1,105 @@
+{
+  "run_id": "86bb83e21ce9",
+  "mode": "functional",
+  "started_at_utc": "2026-10-26T12:39:11.516711+00:00",
+  "environment": {
+    "base_url": "http://127.0.0.1:8000/api/v1",
+    "peer_url": "http://127.0.0.1:8002/api/v1",
+    "baseline_url": null,
+    "database_name": "redis_demo_tests",
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379
+  },
+  "checks": {
+    "authenticated_across_instances": {
+      "instances": 2
+    },
+    "shared_taxonomy_cache": {
+      "first": "MISS",
+      "peer": "HIT",
+      "payload_sha256": "5037febce109654a4fc79380e2c129ab536c0c7dbf6ef39f5eb077de755e1269"
+    },
+    "administrator_update_invalidates_peer_cache": true,
+    "two_instances_atomic_quota": {
+      "requests": 40,
+      "instances": 2,
+      "status_codes": {
+        "200": 10,
+        "429": 30
+      },
+      "ttl_ms": 59945,
+      "elapsed_ms": 282.44
+    },
+    "different_user_has_independent_quota": {
+      "http_status": 200
+    },
+    "redis_diagnostics_and_demo_require_admin": true,
+    "real_pdf_idempotent_upload": {
+      "document_id": "34b51f1e-2e96-405e-8180-52a3f08ac1b6",
+      "task_id": "304d3980-0b1d-4eda-9157-a4283bfe1778",
+      "file_bytes": 2528
+    },
+    "authenticated_readers_during_real_pdf_indexing": {
+      "accounts": 3,
+      "requests": 60,
+      "all_200": true,
+      "task_status_at_read_start": "running",
+      "task_active_at_read_start": true,
+      "p50_ms": 8.398,
+      "p95_ms": 70.054,
+      "note": "Concurrent browsing alongside PDF workflow; actual task state at start recorded. Not LLM throughput."
+    },
+    "real_pdf_text_and_vectors_verified": {
+      "pages": 2,
+      "chunks": 1,
+      "vectors": [
+        {
+          "table": "chunk_embeddings",
+          "count": 1,
+          "dimensions": 384
+        }
+      ],
+      "states": [
+        "embedding",
+        "indexed"
+      ],
+      "attempts": 1,
+      "elapsed_seconds": 1.87,
+      "download_sha256_matches": true
+    },
+    "chat_and_stream_share_quota_before_business": {
+      "statuses": {
+        "/chat": 429,
+        "/chat/stream": 429
+      },
+      "database_counts_unchanged": true,
+      "note": "No answer-quality claim; admission denied before model execution."
+    },
+    "upload_quota_denies_before_registration": {
+      "http_status": 429,
+      "database_counts_unchanged": true,
+      "note": "Multipart reception may precede route admission; byte middleware remains necessary."
+    }
+  },
+  "scope": [
+    "Real HTTP authentication, Redis commands and PostgreSQL records.",
+    "Synthetic PDF with real extraction and persisted model vectors.",
+    "Catalogue/taxonomy timings are not LLM-generation performance.",
+    "No original library records or application database are deleted or initialized."
+  ],
+  "benchmark": {
+    "status": "not_run",
+    "reason": "No explicit cache-disabled baseline API."
+  },
+  "passed": true,
+  "cleanup": {
+    "kept_fixtures": false,
+    "errors": []
+  },
+  "original_records_unchanged": true,
+  "original_counts": {
+    "app_users": 1,
+    "documents": 0
+  },
+  "finished_at_utc": "2026-10-26T12:39:14.646972+00:00"
+}

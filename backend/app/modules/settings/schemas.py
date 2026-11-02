@@ -20,6 +20,7 @@ class SettingsResponse(BaseModel):
     masked_provider_keys: dict[str, str | None]
     web_search_provider: str
     masked_web_search_provider_keys: dict[str, str | None]
+    web_search_key_sources: dict[str, str | None] = Field(default_factory=dict)
 
 
 class SettingsUpdate(BaseModel):

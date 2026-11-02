@@ -5,6 +5,7 @@ import TaxonomySection from "./manage/TaxonomySection";
 import LlmProvidersSection from "./manage/LlmProvidersSection";
 import EmbeddingSection from "./manage/EmbeddingSection";
 import RerankingSection from "./manage/RerankingSection";
+import EvaluationSection from "./manage/EvaluationSection";
 import WebSearchSection from "./manage/WebSearchSection";
 import SuggestionsSection from "./manage/SuggestionsSection";
 import AgentToolLimitsSection from "./manage/AgentToolLimitsSection";
@@ -15,6 +16,12 @@ const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
 
 // Sections shown in the Manage sidebar. Add more here as the admin area grows.
 const SECTIONS = [
+  {
+    id: "evaluation",
+    label: "Evaluation & scoring",
+    desc: "Import official test documents, run document-analysis baselines and review answer quality.",
+    Component: EvaluationSection,
+  },
   {
     id: "admin-invites",
     label: "Administrator invites",

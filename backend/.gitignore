@@ -11,4 +11,6 @@ dist/
 build/
 *.egg-info/
 data/
+!app/modules/evaluation/data/
+!app/modules/evaluation/data/**
 tmp/

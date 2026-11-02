@@ -90,7 +90,10 @@ def _process_document(document_id: str, *, task: dict | None = None) -> None:
         # Admin-tunable chunk size (Manage > Embedding). Clamped to a sane ceiling;
         # if it exceeds the model's input limit, the model truncates/errs per chunk.
         chunk_budget = min(max(embedding.active_config().chunk_token_budget, 64), 8000)
-        chunks = document_chunker.chunk(pages, max_tokens=chunk_budget)
+        chunks = document_chunker.chunk(
+            pages, max_tokens=chunk_budget,
+            overlap=embedding.active_config().chunk_overlap_tokens,
+        )
         # Contextual retrieval: prepend an LLM situating sentence to the EMBEDDING
         # input only; stored/displayed text stays original. Header kept for transparency.
         headers = build_contextual_headers(
@@ -98,7 +101,7 @@ def _process_document(document_id: str, *, task: dict | None = None) -> None:
             title=metadata.get("title"),
             summary=metadata.get("summary"),
             model=model_name,
-        )
+        ) if embedding.active_config().context_header_strategy == "llm" else [""] * len(chunks)
         embed_inputs = [
             f"{header}\n\n{chunk['text']}" if header else chunk["text"]
             for header, chunk in zip(headers, chunks, strict=True)
@@ -120,6 +123,9 @@ def _process_document(document_id: str, *, task: dict | None = None) -> None:
             "chunk_count": len(chunks),
             "metadata_model": model_name,
             "embedding_model": target[2],
+            "chunk_token_budget": chunk_budget,
+            "chunk_overlap_tokens": embedding.active_config().chunk_overlap_tokens,
+            "context_header_strategy": embedding.active_config().context_header_strategy,
         }
         ownership = document_task_repository.owned(task) if task else get_connection()
         with ownership as conn:

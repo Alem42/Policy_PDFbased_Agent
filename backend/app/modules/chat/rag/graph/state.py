@@ -36,6 +36,7 @@ class PDFQAState(TypedDict):
     used_vector_retrieval: NotRequired[bool]
     evidence_sufficient: NotRequired[bool]
     evidence_reason: NotRequired[str | None]
+    validation_report: NotRequired[dict]
     filter_applied: NotRequired[bool]
     filter_fallback: NotRequired[bool]
     filter_notice: NotRequired[str | None]

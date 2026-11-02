@@ -8,6 +8,7 @@ from app.modules.settings.repository import settings_repository
 DEFAULT_WEB_SEARCH_PROVIDER = "firecrawl"
 KNOWN_WEB_SEARCH_PROVIDERS: dict[str, str] = {
     "firecrawl": "Firecrawl",
+    "deepseek": "DeepSeek",
     "tavily": "Tavily",
 }
 
@@ -52,14 +53,22 @@ def get_web_search_provider() -> str:
 
 
 def get_web_search_provider_api_key(provider: str | None = None) -> str | None:
-    provider_id = provider or get_web_search_provider()
-    key = settings_repository.load().web_search_provider_api_keys.get(provider_id)
+    return _web_search_credential(provider or get_web_search_provider())[0]
+
+
+def _web_search_credential(provider_id: str) -> tuple[str | None, str | None]:
+    runtime = settings_repository.load()
+    key = runtime.web_search_provider_api_keys.get(provider_id)
     if key:
-        return key
+        return key, "search"
+    if provider_id == "deepseek":
+        shared = runtime.provider_api_keys.get("deepseek")
+        return shared, "llm" if shared else None
     # The environment variable is a deployment-level fallback for web search.
     if provider_id == "firecrawl":
-        return get_settings().firecrawl_api_key
-    return None
+        fallback = get_settings().firecrawl_api_key
+        return fallback, "environment" if fallback else None
+    return None, None
 
 
 def mask_api_key(api_key: str | None) -> str | None:
@@ -90,6 +99,10 @@ def get_public_settings() -> dict:
         "web_search_provider": get_web_search_provider(),
         "masked_web_search_provider_keys": {
             provider_id: mask_api_key(get_web_search_provider_api_key(provider_id))
+            for provider_id in sorted(web_search_provider_ids)
+        },
+        "web_search_key_sources": {
+            provider_id: _web_search_credential(provider_id)[1]
             for provider_id in sorted(web_search_provider_ids)
         },
     }

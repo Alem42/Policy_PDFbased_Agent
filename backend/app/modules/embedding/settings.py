@@ -38,6 +38,7 @@ def vector_table_name(model_id: str, dim: int) -> str:
 # NOTE: listing a model here does NOT mean it is downloaded — only the active one
 # is fetched. The bundled cache currently holds bge-small (embedding) + the reranker.
 KNOWN_LOCAL_DIMENSIONS: dict[str, int] = {
+    "Qwen/Qwen3-Embedding-0.6B": 1024,
     "BAAI/bge-small-en-v1.5": 384,
     "BAAI/bge-base-en-v1.5": 768,
     "intfloat/multilingual-e5-large": 1024,
@@ -77,6 +78,9 @@ class EmbeddingConfig(BaseModel):
     # Chunking / token accounting.
     batch_size: int = Field(default=32, ge=1, le=256)
     chunk_token_budget: int = Field(default=480, ge=64, le=8192)
+    chunk_overlap_tokens: int = Field(default=120, ge=0, le=4096)
+    context_header_strategy: Literal["llm", "none"] = "llm"
+    local_idle_seconds: int = Field(default=120, ge=0, le=3600)
     token_counting: Literal["auto", "model", "tiktoken"] = "auto"
 
     # Retrieval / evidence knobs (calibrated per embedding model).

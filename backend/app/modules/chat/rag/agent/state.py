@@ -174,6 +174,7 @@ class AgentState(TypedDict):
     # though no citations were ever recorded for it.
     last_evidence_reason: NotRequired[str | None]
     resolved_model: NotRequired[str | None]
+    validation_report: NotRequired[dict]
     # The chat_messages row created up front for this turn (see
     # history_repository.create_pending_message) — carried in state so a
     # resumed turn (after an ask_user/confirm_import interrupt) keeps

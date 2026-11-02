@@ -14,4 +14,8 @@ def get_active_web_search_provider() -> WebSearchProvider:
         from app.modules.web_search.providers.tavily import TavilySearchProvider
 
         return TavilySearchProvider()
+    if provider_id == "deepseek":
+        from app.modules.web_search.providers.deepseek import DeepSeekSearchProvider
+
+        return DeepSeekSearchProvider()
     raise WebSearchProviderError(f"Unknown web search provider: {provider_id!r}")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.modules.retrieval.contracts import MetadataFilters
 from app.modules.retrieval.metadata_filters import MetadataFilterService
 
@@ -37,70 +39,55 @@ ROWS = [
 ]
 
 
-def test_infer_uses_only_explicit_metadata_labels_and_years() -> None:
-    service = MetadataFilterService(FakeRepository(ROWS))
+def test_infer_maps_only_explicit_api_fields_without_reading_metadata():
+    class NoReads:
+        def list_records(self, *a, **k):
+            raise AssertionError("Question parsing must not scan document metadata")
 
-    inferred = service.infer(
-        "Use Australia Climate Adaptation documents published in 2018 in English."
+    inferred = MetadataFilterService(NoReads()).infer(
+        "What is the 2030 target in China?",
+        {
+            "country_or_region": "Australia",
+            "published_year_from": 2023,
+            "published_year_to": 2025,
+            "language": "English",
+            "tags": ["test", "test"],
+        },
     )
-
-    assert inferred.policy_areas == ("Climate Adaptation",)
     assert inferred.country_regions == ("Australia",)
+    assert (inferred.year_from, inferred.year_to) == (2023, 2025)
     assert inferred.languages == ("English",)
-    assert inferred.year_from == 2018
-    assert inferred.year_to == 2018
+    assert inferred.tags == ("test",)
 
 
-def test_infer_ignores_vague_partial_policy_area() -> None:
-    service = MetadataFilterService(FakeRepository(ROWS))
-
-    inferred = service.infer("What climate issues are discussed?")
-
-    assert inferred.policy_areas == ()
-
-
-def test_explicit_before_filter_wins_over_year_in_question_subject() -> None:
-    service = MetadataFilterService(FakeRepository(ROWS))
-
-    inferred = service.infer(
-        "I want updates after 2026; filter the files which published before 2026."
-    )
-
-    assert inferred.year_from is None
-    assert inferred.year_to == 2025
-
-
-def test_after_year_is_an_exclusive_lower_bound() -> None:
-    service = MetadataFilterService(FakeRepository(ROWS))
-
-    inferred = service.infer("Only use documents published after 2023.")
-
-    assert inferred.year_from == 2024
-    assert inferred.year_to is None
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the offshore wind target for 2030?",
+        "Only use documents published after 2023 and before 2026.",
+        "What is the latest policy?",
+        "Do not use China documents; use Australia only.",
+        "What does the document say about Canadarm?",
+        "Compare Australia and China AI governance.",
+        "2025年的政策有什么要求？",
+        "使用25年而不是26年的文件。",
+        "请用中文回答，比较澳大利亚、中国和新加坡。",
+    ],
+)
+def test_question_words_never_become_hard_metadata_filters(question):
+    inferred = MetadataFilterService(FakeRepository(ROWS)).infer(question)
+    assert not inferred.active
 
 
-def test_infer_recognises_exact_chinese_region_aliases() -> None:
-    service = MetadataFilterService(
-        FakeRepository(
-            [
-                *ROWS,
-                {**ROWS[0], "id": "doc-cn", "country_region": "China"},
-                {**ROWS[0], "id": "doc-sg", "country_region": "Singapore"},
-            ]
+def test_contradictory_explicit_year_bounds_are_rejected():
+    with pytest.raises(ValueError, match="lower bound"):
+        MetadataFilterService(FakeRepository(ROWS)).infer(
+            "",
+            {
+                "published_year_from": 2026,
+                "published_year_to": 2025,
+            },
         )
-    )
-
-    inferred = service.infer("比较澳大利亚、中国和新加坡的人工智能治理框架。")
-
-    assert inferred.country_regions == ("Australia", "China", "Singapore")
-
-
-def test_requested_answer_language_does_not_filter_source_language() -> None:
-    service = MetadataFilterService(FakeRepository(ROWS))
-
-    inferred = service.infer("请用中文回答：比较这些英文和法文政策。")
-
-    assert inferred.languages == ()
 
 
 def test_apply_exact_filters_restricts_selected_documents(monkeypatch) -> None:
@@ -126,7 +113,7 @@ def test_apply_exact_filters_restricts_selected_documents(monkeypatch) -> None:
     assert result.fallback is False
 
 
-def test_zero_match_falls_back_and_warns_about_staleness(monkeypatch) -> None:
+def test_zero_match_keeps_explicit_scope_closed(monkeypatch) -> None:
     service = MetadataFilterService(FakeRepository(ROWS[:1]))
     monkeypatch.setattr(
         "app.modules.retrieval.metadata_filters.resolve_document_ids",
@@ -139,6 +126,6 @@ def test_zero_match_falls_back_and_warns_about_staleness(monkeypatch) -> None:
         identifiers=["doc-old"],
     )
 
-    assert result.document_ids == ("doc-old",)
-    assert result.fallback is True
-    assert "older sources may no longer reflect current policy" in result.notice
+    assert result.document_ids == ()
+    assert result.fallback is False
+    assert "scope was not expanded" in result.notice

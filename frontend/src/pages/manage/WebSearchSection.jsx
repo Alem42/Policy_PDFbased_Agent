@@ -18,6 +18,7 @@ import { getSettings, importWebDocument, saveSettings } from "../../api";
 const ACCENT = "#214f42";
 const PROVIDERS = [
   { id: "firecrawl", label: "Firecrawl", available: true },
+  { id: "deepseek", label: "DeepSeek", available: true },
   { id: "tavily", label: "Tavily", available: false },
 ];
 
@@ -182,6 +183,17 @@ export default function WebSearchSection({
 
   const activeProvider = PROVIDERS.find((item) => item.id === provider);
   const savedKey = settings?.masked_web_search_provider_keys?.[provider] || null;
+  const keySource = settings?.web_search_key_sources?.[provider];
+  const hasSearchKey = keySource === "search" || (keySource === undefined && !!savedKey);
+  const keyHint = keySource === "llm"
+    ? "Using your existing DeepSeek model API key. Leave blank to reuse it, or enter a separate search key."
+    : keySource === "environment"
+      ? "Using the server's configured key. Enter a key here to override it for this search service."
+      : savedKey
+        ? `A search key is saved (${savedKey}). Leave blank to keep it.`
+        : provider === "deepseek"
+          ? "Enter a search key, or save your DeepSeek model API key to reuse it automatically."
+          : "No key is currently saved for this search service.";
 
   return (
     <>
@@ -296,7 +308,7 @@ export default function WebSearchSection({
             {settingsError && <Alert severity="error">{settingsError}</Alert>}
             {!activeProvider?.available && (
               <Alert severity="warning">
-                This search service is not available yet. Choose Firecrawl to use web search and
+                This search service is not available yet. Choose Firecrawl or DeepSeek for search and
                 page import.
               </Alert>
             )}
@@ -304,7 +316,7 @@ export default function WebSearchSection({
             <SubCard
               icon={<LanguageOutlinedIcon fontSize="small" />}
               title="Provider"
-              description="Choose the service that retrieves and reads public web pages. Firecrawl is currently supported."
+              description="Choose Firecrawl or DeepSeek to search and read public web pages."
             >
               <Field label="Search provider">
                 <TextField
@@ -329,16 +341,12 @@ export default function WebSearchSection({
 
             <SubCard
               icon={<LanguageOutlinedIcon fontSize="small" />}
-              title="Access key"
-              description="The provider uses this private key to authorise web searches and page imports. The saved value is never shown in full."
+              title="API access"
+              description="Keys are saved separately for each search service. DeepSeek reuses your model API key unless you save a separate search key here."
             >
               <Field
-                label={`${activeProvider?.label || "Provider"} access key`}
-                hint={
-                  savedKey
-                    ? `A key is saved (${savedKey}). Leave this field blank to keep it.`
-                    : "No key is currently saved."
-                }
+                label="General Access Key"
+                hint={keyHint}
               >
                 <TextField
                   value={keyInput}
@@ -346,6 +354,7 @@ export default function WebSearchSection({
                   placeholder={savedKey ? "Leave blank to keep the saved key" : "Enter access key"}
                   type="password"
                   autoComplete="new-password"
+                  inputProps={{ "aria-label": "General Access Key" }}
                   size="small"
                   fullWidth
                   disabled={!canEdit || settingsBusy}
@@ -354,16 +363,16 @@ export default function WebSearchSection({
 
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
                 <Button type="submit" variant="contained" disabled={!canEdit || settingsBusy}>
-                  {settingsBusy ? "Saving..." : "Save settings"}
+                  {settingsBusy ? "Saving..." : "Save API settings"}
                 </Button>
                 <Button
                   type="button"
                   variant="outlined"
                   color="error"
-                  disabled={!canEdit || settingsBusy || !savedKey}
+                  disabled={!canEdit || settingsBusy || !hasSearchKey}
                   onClick={handleClearKey}
                 >
-                  Remove saved key
+                  Remove saved search key
                 </Button>
                 <Button type="button" variant="outlined" disabled={settingsBusy} onClick={loadSettings}>
                   Reload

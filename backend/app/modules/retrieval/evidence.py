@@ -155,7 +155,9 @@ def _llm_disputes_named_instrument(name: str, evidence_text: str) -> bool:
     uncertainty is NO (don't dispute it, i.e. don't block), never YES --
     see the module note above for why this must fail open.
     """
-    if not _llm_veto_enabled():
+    from app.core.ai.budget import active
+
+    if active() or not _llm_veto_enabled():
         return False
     try:
         from app.core.ai.chat_models import create_chat_client, resolve_generation_target
@@ -213,9 +215,15 @@ def _unsupported_named_instrument(question: str, evidence_text: str) -> str | No
 def is_chunk_relevant(question: str, chunk: dict) -> bool:
     """Combine dense, reranker, and lexical signals conservatively."""
 
-    distance_passes = float(chunk.get("distance", 1.0)) <= max_vector_distance()
+    return relevance_at_thresholds(question, chunk, max_vector_distance(), min_reranker_score())
+
+
+def relevance_at_thresholds(question, chunk, distance_threshold, reranker_threshold):
+    """Pure replay of the production score gate; excludes answerability/name checks."""
+
+    distance_passes = float(chunk.get("distance", 1.0)) <= distance_threshold
     reranker_score = chunk.get("reranker_score")
-    reranker_passes = reranker_score is None or float(reranker_score) >= min_reranker_score()
+    reranker_passes = reranker_score is None or float(reranker_score) >= reranker_threshold
     if distance_passes:
         return reranker_passes
 

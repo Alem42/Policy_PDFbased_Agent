@@ -559,9 +559,37 @@ async def final_generation_node(state: AgentState) -> dict:
     # Highest-weight position for the style instruction: the LAST message of the
     # writer call. A plain user-message reminder right before generation beats
     # both the earlier tool results and the answer plan's own formatting hints.
-    messages.append(HumanMessage(content=final_style_reminder(response_mode, answer_mode)))
+    from app.modules.evidence_validation import service as evidence_validation
+
+    guard = evidence_validation.config()
+    reminder = final_style_reminder(response_mode, answer_mode)
+    if guard.enabled and answer_mode == "analysis":
+        reminder = (
+            "Answer only the requested factual requirements concisely in the user's language. "
+            "Cite every factual statement with its supplied [N]. Use plain paragraphs or bullets, "
+            "no headings or unrequested recommendations. Preserve units, dates and exceptions."
+        )
+    messages.append(HumanMessage(content=reminder))
 
     response: AIMessage = await client.ainvoke(messages)
+    if guard.enabled and answer_mode == "analysis":
+        report = await asyncio.to_thread(
+            evidence_validation.check_cited_answer,
+            _latest_question(state),
+            str(response.content),
+            state.get("citations", []),
+            guard,
+        )
+        if not report["allowed"]:
+            response = response.model_copy(update={"content": evidence_validation.REFUSAL})
+        result = {
+            "messages": [response],
+            "resolved_model": f"{provider}/{selected_model}",
+            "validation_report": report,
+        }
+        if not report["allowed"]:
+            result.update(evidence_sources=[], last_evidence_reason=report.get("reason"))
+        return result
     return {"messages": [response], "resolved_model": f"{provider}/{selected_model}"}
 
 

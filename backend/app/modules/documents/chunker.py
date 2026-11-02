@@ -55,6 +55,8 @@ class DocumentChunker:
             if not current:
                 return
             text = "\n\n".join(item["text"] for item in current)
+            if self._token_counter(text) > max_tokens:
+                raise ValueError("Chunk exceeds its exact token budget.")
             chunks.append(
                 {
                     "chunk_index": len(chunks),
@@ -68,10 +70,39 @@ class DocumentChunker:
             current, current_tokens = self._overlap_tail(current, overlap)
 
         for paragraph in paragraphs:
-            if current and current_tokens + paragraph["token_count"] > max_tokens:
+            proposed = "\n\n".join([item["text"] for item in current] + [paragraph["text"]])
+            if current and self._token_counter(proposed) > max_tokens:
                 flush()
+                # Sum-of-parts token counts are not additive for real tokenizers.
+                # Preserve as much trailing overlap as fits the actual joined text.
+                while (
+                    current
+                    and self._token_counter(
+                        "\n\n".join([item["text"] for item in current] + [paragraph["text"]])
+                    )
+                    > max_tokens
+                ):
+                    if len(current) > 1:
+                        current.pop(0)
+                    else:
+                        room = max(0, max_tokens - paragraph["token_count"] - 2)
+                        tail = (
+                            _tail_slice(current[0]["text"], room, self._token_counter)
+                            if room
+                            else ""
+                        )
+                        while (
+                            tail
+                            and self._token_counter(f"{tail}\n\n{paragraph['text']}") > max_tokens
+                        ):
+                            tail = tail[1:]
+                        current = (
+                            [{**current[0], "text": tail, "token_count": self._token_counter(tail)}]
+                            if tail
+                            else []
+                        )
             current.append(paragraph)
-            current_tokens += paragraph["token_count"]
+            current_tokens = self._token_counter("\n\n".join(item["text"] for item in current))
         if current:
             flush()
         return chunks
@@ -196,10 +227,10 @@ def _split_oversized_paragraph(
             flush_piece()
             pieces.extend(_hard_slice(page, sentence, token_counter, item_budget))
             continue
-        if piece_text and piece_tokens + sentence_tokens > item_budget:
+        if piece_text and token_counter(f"{piece_text} {sentence}".strip()) > item_budget:
             flush_piece()
         piece_text = f"{piece_text} {sentence}".strip()
-        piece_tokens += sentence_tokens
+        piece_tokens = token_counter(piece_text)
     flush_piece()
     return pieces
 
@@ -223,6 +254,11 @@ def _hard_slice(page: int, text: str, token_counter: TokenCounter, item_budget: 
                 high = mid - 1
         cut = max(low, 1)
         piece_text = remaining[:cut].strip()
+        while cut > 1 and token_counter(piece_text) > item_budget:
+            cut -= 1
+            piece_text = remaining[:cut].strip()
+        if token_counter(piece_text) > item_budget:
+            raise ValueError("Cannot fit a character within the token budget.")
         pieces.append({"page": page, "text": piece_text, "token_count": token_counter(piece_text)})
         remaining = remaining[cut:].strip()
     return pieces

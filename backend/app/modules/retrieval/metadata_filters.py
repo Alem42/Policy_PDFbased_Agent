@@ -1,10 +1,8 @@
-"""Infer and apply only explicit, structured document metadata filters."""
+"""Apply explicit metadata filters. Never guess publication years or regions from question words."""
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from app.modules.documents.repositories.metadata_filters import (
     MetadataFilterRepository,
@@ -12,67 +10,6 @@ from app.modules.documents.repositories.metadata_filters import (
 )
 from app.modules.documents.service import resolve_document_ids
 from app.modules.retrieval.contracts import MetadataFilters, RetrievalScope
-
-_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
-_YEAR_BEFORE = re.compile(r"\b(?:before|earlier than|prior to)\s+((?:19|20)\d{2})\b", re.I)
-_YEAR_AFTER = re.compile(r"\b(?:after|later than)\s+((?:19|20)\d{2})\b", re.I)
-_YEAR_FROM = re.compile(r"\b(?:since|from)\s+((?:19|20)\d{2})\b", re.I)
-_YEAR_THROUGH = re.compile(r"\b(?:through|until|up to)\s+((?:19|20)\d{2})\b", re.I)
-_FRESHNESS_TERMS = (
-    "latest",
-    "most recent",
-    "current policy",
-    "currently valid",
-    "up to date",
-    "up-to-date",
-    "最新",
-    "近期",
-    "当前政策",
-    "现行",
-    "时效性",
-)
-_LANGUAGE_PATTERNS = {
-    "English": (
-        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin english\b",
-        r"\benglish[- ]language (?:documents?|files?|sources?|materials?)\b",
-        r"\benglish (?:documents?|files?|sources?|materials?)\b",
-        "英文文件",
-        "英文资料",
-        "英文来源",
-    ),
-    "Chinese": (
-        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin chinese\b",
-        r"\bchinese[- ]language (?:documents?|files?|sources?|materials?)\b",
-        r"\bchinese (?:documents?|files?|sources?|materials?)\b",
-        "中文文件",
-        "中文资料",
-        "中文来源",
-    ),
-    "French": (
-        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin french\b",
-        r"\bfrench[- ]language (?:documents?|files?|sources?|materials?)\b",
-        "法文文件",
-        "法文资料",
-        "法文来源",
-    ),
-    "Spanish": (
-        r"\b(?:documents?|files?|sources?|materials?).{0,50}\bin spanish\b",
-        r"\bspanish[- ]language (?:documents?|files?|sources?|materials?)\b",
-        "西班牙语文件",
-        "西班牙语资料",
-    ),
-}
-_REGION_ALIASES = {
-    "Australia": ("澳大利亚", "澳洲"),
-    "Canada": ("加拿大",),
-    "China": ("中国", "中华人民共和国"),
-    "Côte d'Ivoire": ("科特迪瓦",),
-    "European Union": ("欧盟",),
-    "France": ("法国",),
-    "Singapore": ("新加坡",),
-    "South Africa": ("南非",),
-    "United States": ("美国", "美利坚合众国"),
-}
 
 
 @dataclass(frozen=True)
@@ -83,30 +20,8 @@ class FilterApplication:
     notice: str | None = None
 
 
-def _unique(values: list[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        clean = value.strip()
-        key = clean.casefold()
-        if clean and key not in seen:
-            seen.add(key)
-            result.append(clean)
-    return tuple(result)
-
-
-def _contains_label(question: str, label: str) -> bool:
-    clean = label.strip()
-    if len(clean) < 4:
-        return False
-    lowered = question.casefold()
-    if clean.casefold() in lowered:
-        return True
-    return any(alias.casefold() in lowered for alias in _REGION_ALIASES.get(clean, ()))
-
-
 class MetadataFilterService:
-    """Translate explicit user constraints into exact metadata comparisons."""
+    """Map explicit API filters to exact metadata comparisons, with no silent relaxation."""
 
     def __init__(
         self,
@@ -121,83 +36,28 @@ class MetadataFilterService:
         *,
         include_restricted: bool = False,
     ) -> MetadataFilters:
+        # Natural-language dates/regions are semantic requirements, not
+        # document publication metadata. Never infer hard filters from words.
         explicit = explicit or {}
-        rows = self.repository.list_records(include_restricted=include_restricted)
-        policy_labels = _unique([label for row in rows for label in row.get("policy_areas", [])])
-        regions = _unique([str(row["country_region"]) for row in rows if row.get("country_region")])
-        organisations = _unique(
-            [str(row["source_organisation"]) for row in rows if row.get("source_organisation")]
-        )
 
-        policy_areas = [str(explicit["policy_area"])] if explicit.get("policy_area") else []
-        policy_areas.extend(label for label in policy_labels if _contains_label(question, label))
-        country_regions = (
-            [str(explicit["country_or_region"])] if explicit.get("country_or_region") else []
-        )
-        country_regions.extend(label for label in regions if _contains_label(question, label))
-        source_organisations = (
-            [str(explicit["source_organisation"])] if explicit.get("source_organisation") else []
-        )
-        source_organisations.extend(
-            label for label in organisations if _contains_label(question, label)
-        )
+        def values(key):
+            value = explicit.get(key)
+            return (str(value).strip(),) if value and str(value).strip() else ()
 
-        languages = [str(explicit["language"])] if explicit.get("language") else []
-        lowered = question.casefold()
-        for language, patterns in _LANGUAGE_PATTERNS.items():
-            if any(re.search(pattern, lowered) for pattern in patterns):
-                languages.append(language)
-
-        tags = [str(tag) for tag in explicit.get("tags") or []]
-        tags.extend(
-            match.strip()
-            for match in re.findall(r"(?:\btag|标签)\s*[:：]\s*([\w -]+)", question, re.I)
-        )
-
-        year_from = explicit.get("published_year_from")
-        year_to = explicit.get("published_year_to")
-        if year_from is None and year_to is None:
-            before = [int(value) for value in _YEAR_BEFORE.findall(question)]
-            after = [int(value) for value in _YEAR_AFTER.findall(question)]
-            since = [int(value) for value in _YEAR_FROM.findall(question)]
-            through = [int(value) for value in _YEAR_THROUGH.findall(question)]
-            # An explicit filtering clause is more actionable than a year in
-            # the subject of the question. In contradictory wording such as
-            # "especially after 2026; filter files before 2026", the latter
-            # controls retrieval while the former remains part of the query.
-            filter_before = re.findall(
-                r"(?:filter|exclude|only|files?|documents?).{0,60}?"
-                r"(?:before|earlier than|prior to)\s+((?:19|20)\d{2})",
-                question,
-                re.I,
-            )
-            if filter_before:
-                year_to = int(filter_before[-1]) - 1
-            elif before and not after:
-                year_to = min(before) - 1
-            elif after and not before:
-                year_from = max(after) + 1
-            elif since or through:
-                year_from = min(since) if since else None
-                year_to = max(through) if through else None
-            else:
-                years = [int(value) for value in _YEAR.findall(question)]
-                if years:
-                    year_from, year_to = min(years), max(years)
-
-        freshness_requested = any(term in lowered for term in _FRESHNESS_TERMS)
-        if freshness_requested and year_from is None:
-            year_from = datetime.now(UTC).year - 5
-
+        lower = explicit.get("published_year_from")
+        upper = explicit.get("published_year_to")
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError("Publication year lower bound exceeds upper bound.")
         return MetadataFilters(
-            policy_areas=_unique(policy_areas),
-            country_regions=_unique(country_regions),
-            source_organisations=_unique(source_organisations),
-            languages=_unique(languages),
-            tags=_unique(tags),
-            year_from=year_from,
-            year_to=year_to,
-            freshness_requested=freshness_requested,
+            policy_areas=values("policy_area"),
+            country_regions=values("country_or_region"),
+            source_organisations=values("source_organisation"),
+            languages=values("language"),
+            tags=tuple(
+                dict.fromkeys(str(t).strip() for t in explicit.get("tags") or [] if str(t).strip())
+            ),
+            year_from=lower,
+            year_to=upper,
         )
 
     def apply(
@@ -230,23 +90,12 @@ class MetadataFilterService:
                 notice=f"Applied document metadata filters: {description}.",
             )
 
-        if filters.freshness_requested:
-            notice = (
-                f"No documents matched the requested current/recent filter ({description}). "
-                "The search was expanded to the original document scope; older sources may no "
-                "longer reflect current policy."
-            )
-        else:
-            notice = (
-                f"No documents matched the requested metadata filters ({description}). "
-                "The search was expanded to the original document scope, so the returned "
-                "sources may not satisfy every requested constraint."
-            )
         return FilterApplication(
-            tuple(base_ids),
+            (),
             applied=True,
-            fallback=True,
-            notice=notice,
+            fallback=False,
+            notice=f"No documents matched the explicit metadata filters ({description}); "
+            "scope was not expanded.",
         )
 
     @staticmethod
@@ -301,12 +150,6 @@ class MetadataFilterService:
             if filters.year_to is not None:
                 parts.append(f"year<={filters.year_to}")
         return "; ".join(parts) or "none"
-
-    @staticmethod
-    def text_mentions_region(text: str, region: str) -> bool:
-        """Exact label/alias check reused by the evidence coverage gate."""
-
-        return _contains_label(text, region)
 
 
 metadata_filter_service = MetadataFilterService()

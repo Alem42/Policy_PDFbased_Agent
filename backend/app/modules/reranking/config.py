@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_LOCAL_RERANKER = "BAAI/bge-reranker-base"
 DEFAULT_LOCAL_MIN_SCORE = -2.0
@@ -27,6 +27,7 @@ class RerankingConfig(BaseModel):
     enabled: bool = True
     provider: Literal["local", "api"] = "local"
     local_model: str = DEFAULT_LOCAL_RERANKER
+    local_idle_seconds: int = Field(default=120, ge=0, le=3600)
     # api_provider = catalog provider id (e.g. "zhipu"); base URL from the catalog,
     # key from the central provider-key store. api_base_url/api_key are manual/legacy
     # fallbacks only. Blank api_provider + blank creds -> reuse the embedding creds.
@@ -42,6 +43,10 @@ class RerankingConfig(BaseModel):
     def validate_provider_score_scale(self) -> RerankingConfig:
         if self.min_score is None:
             return self
+        if self.local_model == "Qwen/Qwen3-Reranker-0.6B" and self.provider == "local":
+            if not 0 <= self.min_score <= 1:
+                raise ValueError("Qwen reranker minimum score must be between 0 and 1.")
+            return self
         if self.provider == "api" and not 0.0 <= self.min_score <= 1.0:
             raise ValueError("API reranker minimum score must be between 0 and 1.")
         if self.provider == "local" and not -10.0 <= self.min_score <= 10.0:
@@ -54,4 +59,6 @@ class RerankingConfig(BaseModel):
     def resolved_min_score(self) -> float:
         if self.min_score is not None:
             return self.min_score
+        if self.provider == "local" and self.local_model == "Qwen/Qwen3-Reranker-0.6B":
+            return 0.5
         return DEFAULT_API_MIN_SCORE if self.provider == "api" else DEFAULT_LOCAL_MIN_SCORE

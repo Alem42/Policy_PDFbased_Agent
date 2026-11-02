@@ -126,6 +126,9 @@ async def stream_agent_events(
     """Drive the persisted ReAct graph and emit the frontend SSE protocol."""
 
     graph = react_orchestrator.graph()
+    from app.modules.evidence_validation import service as evidence_validation
+
+    protected = answer_mode == "analysis" and evidence_validation.config().enabled
     full_tokens: list[str] = []
     steps: list[dict] = await chat_turn_service.message_steps(assistant_message_id)
     interrupted = False
@@ -147,8 +150,10 @@ async def stream_agent_events(
             async for mode, chunk in stream:
                 if mode == "messages":
                     message, meta = chunk
-                    if meta.get("langgraph_node") == "final_generation" and getattr(
-                        message, "content", None
+                    if (
+                        not protected
+                        and meta.get("langgraph_node") == "final_generation"
+                        and getattr(message, "content", None)
                     ):
                         full_tokens.append(message.content)
                         yield encode_sse({"type": "token", "value": message.content})
@@ -202,6 +207,12 @@ async def stream_agent_events(
                         content = getattr(message, "content", "") or ""
                         full_tokens.append(content)
                         yield encode_sse({"type": "token", "value": content})
+                if "final_generation" in chunk:
+                    if protected:
+                        for message in chunk["final_generation"].get("messages", []):
+                            content = getattr(message, "content", "") or ""
+                            full_tokens.append(content)
+                            yield encode_sse({"type": "token", "value": content})
 
         if interrupted:
             return
@@ -353,6 +364,7 @@ async def stream_direct_events(
             full_tokens.append(answer)
             yield encode_sse({"type": "token", "value": answer})
         else:
+            generation_reports = []
             async for chunk in generate_answer_streaming(
                 question=question,
                 context=state.get("context", ""),
@@ -361,9 +373,13 @@ async def stream_direct_events(
                 history=history,
                 citations=citations,
                 answer_mode=answer_mode,
+                validation_callback=generation_reports.append,
             ):
                 full_tokens.append(chunk)
                 yield encode_sse({"type": "token", "value": chunk})
+            if generation_reports and not generation_reports[-1]["allowed"]:
+                state["evidence_sufficient"] = False
+                state["evidence_reason"] = generation_reports[-1].get("reason")
 
         answer = "".join(full_tokens)
         evidence_sufficient = state.get("evidence_sufficient", False)

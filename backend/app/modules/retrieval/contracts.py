@@ -107,6 +107,7 @@ class RetrievalResult:
     filter_applied: bool = False
     filter_fallback: bool = False
     filter_notice: str | None = None
+    validation_report: dict = field(default_factory=dict)
 
     def as_state(self) -> dict:
         """Return compatibility keys consumed by existing LangGraph state."""
@@ -124,4 +125,5 @@ class RetrievalResult:
             "filter_applied": self.filter_applied,
             "filter_fallback": self.filter_fallback,
             "filter_notice": self.filter_notice,
+            "validation_report": self.validation_report,
         }

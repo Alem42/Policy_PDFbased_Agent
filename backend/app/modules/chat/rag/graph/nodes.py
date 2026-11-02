@@ -77,6 +77,7 @@ def insufficient_evidence_node(state: PDFQAState) -> dict:
 
 def generate_answer_node(state: PDFQAState) -> dict:
     """Generate the final answer from the prepared document context."""
+    reports = []
     answer, resolved_model = generate_answer(
         question=state["question"],
         context=state["context"],
@@ -85,10 +86,16 @@ def generate_answer_node(state: PDFQAState) -> dict:
         answer_mode=_answer_mode(state),
         history=state.get("history", []),
         citations=state.get("citations", []),
+        validation_callback=reports.append,
     )
     if state.get("filter_fallback") and state.get("filter_notice"):
         answer = f"Note: {state['filter_notice']}\n\n{answer}"
-    return {"answer": answer, "resolved_model": resolved_model}
+    result = {"answer": answer, "resolved_model": resolved_model}
+    if reports:
+        result["validation_report"] = reports[-1]
+        if not reports[-1]["allowed"]:
+            result.update(evidence_sufficient=False, evidence_reason=reports[-1].get("reason"))
+    return result
 
 
 def route_after_evidence_check(state: PDFQAState) -> str:

@@ -13,6 +13,7 @@ from app.modules.documents.router import router as documents_router
 from app.modules.documents.task_router import router as document_tasks_router
 from app.modules.documents.taxonomy_router import router as taxonomy_router
 from app.modules.embedding.router import router as embedding_admin_router
+from app.modules.evaluation.router import router as evaluation_admin_router
 from app.modules.reranking.router import router as reranking_admin_router
 from app.modules.settings.router import router as settings_router
 from app.modules.system.router import router as system_router
@@ -30,6 +31,7 @@ api_router.include_router(documents_router)
 api_router.include_router(admin_documents_router)
 api_router.include_router(document_tasks_router)
 api_router.include_router(embedding_admin_router)
+api_router.include_router(evaluation_admin_router)
 api_router.include_router(reranking_admin_router)
 api_router.include_router(agent_tool_limits_router)
 api_router.include_router(catalog_admin_router)

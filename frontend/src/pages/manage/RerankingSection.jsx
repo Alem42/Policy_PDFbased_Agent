@@ -39,7 +39,7 @@ function normaliseSettings(result) {
   return {
     ...DEFAULTS,
     ...settings,
-    min_score: settings.min_score ?? RERANKER_DEFAULTS[provider],
+    min_score: settings.min_score ?? (provider === "local" && settings.local_model === "Qwen/Qwen3-Reranker-0.6B" ? 0.5 : RERANKER_DEFAULTS[provider]),
   };
 }
 
@@ -181,6 +181,7 @@ export default function RerankingSection({
   }
 
   const isApi = form.provider === "api";
+  const isQwen = !isApi && form.local_model === "Qwen/Qwen3-Reranker-0.6B";
 
   return (
     <>
@@ -240,27 +241,37 @@ export default function RerankingSection({
                 setForm((prev) => ({
                   ...prev,
                   provider,
-                  min_score: RERANKER_DEFAULTS[provider],
+                  min_score: provider === "local" && prev.local_model === "Qwen/Qwen3-Reranker-0.6B" ? 0.5 : RERANKER_DEFAULTS[provider],
                 }));
               }}
               size="small"
               sx={{ maxWidth: 320 }}
             >
-              <MenuItem value="local">Local (fastembed cross-encoder)</MenuItem>
+              <MenuItem value="local">Local (Qwen GPU / fastembed)</MenuItem>
               <MenuItem value="api">API (Cohere-style /rerank)</MenuItem>
             </TextField>
           </Field>
 
           {!isApi && (
-            <Field label="Local model" hint="Downloaded on first use. e.g. BAAI/bge-reranker-base.">
+            <Field label="Local model" hint="Downloaded on first use. Qwen uses the GPU and releases it after idle time.">
               <TextField
-                value={form.local_model}
-                onChange={(e) => set("local_model", e.target.value)}
+                select
+                value={["Qwen/Qwen3-Reranker-0.6B", "BAAI/bge-reranker-base"].includes(form.local_model) ? form.local_model : "custom"}
+                onChange={(e) => setForm((prev) => ({ ...prev, local_model: e.target.value === "custom" ? "" : e.target.value,
+                  min_score: e.target.value === "Qwen/Qwen3-Reranker-0.6B" ? 0.5 : RERANKER_DEFAULTS.local }))}
                 size="small"
                 sx={{ maxWidth: 420 }}
-              />
+              >
+                <MenuItem value="Qwen/Qwen3-Reranker-0.6B">Qwen3-Reranker-0.6B · multilingual · GPU</MenuItem>
+                <MenuItem value="BAAI/bge-reranker-base">BAAI/bge-reranker-base</MenuItem>
+                <MenuItem value="custom">Custom local model…</MenuItem>
+              </TextField>
             </Field>
           )}
+
+          {!isApi && !["Qwen/Qwen3-Reranker-0.6B", "BAAI/bge-reranker-base"].includes(form.local_model) &&
+            <TextField label="Custom local model id" size="small" value={form.local_model}
+              onChange={(e) => set("local_model", e.target.value)} sx={{ maxWidth: 420 }} />}
 
           {isApi && (
             <CatalogModelPicker
@@ -287,13 +298,13 @@ export default function RerankingSection({
         <SubCard title="Evidence gate">
           <Field
             label="Reranker evidence floor (min score)"
-            hint={`Best score below this means no relevant passage. Recommended ${form.provider} default: ${RERANKER_DEFAULTS[form.provider]}. ${form.provider === "api" ? "API range: 0–1." : "Local BGE range: -10–10."}`}
+            hint={`Starting point only; calibrate with Evaluation. ${isQwen ? "Qwen yes/no score range: 0–1; initial floor 0.5." : isApi ? "API range: 0–1." : "Local BGE range: -10–10."}`}
           >
             <TextField
               value={form.min_score}
               onChange={(e) => set("min_score", e.target.value)}
               type="number"
-              inputProps={form.provider === "api"
+              inputProps={isApi || isQwen
                 ? { step: 0.01, min: 0, max: 1 }
                 : { step: 0.1, min: -10, max: 10 }}
               placeholder={String(RERANKER_DEFAULTS[form.provider])}
@@ -302,6 +313,12 @@ export default function RerankingSection({
             />
           </Field>
         </SubCard>
+
+        {isQwen && <Field label="Idle unload (seconds)" hint="0 releases GPU after every call; 120 keeps it warm between nearby requests.">
+          <TextField type="number" size="small" value={form.local_idle_seconds ?? 120}
+            onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
+            inputProps={{ min: 0, max: 3600 }} sx={{ width: 220 }} />
+        </Field>}
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           <Button variant="contained" disabled={busy} type="submit">

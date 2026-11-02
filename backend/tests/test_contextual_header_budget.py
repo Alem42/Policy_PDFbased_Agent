@@ -82,12 +82,15 @@ def test_real_sdk_times_out_without_retrying_optional_header(monkeypatch):
         "get_provider_config",
         lambda _: {"base_url": f"http://127.0.0.1:{server.server_port}/v1", "extra_body": {}},
     )
-    monkeypatch.setattr(headers, "_REQUEST_TIMEOUT_SECONDS", 0.1)
-    monkeypatch.setattr(headers, "_STAGE_TIMEOUT_SECONDS", 1)
+    # 100ms can expire before the local server accepts the first connection on
+    # Windows under load. Keep a real timeout, with room for socket scheduling.
+    request_timeout = 0.5
+    monkeypatch.setattr(headers, "_REQUEST_TIMEOUT_SECONDS", request_timeout)
+    monkeypatch.setattr(headers, "_STAGE_TIMEOUT_SECONDS", 1.5)
     # Client construction can load the system certificate store. Measure the
     # network deadline after that one-time setup, using the real SDK client.
     client = chat_models.create_chat_client(
-        "test", "test", max_tokens=128, timeout=0.1, max_retries=0
+        "test", "test", max_tokens=128, timeout=request_timeout, max_retries=0
     )
     options = {}
 
@@ -104,7 +107,7 @@ def test_real_sdk_times_out_without_retrying_optional_header(monkeypatch):
         assert result == [""]
         assert time.monotonic() - before < 2
         assert len(received) == 1
-        assert options == {"max_tokens": 128, "timeout": 0.1, "max_retries": 0}
+        assert options == {"max_tokens": 128, "timeout": request_timeout, "max_retries": 0}
         assert received[0].get("max_completion_tokens", received[0].get("max_tokens")) == 128
     finally:
         release.set()

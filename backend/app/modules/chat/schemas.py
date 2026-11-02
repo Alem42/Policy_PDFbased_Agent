@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 ResponseMode = Literal["researcher", "policymaker", "student"]
 AnswerMode = Literal["analysis", "chat"]
@@ -23,6 +23,13 @@ EvidenceSource = Literal["internal", "full_corpus", "web"]
 MAX_HISTORY_TURNS = 5
 
 
+def default_top_k():
+    from app.modules.evidence_validation.service import config
+
+    settings = config()
+    return settings.default_top_k if settings.enabled else 6
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -37,13 +44,23 @@ class ChatFilters(BaseModel):
     published_year_from: int | None = None
     published_year_to: int | None = None
 
+    @model_validator(mode="after")
+    def validate_publication_range(self):
+        if (
+            self.published_year_from is not None
+            and self.published_year_to is not None
+            and self.published_year_from > self.published_year_to
+        ):
+            raise ValueError("Publication year lower bound exceeds upper bound.")
+        return self
+
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1)
     document_ids: list[UUID] = Field(default_factory=list)
     filenames: list[str] = Field(default_factory=list)
     filters: ChatFilters = Field(default_factory=ChatFilters)
-    top_k: int = Field(default=6, ge=1, le=20)
+    top_k: int = Field(default_factory=default_top_k, ge=1, le=20)
     model: str | None = None
     response_mode: ResponseMode = "researcher"
     answer_mode: AnswerMode = "analysis"

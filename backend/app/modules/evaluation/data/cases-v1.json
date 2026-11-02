@@ -1,0 +1,463 @@
+{
+  "version": "1.0",
+  "corpus_id": "policy-rag-test-corpus-v1",
+  "page_numbering": "physical_pdf_1_based",
+  "cases": [
+    {
+      "id": "P01",
+      "question": "What are the four core functions used to organize AI risk management activities?",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "01-us-nist-ai-rmf-2023",
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 25,
+          "quote": "govern, map, measure, and manage AI risks"
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "question": "How is confabulation defined as a generative AI risk?",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "02-us-nist-generative-ai-profile-2024",
+      "evidence": [
+        {
+          "source_id": "02-us-nist-generative-ai-profile-2024",
+          "page": 8,
+          "quote": "The production of confidently stated but erroneous or false content"
+        }
+      ]
+    },
+    {
+      "id": "P03",
+      "question": "List the five cross-sectoral principles proposed for regulating AI.",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "03-uk-ai-regulation-white-paper-2023",
+      "evidence": [
+        {
+          "source_id": "03-uk-ai-regulation-white-paper-2023",
+          "page": 12,
+          "quote": "Safety, security and robustness o Appropriate transparency and explainability o Fairness o Accountability and governance o Contestability and redress"
+        }
+      ]
+    },
+    {
+      "id": "P04",
+      "question": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "04-cn-personal-information-protection-law-2021",
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        }
+      ]
+    },
+    {
+      "id": "P05",
+      "question": "国家根据哪些因素对数据实行分类分级保护？",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "05-cn-data-security-law-2021",
+      "evidence": [
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ]
+    },
+    {
+      "id": "P06",
+      "question": "Which five functions are used to manage privacy risks arising from data processing?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "06-us-nist-privacy-framework-2020",
+      "evidence": [
+        {
+          "source_id": "06-us-nist-privacy-framework-2020",
+          "page": 10,
+          "quote": "Identify-P, Govern-P, Control-P, Communicate-P, and Protect-P"
+        }
+      ]
+    },
+    {
+      "id": "P07",
+      "question": "What offshore wind capacity does the plan aim to produce by 2030, including floating offshore wind?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "07-uk-ten-point-plan-2020",
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        }
+      ]
+    },
+    {
+      "id": "P08",
+      "question": "What are Australia's greenhouse gas emissions targets for 2030 and 2050, and what is the baseline year?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "08-au-climate-change-act-compilation-2025",
+      "evidence": [
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ]
+    },
+    {
+      "id": "P09",
+      "question": "Who is this social housing and homelessness agreement intended to help, and which services does it support?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "09-au-social-housing-homelessness-agreement-2024",
+      "evidence": [
+        {
+          "source_id": "09-au-social-housing-homelessness-agreement-2024",
+          "page": 2,
+          "quote": "help people who are experiencing, or at risk of, homelessness"
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "question": "Name all six core cybersecurity functions.",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "10-us-nist-cybersecurity-framework-2024",
+      "evidence": [
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 31,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "question": "Which three functions help organizations discover, contain, eradicate and recover from cybersecurity incidents?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "calibration",
+      "claim_group": "11-us-nist-incident-response-2025",
+      "evidence": [
+        {
+          "source_id": "11-us-nist-incident-response-2025",
+          "page": 9,
+          "quote": "Detect, Respond, and Recover help organizations discover, manage, prioritize, contain, eradicate, and recover"
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "question": "What are the four pillars of the response to biological risks?",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": true,
+      "category": "answerable",
+      "split": "validation",
+      "claim_group": "12-uk-biological-security-strategy-2023",
+      "evidence": [
+        {
+          "source_id": "12-uk-biological-security-strategy-2023",
+          "page": 8,
+          "quote": "Understand the biological risks"
+        }
+      ]
+    },
+    {
+      "id": "N01",
+      "question": "Name all six core cybersecurity functions.",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "01-us-nist-ai-rmf-2023",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "10-us-nist-cybersecurity-framework-2024"
+    },
+    {
+      "id": "N02",
+      "question": "处理不满十四周岁未成年人的个人信息，应当取得谁的同意？",
+      "source_ids": [
+        "02-us-nist-generative-ai-profile-2024"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "02-us-nist-generative-ai-profile-2024",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "04-cn-personal-information-protection-law-2021"
+    },
+    {
+      "id": "N03",
+      "question": "国家根据哪些因素对数据实行分类分级保护？",
+      "source_ids": [
+        "03-uk-ai-regulation-white-paper-2023"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "03-uk-ai-regulation-white-paper-2023",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "05-cn-data-security-law-2021"
+    },
+    {
+      "id": "N04",
+      "question": "What offshore wind capacity does the plan aim to produce by 2030, including floating offshore wind?",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "04-cn-personal-information-protection-law-2021",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "07-uk-ten-point-plan-2020"
+    },
+    {
+      "id": "N05",
+      "question": "What are Australia's greenhouse gas emissions targets for 2030 and 2050, and what is the baseline year?",
+      "source_ids": [
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "05-cn-data-security-law-2021",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "08-au-climate-change-act-compilation-2025"
+    },
+    {
+      "id": "N06",
+      "question": "Who is this social housing and homelessness agreement intended to help, and which services does it support?",
+      "source_ids": [
+        "06-us-nist-privacy-framework-2020"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "06-us-nist-privacy-framework-2020",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "09-au-social-housing-homelessness-agreement-2024"
+    },
+    {
+      "id": "N07",
+      "question": "Which three functions help organizations discover, contain, eradicate and recover from cybersecurity incidents?",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "07-uk-ten-point-plan-2020",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "11-us-nist-incident-response-2025"
+    },
+    {
+      "id": "N08",
+      "question": "Which five functions are used to manage privacy risks arising from data processing?",
+      "source_ids": [
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "08-au-climate-change-act-compilation-2025",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "06-us-nist-privacy-framework-2020"
+    },
+    {
+      "id": "N09",
+      "question": "What are the four pillars of the response to biological risks?",
+      "source_ids": [
+        "09-au-social-housing-homelessness-agreement-2024"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "09-au-social-housing-homelessness-agreement-2024",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "12-uk-biological-security-strategy-2023"
+    },
+    {
+      "id": "N10",
+      "question": "What are the four core functions used to organize AI risk management activities?",
+      "source_ids": [
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "10-us-nist-cybersecurity-framework-2024",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "01-us-nist-ai-rmf-2023"
+    },
+    {
+      "id": "N11",
+      "question": "How is confabulation defined as a generative AI risk?",
+      "source_ids": [
+        "11-us-nist-incident-response-2025"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "calibration",
+      "claim_group": "11-us-nist-incident-response-2025",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "02-us-nist-generative-ai-profile-2024"
+    },
+    {
+      "id": "N12",
+      "question": "List the five cross-sectoral principles proposed for regulating AI.",
+      "source_ids": [
+        "12-uk-biological-security-strategy-2023"
+      ],
+      "expected_allow": false,
+      "category": "out_of_scope",
+      "split": "validation",
+      "claim_group": "12-uk-biological-security-strategy-2023",
+      "evidence": [],
+      "rationale": "The selected document does not specify this fact; the known supporting source is outside the selected scope.",
+      "supporting_source_outside_scope": "03-uk-ai-regulation-white-paper-2023"
+    },
+    {
+      "id": "C01",
+      "question": "Compare the core functions for AI risk management and cybersecurity. List both sets and their differences.",
+      "source_ids": [
+        "01-us-nist-ai-rmf-2023",
+        "10-us-nist-cybersecurity-framework-2024"
+      ],
+      "expected_allow": true,
+      "category": "cross_document",
+      "split": "diagnostic",
+      "claim_group": "C01",
+      "evidence": [
+        {
+          "source_id": "01-us-nist-ai-rmf-2023",
+          "page": 25,
+          "quote": "govern, map, measure, and manage AI risks"
+        },
+        {
+          "source_id": "10-us-nist-cybersecurity-framework-2024",
+          "page": 31,
+          "quote": "Govern, Identify, Protect, Detect, Respond, and Recover"
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "question": "分别说明未满十四周岁个人信息处理的同意要求，以及数据分类分级保护的依据。",
+      "source_ids": [
+        "04-cn-personal-information-protection-law-2021",
+        "05-cn-data-security-law-2021"
+      ],
+      "expected_allow": true,
+      "category": "cross_document",
+      "split": "diagnostic",
+      "claim_group": "C02",
+      "evidence": [
+        {
+          "source_id": "04-cn-personal-information-protection-law-2021",
+          "page": 8,
+          "quote": "应当取得未成年人的父母或者其他监护人的同意"
+        },
+        {
+          "source_id": "05-cn-data-security-law-2021",
+          "page": 5,
+          "quote": "根据数据在经济社会发展中的重要程度"
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "question": "Compare the UK plan's 2030 offshore wind ambition with Australia's 2030 emissions reduction target. Give units and baseline where applicable.",
+      "source_ids": [
+        "07-uk-ten-point-plan-2020",
+        "08-au-climate-change-act-compilation-2025"
+      ],
+      "expected_allow": true,
+      "category": "cross_document",
+      "split": "diagnostic",
+      "claim_group": "C03",
+      "evidence": [
+        {
+          "source_id": "07-uk-ten-point-plan-2020",
+          "page": 12,
+          "quote": "40GW of offshore wind, including 1GW of innovative floating offshore wind"
+        },
+        {
+          "source_id": "08-au-climate-change-act-compilation-2025",
+          "page": 10,
+          "quote": "43% below 2005 levels by 2030"
+        }
+      ]
+    }
+  ]
+}

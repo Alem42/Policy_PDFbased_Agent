@@ -1,0 +1,62 @@
+{
+  "run_id": "6610ae2c4d9c",
+  "mode": "admission",
+  "started_at_utc": "2026-10-26T12:38:49.710283+00:00",
+  "environment": {
+    "base_url": "http://127.0.0.1:8000/api/v1",
+    "peer_url": "http://127.0.0.1:8002/api/v1",
+    "baseline_url": null,
+    "database_name": "redis_demo_tests",
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379
+  },
+  "checks": {
+    "authenticated_across_instances": {
+      "instances": 2
+    },
+    "two_instances_atomic_quota": {
+      "requests": 40,
+      "instances": 2,
+      "status_codes": {
+        "200": 10,
+        "429": 30
+      },
+      "ttl_ms": 59936,
+      "elapsed_ms": 311.41
+    },
+    "different_user_has_independent_quota": {
+      "http_status": 200
+    },
+    "redis_diagnostics_and_demo_require_admin": true,
+    "chat_and_stream_share_quota_before_business": {
+      "statuses": {
+        "/chat": 429,
+        "/chat/stream": 429
+      },
+      "database_counts_unchanged": true,
+      "note": "No answer-quality claim; admission denied before model execution."
+    },
+    "upload_quota_denies_before_registration": {
+      "http_status": 429,
+      "database_counts_unchanged": true,
+      "note": "Multipart reception may precede route admission; byte middleware remains necessary."
+    }
+  },
+  "scope": [
+    "Real HTTP authentication, Redis commands and PostgreSQL records.",
+    "Synthetic PDF with real extraction and persisted model vectors.",
+    "Catalogue/taxonomy timings are not LLM-generation performance.",
+    "No original library records or application database are deleted or initialized."
+  ],
+  "passed": true,
+  "cleanup": {
+    "kept_fixtures": false,
+    "errors": []
+  },
+  "original_records_unchanged": true,
+  "original_counts": {
+    "app_users": 1,
+    "documents": 0
+  },
+  "finished_at_utc": "2026-10-26T12:38:50.846626+00:00"
+}

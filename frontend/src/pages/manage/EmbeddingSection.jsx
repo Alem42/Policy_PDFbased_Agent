@@ -45,6 +45,8 @@ const DEFAULTS = {
   symmetric: true,
   batch_size: 32,
   chunk_token_budget: 480,
+  chunk_overlap_tokens: 120,
+  local_idle_seconds: 120,
   token_counting: "auto", // "auto" | "model" | "tiktoken"
   distance_metric: "cosine", // "cosine" | "l2" | "ip"
   evidence_distance_threshold: 0.45,
@@ -64,6 +66,7 @@ function normaliseSettings(result) {
 // Curated local models fastembed can download by name (weights + tokenizer + dim
 // come with the model). "custom" lets an admin type any fastembed-supported id.
 const LOCAL_MODELS = [
+  { id: "Qwen/Qwen3-Embedding-0.6B", label: "Qwen3-Embedding-0.6B · 1024d · multilingual · GPU" },
   { id: "BAAI/bge-small-en-v1.5", label: "bge-small-en-v1.5 · 384d · English" },
   { id: "BAAI/bge-base-en-v1.5", label: "bge-base-en-v1.5 · 768d · English" },
   { id: "intfloat/multilingual-e5-large", label: "multilingual-e5-large · 1024d · multilingual" },
@@ -212,7 +215,7 @@ export default function EmbeddingSection({
         message: "A different dimension uses a different vector table — run Re-embed library.",
       });
     }
-    if (form.chunk_token_budget !== initial.chunk_token_budget) {
+    if (form.chunk_token_budget !== initial.chunk_token_budget || form.chunk_overlap_tokens !== initial.chunk_overlap_tokens) {
       c.push({
         key: "chunk",
         severity: "warning",
@@ -426,7 +429,7 @@ export default function EmbeddingSection({
               size="small"
               sx={{ maxWidth: 320 }}
             >
-              <MenuItem value="local">Local (fastembed)</MenuItem>
+              <MenuItem value="local">Local (Qwen GPU / fastembed)</MenuItem>
               <MenuItem value="api">API (OpenAI-compatible)</MenuItem>
             </TextField>
           </Field>
@@ -524,7 +527,7 @@ export default function EmbeddingSection({
                 sx={{ width: 160 }}
               />
             </Field>
-            <Field label="Chunk token budget" hint="Max tokens per chunk. Recommended: 480; allowed: 64–8192.">
+            <Field label="Chunk token budget" hint="Max tokens per chunk. Validate the budget with Evaluation; allowed: 64–8192.">
               <TextField
                 value={form.chunk_token_budget}
                 onChange={(e) => set("chunk_token_budget", Number(e.target.value))}
@@ -535,6 +538,16 @@ export default function EmbeddingSection({
               />
             </Field>
           </Box>
+          <Field label="Chunk overlap (tokens)" hint="Trailing context shared with the next chunk; capped at half the chunk budget. Changing it requires Rescan all documents.">
+            <TextField type="number" size="small" value={form.chunk_overlap_tokens}
+              onChange={(e) => set("chunk_overlap_tokens", Number(e.target.value))}
+              inputProps={{ min: 0, max: 4096 }} sx={{ width: 200 }} />
+          </Field>
+          {!isApi && <Field label="Qwen idle unload (seconds)" hint="Weights stay on disk. Release the GPU worker after idle time; 0 unloads after every call.">
+            <TextField type="number" size="small" value={form.local_idle_seconds}
+              onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
+              inputProps={{ min: 0, max: 3600 }} sx={{ width: 200 }} />
+          </Field>}
           <Field label="Token counting" hint="Local models have an exact tokenizer; API models fall back to a tiktoken approximation.">
             <TextField
               select

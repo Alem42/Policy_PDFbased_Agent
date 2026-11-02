@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 
+from app.core.ai.budget import BudgetExceeded
 from app.modules.documents.repositories.embeddings import embedding_repository
 from app.modules.documents.service import (
     documents_have_embeddings,
@@ -13,14 +13,15 @@ from app.modules.documents.service import (
     search_full_corpus,
 )
 from app.modules.embedding import service as embedding
+from app.modules.evidence_validation import service as evidence_validation
 from app.modules.reranking import service as reranking
 from app.modules.retrieval.contracts import (
     EvidenceDecision,
-    MetadataFilters,
     QuestionValidationRequest,
     RetrievalRequest,
     RetrievalResult,
 )
+from app.modules.retrieval.coverage import allocate
 from app.modules.retrieval.evidence import (
     assess_evidence_sufficiency,
     is_chunk_relevant,
@@ -52,6 +53,7 @@ class RetrievalService:
     ) -> RetrievalResult:
         if not request.question.strip():
             raise ValueError("Retrieval question must not be blank.")
+        guard_config = evidence_validation.config()
         if request.top_k <= 0:
             raise ValueError("Retrieval top_k must be greater than zero.")
         if request.scope == "selected" and not request.identifiers:
@@ -69,6 +71,14 @@ class RetrievalService:
             else FilterApplication(tuple(identifiers))
         )
         effective_identifiers = list(filter_application.document_ids)
+        if request.metadata_filters.active and not effective_identifiers:
+            return RetrievalResult(
+                evidence=EvidenceDecision(
+                    False, "No documents match the explicit metadata filters."
+                ),
+                filter_applied=True,
+                filter_notice=filter_application.notice,
+            )
         if request.scope == "selected":
             pages = (
                 preloaded_pages
@@ -81,7 +91,7 @@ class RetrievalService:
             raw_chunks = retrieve_relevant_chunks(
                 request.question,
                 effective_identifiers,
-                limit=request.top_k,
+                limit=guard_config.candidate_pool_size if guard_config.enabled else request.top_k,
                 include_restricted=request.include_restricted,
             )
             has_embeddings = documents_have_embeddings(effective_identifiers)
@@ -119,6 +129,62 @@ class RetrievalService:
                 region_rows,
             )
 
+        validation_report = {}
+        plan = None
+        if guard_config.enabled:
+            try:
+                plan, plan_telemetry = evidence_validation.plan_question(
+                    request.question, guard_config
+                )
+                groups = []
+                if request.scope == "selected" and len(plan["requirements"]) > 1:
+                    for requirement in plan["requirements"]:
+                        group = retrieve_relevant_chunks(
+                            requirement["question"],
+                            effective_identifiers,
+                            limit=request.top_k,
+                            include_restricted=request.include_restricted,
+                        )
+                        groups.append(group)
+                    merged = {str(c["chunk_id"]): c for c in raw_chunks}
+                    for group in groups:
+                        for item in group:
+                            merged[str(item["chunk_id"])] = item
+                    raw_chunks = sorted(
+                        merged.values(), key=lambda c: c.get("reranker_score", -1), reverse=True
+                    )
+                if (
+                    request.scope == "selected"
+                    and guard_config.per_document_quota
+                    and len(effective_identifiers) > 1
+                ):
+                    merged = {str(c["chunk_id"]): c for c in raw_chunks}
+                    for identifier in effective_identifiers[:12]:
+                        for item in retrieve_relevant_chunks(
+                            request.question,
+                            [identifier],
+                            limit=2,
+                            include_restricted=request.include_restricted,
+                        ):
+                            merged.setdefault(str(item["chunk_id"]), item)
+                    raw_chunks = sorted(
+                        merged.values(), key=lambda c: c.get("reranker_score", -1), reverse=True
+                    )
+                raw_chunks = allocate(
+                    raw_chunks,
+                    request.top_k,
+                    groups=groups,
+                    per_document=guard_config.per_document_quota,
+                )
+                validation_report = {"plan": plan, "plan_telemetry": plan_telemetry}
+            except BudgetExceeded:
+                raise
+            except Exception as exc:
+                validation_report = {
+                    "allowed": False,
+                    "error": str(exc),
+                    "reason": "Question contract failed; blocked closed.",
+                }
         chunks = [chunk for chunk in raw_chunks if is_chunk_relevant(request.question, chunk)]
         context_items = chunks if has_embeddings else pages
         context, truncated = format_context(context_items)
@@ -130,6 +196,19 @@ class RetrievalService:
             context=context,
             has_embeddings=has_embeddings,
         )
+        if guard_config.enabled:
+            if plan is None:
+                sufficient, reason = False, validation_report["reason"]
+            elif sufficient:
+                report = evidence_validation.answerability(
+                    request.question, plan, chunks, guard_config
+                )
+                validation_report.update(report)
+                sufficient, reason = report["allowed"], report.get("reason")
+            else:
+                validation_report.update(
+                    {"allowed": False, "reason": reason, "stage": "score_gate"}
+                )
         missing_regions = self._missing_requested_regions(
             request,
             chunks,
@@ -153,32 +232,8 @@ class RetrievalService:
             filter_applied=filter_application.applied,
             filter_fallback=filter_application.fallback,
             filter_notice=filter_application.notice,
+            validation_report=validation_report,
         )
-        if (
-            request.metadata_filters.active
-            and filter_application.applied
-            and not filter_application.fallback
-            and not result.evidence.sufficient
-            and len(request.metadata_filters.country_regions) <= 1
-        ):
-            # Natural-language metadata constraints are retrieval preferences,
-            # not a reason to leave the user with no answer. If the narrowed
-            # subset exists but cannot support the question, retry the exact
-            # original scope once and surface the relaxation as a warning.
-            expanded = self.retrieve(
-                replace(request, metadata_filters=MetadataFilters()),
-                preloaded_pages=preloaded_pages,
-            )
-            expanded.filter_applied = True
-            expanded.filter_fallback = True
-            description = metadata_filter_service.describe(request.metadata_filters)
-            expanded.filter_notice = (
-                f"Documents matched the requested metadata filters ({description}), "
-                "but that subset did not contain enough relevant evidence. The search "
-                "was expanded to the original document scope, so some cited sources may "
-                "fall outside the requested metadata."
-            )
-            return expanded
         return result
 
     @staticmethod
@@ -230,14 +285,7 @@ class RetrievalService:
                 for row in region_rows
                 if str(row.get("country_region") or "").casefold() == region.casefold()
             }
-            mentioned_in_evidence = any(
-                metadata_filter_service.text_mentions_region(
-                    str(chunk.get("text") or ""),
-                    region,
-                )
-                for chunk in chunks
-            )
-            if not (region_document_ids & cited_document_ids) and not mentioned_in_evidence:
+            if not (region_document_ids & cited_document_ids):
                 missing.append(region)
         return missing
 

@@ -80,7 +80,12 @@ def retrieve_relevant_chunks(
     document_ids = library.resolve_document_ids(identifiers, include_restricted)
     query_vector = embedding.vector_literal(embedding.embed_query(question))
 
-    candidate_limit = max(limit * 3, 20)
+    from app.modules.evidence_validation import service as evidence_validation
+
+    guard_config = evidence_validation.config()
+    candidate_limit = (
+        guard_config.candidate_pool_size if guard_config.enabled else max(limit * 3, 20)
+    )
     candidates = embedding_repository.retrieve(
         query_vector,
         document_ids,

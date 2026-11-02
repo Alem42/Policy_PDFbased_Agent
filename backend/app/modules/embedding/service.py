@@ -25,6 +25,7 @@ from app.modules.embedding.providers import (
     EmbeddingProvider,
     LocalFastembedProvider,
     OpenAICompatibleProvider,
+    QwenEmbeddingProvider,
 )
 from app.modules.embedding.repository import embedding_settings_repository
 from app.modules.embedding.settings import (
@@ -63,6 +64,8 @@ def _resolved_config(config: EmbeddingConfig) -> EmbeddingConfig:
 def _build_provider(config: EmbeddingConfig) -> EmbeddingProvider:
     if config.provider == "api":
         return OpenAICompatibleProvider(_resolved_config(config))
+    if config.local_model == "Qwen/Qwen3-Embedding-0.6B":
+        return QwenEmbeddingProvider(config)
     return LocalFastembedProvider(config)
 
 

@@ -79,6 +79,21 @@ def rerank(question: str, chunks: list[dict], *, limit: int) -> list[dict]:
     documents.reranker.rerank_chunks contract.
     """
     config = active_config()
+    if not chunks:
+        return []
+    if config.provider == "local" and config.local_model == "Qwen/Qwen3-Reranker-0.6B":
+        from app.modules.local_models.runtime import QUERY_INSTRUCTION, local_model_runtime
+
+        scores = local_model_runtime.call(
+            "rerank", model=config.local_model, texts=[c["text"] for c in chunks],
+            query=question, instruction=QUERY_INSTRUCTION,
+            batch_size=4, idle_seconds=config.local_idle_seconds,
+        )
+        return sorted(
+            ({**chunk, "reranker_score": score}
+             for chunk, score in zip(chunks, scores, strict=True)),
+            key=lambda row: row["reranker_score"], reverse=True,
+        )[:limit]
     if config.provider == "local":
         from app.modules.documents.reranker import rerank_chunks as local_rerank
 
@@ -129,6 +144,15 @@ def update_config(partial: dict) -> RerankingConfig:
 def test_connection(partial: dict) -> dict:
     config = _merge(partial)
     if config.provider == "local":
+        if config.local_model == "Qwen/Qwen3-Reranker-0.6B":
+            from app.modules.local_models.runtime import QUERY_INSTRUCTION, local_model_runtime
+
+            scores = local_model_runtime.call(
+                "rerank", model=config.local_model, query="What is the capital of France?",
+                texts=["Paris is the capital of France.", "Bananas are a fruit."],
+                instruction=QUERY_INSTRUCTION, idle_seconds=config.local_idle_seconds,
+            )
+            return {"model": config.local_model, "sample_scores": scores}
         from app.modules.documents.reranker import rerank_chunks as local_rerank
 
         out = local_rerank(

@@ -4,6 +4,14 @@ FastAPI backend for the Policy in Action Library. It provides authentication,
 PDF ingestion, evidence-aware web search, permanent URL import,
 retrieval-augmented chat, document catalogue APIs, and PostgreSQL/pgvector persistence.
 
+Qwen3 local embedding/reranking and the Manage **Evaluation & scoring** section are
+documented in [the implementation and evaluation guide](docs/QWEN_LOCAL_MODELS_AND_EVALUATION.zh-CN.md).
+Qwen requires the optional `local-models` extra. Use `python -m scripts.run_backend`
+(from `backend`) to select the psycopg-compatible Windows event loop. When run
+with system Python, this launcher automatically selects an existing project
+`.venv` (repository root first, then `backend`); an activated environment is
+respected. Existing databases also need migration `029_add_evaluation.sql`.
+
 ## Technology stack
 
 - Python 3.11+
@@ -11,7 +19,20 @@ retrieval-augmented chat, document catalogue APIs, and PostgreSQL/pgvector persi
 - PostgreSQL with pgvector
 - SQLAlchemy/asyncpg and psycopg
 - LangGraph and OpenAI-compatible chat APIs
-- HTTPX and optional Firecrawl-backed web search
+- HTTPX with DeepSeek Search/Fetch and optional Firecrawl-backed web search
+
+### Web search settings
+
+Manage → Web search supports Firecrawl and DeepSeek. The **General Access Key**
+field saves a key for the selected search provider. DeepSeek automatically reuses
+the existing DeepSeek model key when no separate search key is saved. Removing a
+separate search key restores that fallback without deleting the model key.
+
+DeepSeek uses the official [Search / Fetch JSON APIs](https://api-docs.deepseek.com/guides/search/),
+without a chat-completion call. Search queries must contain 1–128 characters.
+Both transient search and permanent page import use the selected provider;
+existing URL validation and document processing still apply. No new SDK or
+database migration is needed for DeepSeek.
 
 ## Project layout
 
@@ -47,11 +68,11 @@ record/content repositories directly.
 From the repository root, run:
 
 ```powershell
-cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+cd backend
 python -m pip install --upgrade pip
-pip install -e ".[dev,database,web-search]"
+python -m pip install -e ".[dev,database,web-search]"
 Copy-Item .env.example .env
 ```
 
@@ -79,8 +100,22 @@ dependencies beyond the pip packages.
 Start the API from `backend/`:
 
 ```powershell
-uvicorn app.main:app --reload
+python -m scripts.run_backend
 ```
+
+For Qwen on this Windows workstation, the CUDA dependencies are installed in the
+repository-root `.venv`. You can also select it explicitly from `backend`:
+
+```powershell
+..\.venv\Scripts\python.exe -m scripts.run_backend
+```
+
+A global `uvicorn.exe` bypasses that environment and may fail with
+`ModuleNotFoundError: No module named 'torch'`. A new Qwen environment needs
+`python -m pip install -e ".[local-models]"`; choose the appropriate CUDA build
+using the [PyTorch installation guide](https://pytorch.org/get-started/locally/).
+Cached model weights and installed Python dependencies are separate: downloading
+the weights does not install PyTorch in a different interpreter.
 
 When upgrading an existing pre-durable-task database, first stop the API and
 document workers and run this from `backend/` with the service's environment:
@@ -347,3 +382,18 @@ deployment overrides are documented in the root `.env.example`; backend files an
 generated token-signing secret persist under `backend/data`.
 
 See the repository root README for the first-administrator invitation workflow.
+
+
+## Optional Redis cache and admission demo
+
+Redis is optional and disabled by default. Enable `REDIS_ENABLED` for taxonomy caching;
+add `RATE_LIMIT_ENABLED` for shared per-user chat/resume/upload admission. Native API
+processes can run with `python scripts/run_native_api.py --port 8000` and port 8002;
+Docker is not required. Use a shared database, Redis prefix, signing secret and file
+storage path across processes. See [.env.example](.env.example) for limits and timeouts.
+
+The [beginner guide](docs/REDIS_FROM_ZERO_AND_INTERVIEW.zh-CN.md) explains the implementation,
+native startup, actual measurements and interview answers. The
+[acceptance record](docs/REDIS_IMPLEMENTATION_AND_ACCEPTANCE.zh-CN.md) links real HTTP/PDF,
+two-instance concurrency and Redis outage/recovery reports. Run
+`python scripts/verify_redis_journey.py --help` for the reproducible verifier.

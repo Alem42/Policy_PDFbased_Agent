@@ -1,0 +1,400 @@
+{
+  "corpus_id": "policy-rag-test-corpus-v1",
+  "retrieved_on": "2026-10-22",
+  "documents": [
+    {
+      "id": "01-us-nist-ai-rmf-2023",
+      "title": "Artificial Intelligence Risk Management Framework 1.0",
+      "domain": "AI governance",
+      "region": "US",
+      "language": "en",
+      "document_version": "2023-01-26",
+      "source_page": "https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-ai-rmf-10",
+      "candidate_urls": [
+        "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf",
+      "resolved_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf",
+      "local_path": "pdfs/01-us-nist-ai-rmf-2023.pdf",
+      "bytes": 1946127,
+      "sha256": "7576edb531d9848825814ee88e28b1795d3a84b435b4b797d3670eafdc4a89f1",
+      "retrieved_on": "2026-10-22",
+      "file_name": "01-us-nist-ai-rmf-2023.pdf",
+      "pdf_pages": 48,
+      "extracted_characters": 106478,
+      "approx_tokens_cl100k_base": 21866,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 522.0,
+      "reuse": {
+        "status": "government-work-with-exceptions",
+        "basis": "NIST copyright/use policy; retain source and any third-party notices",
+        "url": "https://www.nist.gov/open/license",
+        "required_attribution": "Republished courtesy of the National Institute of Standards and Technology."
+      },
+      "document_type": "voluntary_framework"
+    },
+    {
+      "id": "02-us-nist-generative-ai-profile-2024",
+      "title": "Generative Artificial Intelligence Profile",
+      "domain": "AI governance",
+      "region": "US",
+      "language": "en",
+      "document_version": "2024-07",
+      "source_page": "https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence",
+      "candidate_urls": [
+        "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+      "resolved_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+      "local_path": "pdfs/02-us-nist-generative-ai-profile-2024.pdf",
+      "bytes": 1174643,
+      "sha256": "6e73620ab6b64e90ef2c04bf0e0d6246185a2f4b1b13cab0df494496cff89b6a",
+      "retrieved_on": "2026-10-22",
+      "file_name": "02-us-nist-generative-ai-profile-2024.pdf",
+      "pdf_pages": 64,
+      "extracted_characters": 160896,
+      "approx_tokens_cl100k_base": 36575,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 591.5,
+      "reuse": {
+        "status": "government-work-with-exceptions",
+        "basis": "NIST copyright/use policy; retain source and any third-party notices",
+        "url": "https://www.nist.gov/open/license",
+        "required_attribution": "Republished courtesy of the National Institute of Standards and Technology."
+      },
+      "document_type": "technology_profile"
+    },
+    {
+      "id": "03-uk-ai-regulation-white-paper-2023",
+      "title": "A pro-innovation approach to AI regulation",
+      "domain": "AI governance",
+      "region": "UK",
+      "language": "en",
+      "document_version": "2023-03, amended 2023-08",
+      "source_page": "https://www.gov.uk/government/publications/ai-regulation-a-pro-innovation-approach",
+      "candidate_urls": [
+        "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/1176103/a-pro-innovation-approach-to-ai-regulation-amended-web-ready.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/1176103/a-pro-innovation-approach-to-ai-regulation-amended-web-ready.pdf",
+      "resolved_url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/1176103/a-pro-innovation-approach-to-ai-regulation-amended-web-ready.pdf",
+      "local_path": "pdfs/03-uk-ai-regulation-white-paper-2023.pdf",
+      "bytes": 1245266,
+      "sha256": "79d0b329134c14d0977e9819154ba1e55108b9a7d1c8890d93e6406f2ce0d9c7",
+      "retrieved_on": "2026-10-22",
+      "file_name": "03-uk-ai-regulation-white-paper-2023.pdf",
+      "pdf_pages": 93,
+      "extracted_characters": 216360,
+      "approx_tokens_cl100k_base": 42923,
+      "low_text_pages": [
+        93
+      ],
+      "page_token_median_cl100k_base": 505,
+      "reuse": {
+        "status": "OGL-v3-with-exceptions",
+        "basis": "Publication copyright notice; exclude logos and separately credited third-party material",
+        "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+      },
+      "document_type": "policy_white_paper"
+    },
+    {
+      "id": "04-cn-personal-information-protection-law-2021",
+      "title": "中华人民共和国个人信息保护法",
+      "domain": "Privacy and data governance",
+      "region": "China",
+      "language": "zh",
+      "document_version": "2021-08-20 adopted; effective 2021-11-01",
+      "source_page": "https://www.jsmm.gov.cn/flfg/55347.jhtml",
+      "status": "downloaded",
+      "download_url": "https://www.jsmm.gov.cn/u/cms/www/202110/1317253417oi.pdf",
+      "resolved_url": "https://www.jsmm.gov.cn/u/cms/www/202110/1317253417oi.pdf",
+      "local_path": "pdfs/04-cn-personal-information-protection-law-2021.pdf",
+      "retrieved_on": "2026-10-22",
+      "file_name": "04-cn-personal-information-protection-law-2021.pdf",
+      "bytes": 282597,
+      "sha256": "9ecbd6476b50687a09654faddd6904fe5e67a356b151754424d53fbd7e81bda7",
+      "pdf_pages": 21,
+      "extracted_characters": 9849,
+      "approx_tokens_cl100k_base": 9882,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 494,
+      "reuse": {
+        "status": "official-statutory-text",
+        "basis": "PRC Copyright Law Article 5(1); refers to statutory text, not arbitrary website assets",
+        "url": "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html"
+      },
+      "document_type": "law"
+    },
+    {
+      "id": "05-cn-data-security-law-2021",
+      "title": "中华人民共和国数据安全法",
+      "domain": "Privacy and data governance",
+      "region": "China",
+      "language": "zh",
+      "document_version": "2021-06-10",
+      "source_page": "https://zjca.miit.gov.cn/zwgk/zcwj/flfg/art/2023/art_1c44ae2b49034a078784676a077d12a7.html",
+      "candidate_urls": [
+        "https://www.ssf.gov.cn/portal/rootfile/P020210715675898241539.pdf",
+        "https://zjca.miit.gov.cn/cms_files/filemanager/1528008671/attach/20233/513732cc7dfb4dbbad87fdaf0f997151.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://zjca.miit.gov.cn/cms_files/filemanager/1528008671/attach/20233/513732cc7dfb4dbbad87fdaf0f997151.pdf",
+      "resolved_url": "https://zjca.miit.gov.cn/cms_files/filemanager/1528008671/attach/20233/513732cc7dfb4dbbad87fdaf0f997151.pdf",
+      "local_path": "pdfs/05-cn-data-security-law-2021.pdf",
+      "bytes": 212546,
+      "sha256": "c9e83cccb9472f341dd457e964ac5010643f1b1894ef3d3a961ceda39e06a986",
+      "retrieved_on": "2026-10-22",
+      "file_name": "05-cn-data-security-law-2021.pdf",
+      "pdf_pages": 13,
+      "extracted_characters": 5809,
+      "approx_tokens_cl100k_base": 6134,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 492,
+      "reuse": {
+        "status": "official-statutory-text",
+        "basis": "PRC Copyright Law Article 5(1); refers to statutory text, not arbitrary website assets",
+        "url": "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html"
+      },
+      "document_type": "law"
+    },
+    {
+      "id": "06-us-nist-privacy-framework-2020",
+      "title": "NIST Privacy Framework Version 1.0",
+      "domain": "Privacy and data governance",
+      "region": "US",
+      "language": "en",
+      "document_version": "2020-01-16",
+      "source_page": "https://www.nist.gov/privacy-framework/privacy-framework",
+      "candidate_urls": [
+        "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.01162020.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.01162020.pdf",
+      "resolved_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.01162020.pdf",
+      "local_path": "pdfs/06-us-nist-privacy-framework-2020.pdf",
+      "bytes": 827885,
+      "sha256": "58e1f2373e1c8a5782f7ddfce677fa9fc15e2d920ec0ab97ee754697e91bc2f0",
+      "retrieved_on": "2026-10-22",
+      "file_name": "06-us-nist-privacy-framework-2020.pdf",
+      "pdf_pages": 43,
+      "extracted_characters": 118462,
+      "approx_tokens_cl100k_base": 23639,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 590,
+      "reuse": {
+        "status": "government-work-with-exceptions",
+        "basis": "NIST copyright/use policy; retain source and any third-party notices",
+        "url": "https://www.nist.gov/open/license",
+        "required_attribution": "Republished courtesy of the National Institute of Standards and Technology."
+      },
+      "document_type": "voluntary_framework"
+    },
+    {
+      "id": "07-uk-ten-point-plan-2020",
+      "title": "The Ten Point Plan for a Green Industrial Revolution",
+      "domain": "Climate and energy",
+      "region": "UK",
+      "language": "en",
+      "document_version": "2020-11",
+      "source_page": "https://www.gov.uk/government/publications/the-ten-point-plan-for-a-green-industrial-revolution",
+      "status": "downloaded",
+      "download_url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/936567/10_POINT_PLAN_BOOKLET.pdf",
+      "resolved_url": "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/936567/10_POINT_PLAN_BOOKLET.pdf",
+      "local_path": "pdfs/07-uk-ten-point-plan-2020.pdf",
+      "retrieved_on": "2026-10-22",
+      "file_name": "07-uk-ten-point-plan-2020.pdf",
+      "bytes": 3520297,
+      "sha256": "f833293f8aa0e292b765c75c5bd4143081ea2c82cbcd24e247f757335b1cd1c8",
+      "pdf_pages": 38,
+      "extracted_characters": 64532,
+      "approx_tokens_cl100k_base": 13768,
+      "low_text_pages": [
+        2,
+        4,
+        37
+      ],
+      "page_token_median_cl100k_base": 373.5,
+      "reuse": {
+        "status": "OGL-v3-with-exceptions",
+        "basis": "Publication copyright notice; exclude logos and separately credited third-party material",
+        "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+      },
+      "document_type": "policy_plan"
+    },
+    {
+      "id": "08-au-climate-change-act-compilation-2025",
+      "title": "Climate Change Act 2022, Compilation No. 2",
+      "domain": "Climate and energy",
+      "region": "Australia",
+      "language": "en",
+      "document_version": "2025-02-20 compilation",
+      "source_page": "https://www.legislation.gov.au/C2022A00037/2025-02-20/text",
+      "candidate_urls": [
+        "https://www.legislation.gov.au/C2022A00037/2025-02-20/2025-02-20/text/original/pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://www.legislation.gov.au/C2022A00037/2025-02-20/2025-02-20/text/original/pdf",
+      "resolved_url": "https://www.legislation.gov.au/C2022A00037/2025-02-20/2025-02-20/text/original/pdf",
+      "local_path": "pdfs/08-au-climate-change-act-compilation-2025.pdf",
+      "bytes": 299017,
+      "sha256": "4b5a5ca51aa4bb3e6b3523907784b2a7437921ebad72ea1711cef27ed7059d5d",
+      "retrieved_on": "2026-10-22",
+      "file_name": "08-au-climate-change-act-compilation-2025.pdf",
+      "pdf_pages": 28,
+      "extracted_characters": 36675,
+      "approx_tokens_cl100k_base": 8349,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 332.0,
+      "reuse": {
+        "status": "check-before-public-bundling",
+        "basis": "Official public download verified; an explicit redistribution licence was not established in this audit",
+        "url": "https://www.legislation.gov.au/C2022A00037/2025-02-20/text"
+      },
+      "document_type": "law_compilation"
+    },
+    {
+      "id": "09-au-social-housing-homelessness-agreement-2024",
+      "title": "National Agreement on Social Housing and Homelessness",
+      "domain": "Housing",
+      "region": "Australia",
+      "language": "en",
+      "document_version": "2024-07-01 effective",
+      "source_page": "https://federalfinancialrelations.gov.au/agreements/nashh",
+      "candidate_urls": [
+        "https://federalfinancialrelations.gov.au/sites/federalfinancialrelations.gov.au/files/2024-06/nashh-final.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://federalfinancialrelations.gov.au/sites/federalfinancialrelations.gov.au/files/2024-06/nashh-final.pdf",
+      "resolved_url": "https://federalfinancialrelations.gov.au/sites/federalfinancialrelations.gov.au/files/2024-06/nashh-final.pdf",
+      "local_path": "pdfs/09-au-social-housing-homelessness-agreement-2024.pdf",
+      "bytes": 2306896,
+      "sha256": "a1b54056cbf233badc0580b328b6beb19ef0b21fef28c6df69a5334ce8c6430d",
+      "retrieved_on": "2026-10-22",
+      "file_name": "09-au-social-housing-homelessness-agreement-2024.pdf",
+      "pdf_pages": 49,
+      "extracted_characters": 60026,
+      "approx_tokens_cl100k_base": 13493,
+      "low_text_pages": [
+        15,
+        17,
+        19,
+        21,
+        23,
+        28
+      ],
+      "page_token_median_cl100k_base": 311.0,
+      "reuse": {
+        "status": "check-before-public-bundling",
+        "basis": "Official public download verified; an explicit redistribution licence was not established in this audit",
+        "url": "https://federalfinancialrelations.gov.au/agreements/nashh"
+      },
+      "document_type": "intergovernmental_agreement"
+    },
+    {
+      "id": "10-us-nist-cybersecurity-framework-2024",
+      "title": "The NIST Cybersecurity Framework (CSF) 2.0",
+      "domain": "Cybersecurity",
+      "region": "US",
+      "language": "en",
+      "document_version": "2024-02-26",
+      "source_page": "https://www.nist.gov/publications/nist-cybersecurity-framework-csf-20",
+      "status": "downloaded",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+      "resolved_url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+      "local_path": "pdfs/10-us-nist-cybersecurity-framework-2024.pdf",
+      "retrieved_on": "2026-10-22",
+      "file_name": "10-us-nist-cybersecurity-framework-2024.pdf",
+      "bytes": 1518858,
+      "sha256": "3c31f46fee98cac0c4323453e5109291a213b4de7fef8c058af9bf67f717433c",
+      "pdf_pages": 32,
+      "extracted_characters": 69733,
+      "approx_tokens_cl100k_base": 14149,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 476.0,
+      "reuse": {
+        "status": "government-work-with-exceptions",
+        "basis": "NIST copyright/use policy; retain source and any third-party notices",
+        "url": "https://www.nist.gov/open/license",
+        "required_attribution": "Republished courtesy of the National Institute of Standards and Technology."
+      },
+      "document_type": "voluntary_framework"
+    },
+    {
+      "id": "11-us-nist-incident-response-2025",
+      "title": "Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile",
+      "domain": "Cybersecurity",
+      "region": "US",
+      "language": "en",
+      "document_version": "2025-04",
+      "source_page": "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
+      "status": "downloaded",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
+      "resolved_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
+      "local_path": "pdfs/11-us-nist-incident-response-2025.pdf",
+      "retrieved_on": "2026-10-22",
+      "file_name": "11-us-nist-incident-response-2025.pdf",
+      "bytes": 1040566,
+      "sha256": "e5593d6bb85daecec7e8d9549400c7b3473bcc3f06e469c82218073afa7fba2d",
+      "pdf_pages": 48,
+      "extracted_characters": 107986,
+      "approx_tokens_cl100k_base": 23025,
+      "low_text_pages": [],
+      "page_token_median_cl100k_base": 526.0,
+      "reuse": {
+        "status": "government-work-with-exceptions",
+        "basis": "NIST copyright/use policy; retain source and any third-party notices",
+        "url": "https://www.nist.gov/open/license",
+        "required_attribution": "Republished courtesy of the National Institute of Standards and Technology."
+      },
+      "document_type": "community_profile"
+    },
+    {
+      "id": "12-uk-biological-security-strategy-2023",
+      "title": "UK Biological Security Strategy",
+      "domain": "Health and biological security",
+      "region": "UK",
+      "language": "en",
+      "document_version": "2023-06-12",
+      "source_page": "https://www.gov.uk/government/publications/uk-biological-security-strategy",
+      "candidate_urls": [
+        "https://assets.publishing.service.gov.uk/media/64c0ded51e10bf000e17ceba/UK_Biological_Security_Strategy.pdf"
+      ],
+      "status": "downloaded",
+      "download_url": "https://assets.publishing.service.gov.uk/media/64c0ded51e10bf000e17ceba/UK_Biological_Security_Strategy.pdf",
+      "resolved_url": "https://assets.publishing.service.gov.uk/media/64c0ded51e10bf000e17ceba/UK_Biological_Security_Strategy.pdf",
+      "local_path": "pdfs/12-uk-biological-security-strategy-2023.pdf",
+      "bytes": 6176530,
+      "sha256": "1c192f4f9f4b896b9b6a4dfeeb9ee95279add2670f1fd9a52576d0320bce197a",
+      "retrieved_on": "2026-10-22",
+      "file_name": "12-uk-biological-security-strategy-2023.pdf",
+      "pdf_pages": 81,
+      "extracted_characters": 174588,
+      "approx_tokens_cl100k_base": 38120,
+      "low_text_pages": [
+        2,
+        79,
+        80
+      ],
+      "page_token_median_cl100k_base": 570.0,
+      "reuse": {
+        "status": "OGL-v3-with-exceptions",
+        "basis": "Publication copyright notice; exclude logos and separately credited third-party material",
+        "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+      },
+      "document_type": "national_strategy"
+    }
+  ],
+  "document_count": 12,
+  "total_pdf_pages": 558,
+  "total_bytes": 20551228,
+  "token_estimator": "cl100k_base on PyMuPDF extracted text; NOT provider billing token counts",
+  "total_approx_tokens_cl100k_base": 251923,
+  "page_token_medians": {
+    "english": 516,
+    "chinese": 493.0
+  },
+  "runtime_ingested": false,
+  "model_apis_called": false
+}

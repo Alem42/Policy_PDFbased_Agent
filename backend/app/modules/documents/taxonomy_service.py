@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
+from dataclasses import dataclass
 
 from app.modules.documents.ingestion.taxonomy import (
     DEFAULT_TAXONOMY,
@@ -11,7 +13,13 @@ from app.modules.documents.repositories.taxonomy import taxonomy_repository
 logger = logging.getLogger(__name__)
 
 
-def get_taxonomy_tree() -> list[dict]:
+@dataclass(frozen=True)
+class LoadedTaxonomy:
+    groups: list[dict]
+    cacheable: bool
+
+
+def load_taxonomy_tree() -> LoadedTaxonomy:
     """Live taxonomy tree. Seeds the DB from DEFAULT_TAXONOMY on first use.
 
     Falls back to the in-code default if the DB is unavailable so ingestion and
@@ -22,10 +30,14 @@ def get_taxonomy_tree() -> list[dict]:
             taxonomy_repository.replace_tree(DEFAULT_TAXONOMY)
             logger.info("Seeded policy_taxonomy from DEFAULT_TAXONOMY")
         tree = taxonomy_repository.load_tree()
-        return tree or DEFAULT_TAXONOMY
+        return LoadedTaxonomy(tree or deepcopy(DEFAULT_TAXONOMY), bool(tree))
     except Exception as exc:
         logger.warning("Taxonomy DB unavailable, using in-code default: %s", exc)
-        return DEFAULT_TAXONOMY
+        return LoadedTaxonomy(deepcopy(DEFAULT_TAXONOMY), False)
+
+
+def get_taxonomy_tree() -> list[dict]:
+    return load_taxonomy_tree().groups
 
 
 def replace_taxonomy_tree(groups: list[dict]) -> list[dict]:
@@ -35,7 +47,9 @@ def replace_taxonomy_tree(groups: list[dict]) -> list[dict]:
     a changed taxonomy naturally lands on a fresh cache entry — no manual bust.
     """
     taxonomy_repository.replace_tree(groups)
-    return get_taxonomy_tree()
+    # Return the validated values actually committed, never a post-write DB
+    # failure's default fallback disguised as the newly saved taxonomy.
+    return deepcopy(groups)
 
 
 def get_leaf_labels() -> list[str]:
