@@ -18,8 +18,11 @@ class EmbeddingSettingsRepository:
     def load(self) -> EmbeddingConfig:
         return EmbeddingConfig(**self._store.load())
 
-    def changed(self, max_age: float) -> bool:
-        return self._store.changed(max_age)
+    def version(self, max_age: float):
+        return self._store.version(max_age)
+
+    def loaded_version(self):
+        return self._store.loaded_version()
 
     def save(self, config: EmbeddingConfig) -> None:
         self._store.save(config.model_dump_json())

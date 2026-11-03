@@ -24,6 +24,10 @@ from app.core.database import get_connection
 
 logger = logging.getLogger(__name__)
 
+# Each API instance and worker process caches settings; this bounds how long a save
+# made by another process can go unseen.
+RECHECK_SECONDS = 2.0
+
 
 class SingleRowSettings:
     """Load/save one service's whole config as a single jsonb row (id = 1)."""
@@ -38,6 +42,7 @@ class SingleRowSettings:
 
     def load(self) -> dict:
         with self._lock:
+            self.version()
             if self._cache is None:
                 try:
                     with get_connection() as connection:
@@ -75,15 +80,19 @@ class SingleRowSettings:
             self._version = row["updated_at"] if row else None
             self._checked_at = monotonic()
 
-    def changed(self, max_age: float) -> bool:
-        """True once when another process saved a newer row; queries at most every max_age s.
+    def loaded_version(self):
+        """The updated_at of the row the cached config came from."""
+        return self._version
 
-        Each API instance and worker process caches the config, so without this an admin's
-        model switch would only reach the process that handled the save.
+    def version(self, max_age: float | None = None):
+        """Latest saved updated_at, queried at most every max_age seconds.
+
+        A newer row saved by another process drops the cache so the next load() rereads it.
         """
+        max_age = RECHECK_SECONDS if max_age is None else max_age
         with self._lock:
             if self._cache is None or monotonic() - self._checked_at < max_age:
-                return False
+                return self._version
             self._checked_at = monotonic()
             try:
                 with get_connection() as connection:
@@ -91,12 +100,11 @@ class SingleRowSettings:
                         f"SELECT updated_at FROM {self.table} WHERE id = 1"
                     ).fetchone()
             except Exception:
-                return False
+                return self._version
             version = row["updated_at"] if row else None
-            if version == self._version:
-                return False
-            self._cache = None
-            return True
+            if version != self._version:
+                self._cache = None
+            return version
 
     def invalidate(self) -> None:
         """Force the next read to reload the database row."""

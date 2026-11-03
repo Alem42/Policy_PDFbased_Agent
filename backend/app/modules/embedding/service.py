@@ -36,7 +36,7 @@ from app.modules.embedding.settings import (
 )
 
 # Lazy singleton cache of the active config + provider.
-_cache: dict = {"config": None, "provider": None}
+_cache: dict = {"config": None, "provider": None, "version": None}
 _cache_lock = RLock()
 _snapshot: ContextVar[tuple | None] = ContextVar("embedding_snapshot", default=None)
 # How stale another process's model switch may be on the query path.
@@ -44,7 +44,9 @@ SETTINGS_RECHECK_SECONDS = 2.0
 
 
 def _refresh(max_age: float = SETTINGS_RECHECK_SECONDS) -> None:
-    if embedding_settings_repository.changed(max_age):
+    if _cache["config"] is not None and (
+        embedding_settings_repository.version(max_age) != _cache.get("version")
+    ):
         _reload()
 
 
@@ -80,7 +82,11 @@ def _reload() -> None:
     with _cache_lock:
         config = embedding_settings_repository.load()
         provider = _build_provider(config)
-        _cache.update(config=config, provider=provider)
+        _cache.update(
+            config=config,
+            provider=provider,
+            version=embedding_settings_repository.loaded_version(),
+        )
 
 
 def invalidate_provider_cache() -> None:

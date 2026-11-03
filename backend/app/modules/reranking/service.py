@@ -29,10 +29,13 @@ _cache: dict = {"config": None}
 
 def _reload() -> None:
     _cache["config"] = reranking_settings_repository.load()
+    _cache["version"] = reranking_settings_repository.loaded_version()
 
 
 def active_config() -> RerankingConfig:
-    if reranking_settings_repository.changed(2.0):
+    if _cache["config"] is not None and (
+        reranking_settings_repository.version(2.0) != _cache.get("version")
+    ):
         _cache["config"] = None
     if _cache["config"] is None:
         _reload()

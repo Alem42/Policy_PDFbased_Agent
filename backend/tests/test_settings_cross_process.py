@@ -7,15 +7,25 @@ def test_a_save_in_one_process_reaches_another(postgres_repository):
     api, worker = SingleRowSettings("embedding_settings"), SingleRowSettings("embedding_settings")
     api.save(EmbeddingConfig(local_model="BAAI/bge-small-en-v1.5").model_dump_json())
     assert worker.load()["local_model"] == "BAAI/bge-small-en-v1.5"
-    assert worker.changed(0) is False
+    first = worker.loaded_version()
 
     api.save(EmbeddingConfig(local_model="Qwen/Qwen3-Embedding-0.6B").model_dump_json())
 
-    assert worker.changed(3600) is False  # throttled: no query yet
-    assert worker.changed(0) is True
+    assert worker.version(3600) == first  # throttled: no query yet
+    assert worker.version(0) == api.loaded_version() != first
     assert worker.load()["local_model"] == "Qwen/Qwen3-Embedding-0.6B"
-    assert worker.changed(0) is False
-    assert api.changed(0) is False  # the saver already holds the new version
+    assert worker.loaded_version() == api.loaded_version()
+
+
+def test_load_alone_picks_up_another_process_save(postgres_repository, monkeypatch):
+    from app.core import settings_store
+
+    api, other = SingleRowSettings("suggestion_settings"), SingleRowSettings("suggestion_settings")
+    api.save('{"enabled": true}')
+    assert other.load() == {"enabled": True}
+    api.save('{"enabled": false}')
+    monkeypatch.setattr(settings_store, "RECHECK_SECONDS", 0)
+    assert other.load() == {"enabled": False}
 
 
 def test_task_snapshot_rereads_a_switched_model(postgres_repository, monkeypatch):
@@ -24,7 +34,7 @@ def test_task_snapshot_rereads_a_switched_model(postgres_repository, monkeypatch
     monkeypatch.setattr(
         embedding.embedding_settings_repository, "_store", SingleRowSettings("embedding_settings")
     )
-    embedding._cache.update(config=None, provider=None)
+    embedding._cache.update(config=None, provider=None, version=None)
     assert embedding.active_model_id() == "BAAI/bge-small-en-v1.5"
 
     other_process.save(EmbeddingConfig(local_model="BAAI/bge-base-en-v1.5").model_dump_json())
@@ -32,4 +42,4 @@ def test_task_snapshot_rereads_a_switched_model(postgres_repository, monkeypatch
     with embedding.snapshot():
         assert embedding.active_model_id() == "BAAI/bge-base-en-v1.5"
         assert embedding.active_vector_table() == "chunk_vectors_baai_bge_base_en_v1_5_768"
-    embedding._cache.update(config=None, provider=None)
+    embedding._cache.update(config=None, provider=None, version=None)
