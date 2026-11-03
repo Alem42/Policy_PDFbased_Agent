@@ -23,7 +23,8 @@ def worker_main(connection, cache_dir: str):
                     tok = AutoTokenizer.from_pretrained(
                         model_name, cache_dir=cache_dir, padding_side="left"
                     )
-                    factory = AutoModel if operation == "embed" else AutoModelForCausalLM
+                    kind = request.get("kind", operation)
+                    factory = AutoModel if kind == "embed" else AutoModelForCausalLM
                     model = (
                         factory.from_pretrained(
                             model_name,

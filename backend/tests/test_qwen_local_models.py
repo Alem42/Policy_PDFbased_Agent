@@ -128,7 +128,8 @@ def fake_runtime(response=None, poll=True):
     return runtime, connection, process
 
 
-def test_unload_terminates_child_and_closes_pipe():
+def test_unload_terminates_child_and_closes_pipe(monkeypatch):
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", False)
     runtime, connection, process = fake_runtime()
     assert runtime.call("embed", idle_seconds=0) == [[1]]
     process.terminate.assert_called_once()
@@ -145,7 +146,8 @@ def test_timeout_discards_gpu_worker():
     assert runtime.status()["loaded"] is False
 
 
-def test_old_idle_timer_cannot_unload_new_request():
+def test_old_idle_timer_cannot_unload_new_request(monkeypatch):
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", False)
     runtime, _, process = fake_runtime()
     runtime.call("embed", idle_seconds=300)
     old = runtime._generation
@@ -165,3 +167,24 @@ def test_status_does_not_wait_for_a_busy_gpu_worker():
         thread.join(timeout=1)
         assert not thread.is_alive()
         assert results[0]["busy"] is True
+
+
+def test_keep_loaded_ignores_idle_release(monkeypatch):
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", True)
+    runtime, _, process = fake_runtime()
+    runtime.call("embed", idle_seconds=0)
+    assert runtime._timer is None
+    process.terminate.assert_not_called()
+    runtime.unload()
+    process.terminate.assert_called_once()
+
+
+def test_preload_loads_each_model_without_inference(monkeypatch):
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", True)
+    runtime, connection, _ = fake_runtime({"ok": True, "result": [], "status": {}})
+    runtime.preload([("embed", EMBEDDING_MODEL), ("rerank", RERANKER_MODEL)])
+    sent = [call.args[0] for call in connection.send.call_args_list]
+    assert sent == [
+        {"operation": "load", "model": EMBEDDING_MODEL, "kind": "embed", "texts": []},
+        {"operation": "load", "model": RERANKER_MODEL, "kind": "rerank", "texts": []},
+    ]

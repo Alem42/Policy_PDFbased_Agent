@@ -32,6 +32,8 @@ def _reload() -> None:
 
 
 def active_config() -> RerankingConfig:
+    if reranking_settings_repository.changed(2.0):
+        _cache["config"] = None
     if _cache["config"] is None:
         _reload()
     return _cache["config"]
@@ -138,6 +140,9 @@ def update_config(partial: dict) -> RerankingConfig:
     config = _merge(partial)
     reranking_settings_repository.save(config)
     _reload()
+    from app.modules.local_models.preload import refresh_selected_models
+
+    refresh_selected_models()
     return config
 
 

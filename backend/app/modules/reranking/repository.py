@@ -13,6 +13,9 @@ class RerankingSettingsRepository:
     def load(self) -> RerankingConfig:
         return RerankingConfig(**self._store.load())
 
+    def changed(self, max_age: float) -> bool:
+        return self._store.changed(max_age)
+
     def save(self, config: RerankingConfig) -> None:
         self._store.save(config.model_dump_json())
 

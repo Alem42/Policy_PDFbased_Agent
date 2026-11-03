@@ -88,7 +88,9 @@ class LocalModelRuntime:
                 self._release()
                 raise
             finally:
-                if idle_seconds <= 0:
+                if get_settings().local_models_keep_loaded:
+                    pass  # Stay resident until unload() or process exit.
+                elif idle_seconds <= 0:
                     self._release()
                 elif self._process:
                     self._timer = Timer(idle_seconds, self._expire, args=(generation,))
@@ -112,6 +114,11 @@ class LocalModelRuntime:
                 self._process.terminate()
             self._process.join(timeout=10)
             self._process = None
+
+    def preload(self, models: list[tuple[str, str]]) -> None:
+        """Load (kind, model) pairs, where kind is "embed" or "rerank", without inference."""
+        for kind, model in models:
+            self.call("load", model=model, kind=kind, texts=[])
 
     def unload(self):
         with self._lock:

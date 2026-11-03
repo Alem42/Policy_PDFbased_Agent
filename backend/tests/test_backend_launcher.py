@@ -28,15 +28,26 @@ def test_system_python_selects_existing_project_environment(
             path.parent.mkdir(parents=True)
             path.touch()
     execute = Mock()
+    child = Mock()
+    child.return_value.wait.return_value = 0
     monkeypatch.setattr(run_backend.os, "execv", execute)
-
-    run_backend._use_project_environment()
+    monkeypatch.setattr(run_backend.subprocess, "Popen", child)
 
     if location == "none":
+        run_backend._use_project_environment()
+        execute.assert_not_called()
+        child.assert_not_called()
+        return
+    expected = str(backend_python if location == "backend" else root_python)
+    args = [expected, "-m", "scripts.run_backend"]
+    if platform == "win32":
+        with pytest.raises(SystemExit):
+            run_backend._use_project_environment()
+        child.assert_called_once_with(args)
         execute.assert_not_called()
     else:
-        expected = str(backend_python if location == "backend" else root_python)
-        execute.assert_called_once_with(expected, [expected, "-m", "scripts.run_backend"])
+        run_backend._use_project_environment()
+        execute.assert_called_once_with(expected, args)
 
 
 def test_explicitly_activated_environment_is_not_overridden(monkeypatch):

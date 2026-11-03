@@ -39,6 +39,13 @@ from app.modules.embedding.settings import (
 _cache: dict = {"config": None, "provider": None}
 _cache_lock = RLock()
 _snapshot: ContextVar[tuple | None] = ContextVar("embedding_snapshot", default=None)
+# How stale another process's model switch may be on the query path.
+SETTINGS_RECHECK_SECONDS = 2.0
+
+
+def _refresh(max_age: float = SETTINGS_RECHECK_SECONDS) -> None:
+    if embedding_settings_repository.changed(max_age):
+        _reload()
 
 
 def _resolved_config(config: EmbeddingConfig) -> EmbeddingConfig:
@@ -86,6 +93,8 @@ def invalidate_provider_cache() -> None:
 def snapshot():
     """Pin one attempt's config/provider so a settings change cannot mislabel vectors."""
     with _cache_lock:
+        # Tasks always check, so a worker never embeds with a model the admin replaced.
+        _refresh(0)
         if _cache["config"] is None or _cache["provider"] is None:
             _reload()
         current = (_cache["config"].model_copy(deep=True), _cache["provider"])
@@ -99,6 +108,7 @@ def snapshot():
 def active_config() -> EmbeddingConfig:
     if current := _snapshot.get():
         return current[0]
+    _refresh()
     if _cache["config"] is None:
         _reload()
     return _cache["config"]
@@ -107,6 +117,7 @@ def active_config() -> EmbeddingConfig:
 def _provider() -> EmbeddingProvider:
     if current := _snapshot.get():
         return current[1]
+    _refresh()
     if _cache["provider"] is None:
         _reload()
     return _cache["provider"]
@@ -213,6 +224,9 @@ def update_config(partial: dict) -> EmbeddingConfig:
         config = config.model_copy(update={"dimensions": resolved})
     embedding_settings_repository.save(config)
     _reload()
+    from app.modules.local_models.preload import refresh_selected_models
+
+    refresh_selected_models()
     return config
 
 

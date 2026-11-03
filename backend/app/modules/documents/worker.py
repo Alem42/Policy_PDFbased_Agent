@@ -7,6 +7,7 @@ import signal
 
 from app.core.config import get_settings
 from app.core.database import database
+from app.core.environment import require_project_interpreter
 from app.modules.documents.processing_queue import DocumentProcessingQueue
 from app.modules.documents.schema import validate_document_task_schema
 
@@ -14,6 +15,7 @@ from app.modules.documents.schema import validate_document_task_schema
 async def run(concurrency: int, *, warmup: bool = False) -> None:
     if not get_settings().database_enabled:
         raise RuntimeError("Worker requires DATABASE_ENABLED=true.")
+    require_project_interpreter()
     await database.connect()
     queue = DocumentProcessingQueue(max_concurrent=concurrency)
     try:

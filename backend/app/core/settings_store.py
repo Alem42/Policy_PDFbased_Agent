@@ -18,6 +18,7 @@ import json
 import logging
 from copy import deepcopy
 from threading import RLock
+from time import monotonic
 
 from app.core.database import get_connection
 
@@ -31,6 +32,8 @@ class SingleRowSettings:
         # `table` is a fixed internal constant per service, never user input.
         self.table = table
         self._cache: dict | None = None
+        self._version = None
+        self._checked_at = float("-inf")
         self._lock = RLock()
 
     def load(self) -> dict:
@@ -39,11 +42,13 @@ class SingleRowSettings:
                 try:
                     with get_connection() as connection:
                         row = connection.execute(
-                            f"SELECT config FROM {self.table} WHERE id = 1"
+                            f"SELECT config, updated_at FROM {self.table} WHERE id = 1"
                         ).fetchone()
                 except Exception as exc:
                     logger.warning("%s unavailable, using defaults: %s", self.table, exc)
                     row = None
+                self._version = row.get("updated_at") if row else None
+                self._checked_at = monotonic()
                 if not row or not row.get("config"):
                     self._cache = {}
                 else:
@@ -55,17 +60,43 @@ class SingleRowSettings:
         parsed = json.loads(config_json)
         with self._lock:
             with get_connection() as connection:
-                connection.execute(
+                row = connection.execute(
                     f"""
                     INSERT INTO {self.table} (id, config, updated_at)
                     VALUES (1, %s::jsonb, now())
                     ON CONFLICT (id) DO UPDATE
                     SET config = EXCLUDED.config, updated_at = now()
+                    RETURNING updated_at
                     """,
                     (config_json,),
-                )
+                ).fetchone()
                 connection.commit()
             self._cache = parsed
+            self._version = row["updated_at"] if row else None
+            self._checked_at = monotonic()
+
+    def changed(self, max_age: float) -> bool:
+        """True once when another process saved a newer row; queries at most every max_age s.
+
+        Each API instance and worker process caches the config, so without this an admin's
+        model switch would only reach the process that handled the save.
+        """
+        with self._lock:
+            if self._cache is None or monotonic() - self._checked_at < max_age:
+                return False
+            self._checked_at = monotonic()
+            try:
+                with get_connection() as connection:
+                    row = connection.execute(
+                        f"SELECT updated_at FROM {self.table} WHERE id = 1"
+                    ).fetchone()
+            except Exception:
+                return False
+            version = row["updated_at"] if row else None
+            if version == self._version:
+                return False
+            self._cache = None
+            return True
 
     def invalidate(self) -> None:
         """Force the next read to reload the database row."""

@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     upload_request_overhead_bytes: int = Field(default=256 * 1024, ge=0)
     runtime_settings_path: Path = Path("data/settings.json")
     document_task_workers: int = Field(default=3, ge=0, le=16)
+    # Refuse a different interpreter when this checkout has a project .venv.
+    require_project_venv: bool = True
+    # Load the selected local Qwen models at startup and keep them in GPU memory.
+    local_models_preload: bool = True
+    local_models_keep_loaded: bool = True
     document_task_poll_seconds: float = Field(default=1, gt=0)
     document_task_lease_seconds: float = Field(default=30, ge=3)
     document_task_heartbeat_seconds: float = Field(default=5, gt=0)

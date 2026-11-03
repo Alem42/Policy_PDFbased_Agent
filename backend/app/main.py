@@ -14,6 +14,7 @@ if sys.platform == "win32":
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import DatabaseUnavailableError, database
+from app.core.environment import require_project_interpreter
 from app.core.redis_client import redis_runtime
 from app.core.upload_limits import UploadBodyLimitMiddleware
 from app.modules.cache.taxonomy import taxonomy_cache
@@ -21,10 +22,13 @@ from app.modules.chat.rag.checkpointer import close_checkpointer, init_checkpoin
 from app.modules.documents.processing_queue import document_processing_queue
 from app.modules.documents.schema import validate_document_task_schema
 from app.modules.evaluation.service import evaluation_worker
+from app.modules.local_models.preload import preload_selected_models
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    require_project_interpreter()
+    preload = None
     await database.connect()
     try:
         await redis_runtime.start()
@@ -34,6 +38,8 @@ async def lifespan(_: FastAPI):
             await init_checkpointer()
         await document_processing_queue.start()
         await evaluation_worker.start()
+        # Loading takes seconds; serve health checks meanwhile.
+        preload = asyncio.create_task(asyncio.to_thread(preload_selected_models))
         yield
     finally:
         await evaluation_worker.stop()
@@ -43,6 +49,8 @@ async def lifespan(_: FastAPI):
         await database.disconnect()
         from app.modules.local_models.runtime import local_model_runtime
 
+        if preload is not None:
+            await asyncio.gather(preload, return_exceptions=True)
         await asyncio.to_thread(local_model_runtime.unload)
 
 
