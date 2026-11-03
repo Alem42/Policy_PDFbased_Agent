@@ -1,6 +1,7 @@
 """Run tests in a newly created disposable DB; never initialize the application DB."""
 import argparse
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -49,6 +50,8 @@ def main(pg_bin):
     finally:
         if started:
             command([pg_ctl, "-D", cluster, "-m", "fast", "-w", "stop"])
+        # Each run creates a cluster of roughly 80 MB; keep only the pytest report.
+        shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":
