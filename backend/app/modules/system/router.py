@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.concurrency_limit import chat_turn_limit
 from app.core.config import get_settings
 from app.core.database import database
 from app.core.redis_client import redis_runtime
@@ -51,3 +52,8 @@ def database_pool_status(_: Annotated[dict, Depends(require_admin)]) -> dict[str
         },
         "stats": database.pool_stats(),
     }
+
+
+@router.get("/admin/chat-concurrency")
+def chat_concurrency_status(_: Annotated[dict, Depends(require_admin)]) -> dict:
+    return chat_turn_limit.snapshot()

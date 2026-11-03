@@ -43,3 +43,19 @@ def test_task_snapshot_rereads_a_switched_model(postgres_repository, monkeypatch
         assert embedding.active_model_id() == "BAAI/bge-base-en-v1.5"
         assert embedding.active_vector_table() == "chunk_vectors_baai_bge_base_en_v1_5_768"
     embedding._cache.update(config=None, provider=None, version=None)
+
+
+def test_database_api_keys_are_encrypted_at_rest(postgres_repository):
+    import json
+
+    from app.core import secret_box
+    from app.core.database import get_connection
+    from app.modules.embedding.repository import EmbeddingSettingsRepository
+
+    repository = EmbeddingSettingsRepository()
+    repository.save(EmbeddingConfig(provider="api", api_key="zk-secret", api_model="m"))
+    with get_connection() as connection:
+        raw = connection.execute("SELECT config FROM embedding_settings WHERE id = 1").fetchone()
+    stored = raw["config"] if isinstance(raw["config"], dict) else json.loads(raw["config"])
+    assert secret_box.is_encrypted(stored["api_key"]) and "zk-secret" not in stored["api_key"]
+    assert EmbeddingSettingsRepository().load().api_key == "zk-secret"

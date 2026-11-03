@@ -21,7 +21,7 @@ from functools import lru_cache
 
 import httpx
 
-from app.core.config import get_settings, resolve_backend_path
+from app.core.config import get_settings
 from app.modules.embedding.settings import EmbeddingConfig
 
 
@@ -122,7 +122,7 @@ class QwenEmbeddingProvider(EmbeddingProvider):
 def _load_fastembed_model(model_name: str):
     from fastembed import TextEmbedding
 
-    cache_dir = resolve_backend_path(get_settings().model_cache_dir)
+    cache_dir = get_settings().model_cache_path
     cache_dir.mkdir(parents=True, exist_ok=True)
     return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
 

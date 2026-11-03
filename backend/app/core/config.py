@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = BACKEND_ROOT / ".env"
+LEGACY_DATA_DIR = BACKEND_ROOT / "data"
+
+
+def resolve_backend_path(path: Path) -> Path:
+    return path if path.is_absolute() else BACKEND_ROOT / path
 
 
 class Settings(BaseSettings):
@@ -52,26 +57,33 @@ class Settings(BaseSettings):
     upload_max_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
     upload_chunk_bytes: int = Field(default=1024 * 1024, gt=0, le=8 * 1024 * 1024)
     upload_request_overhead_bytes: int = Field(default=256 * 1024, ge=0)
-    runtime_settings_path: Path = Path("data/settings.json")
+    # Everything the backend writes lives under DATA_ROOT; keep it outside the code
+    # checkout in deployments. The explicit paths below override single locations.
+    data_root: Path = Path("data")
+    runtime_settings_path: Path | None = None
     document_task_workers: int = Field(default=3, ge=0, le=16)
+    # Chat turns (each one or more model calls) running at once per API process.
+    chat_max_concurrent_turns: int = Field(default=8, ge=1, le=256)
+    chat_queue_wait_seconds: float = Field(default=10, ge=0, le=120)
     # Refuse a different interpreter when this checkout has a project .venv.
     require_project_venv: bool = True
-    # Load the selected local Qwen models at startup and keep them in GPU memory.
+    # Load the selected local Qwen models at startup; free GPU memory after this many
+    # seconds without a call. Each call restarts the countdown.
     local_models_preload: bool = True
-    local_models_keep_loaded: bool = True
+    local_models_idle_seconds: int = Field(default=1800, ge=0, le=86400)
     document_task_poll_seconds: float = Field(default=1, gt=0)
     document_task_lease_seconds: float = Field(default=30, ge=3)
     document_task_heartbeat_seconds: float = Field(default=5, gt=0)
     document_task_max_attempts: int = Field(default=3, ge=1, le=20)
     document_task_retry_seconds: float = Field(default=2, ge=0)
     document_task_execution_timeout_seconds: float = Field(default=300, ge=1)
-    document_storage_dir: Path = Path("data/pdfs")
+    document_storage_dir: Path | None = None
     legacy_document_storage_dir: Path = Path("data/pdf")
     vector_index_dir: Path = Path("data/vector_index")
     default_top_k: int = Field(default=6, ge=1, le=20)
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_batch_size: int = Field(default=32, ge=1, le=256)
-    model_cache_dir: Path = Path("data/model_cache")
+    model_cache_dir: Path | None = None
     default_embedding_dimensions: int = 384
     max_context_characters: int = 200_000
 
@@ -87,7 +99,10 @@ class Settings(BaseSettings):
     # Prefer APP_SECRET_FILE in containers so a unique key can be generated and
     # persisted without committing it or exposing it through container metadata.
     app_secret: str | None = None
-    app_secret_file: Path = Path("data/app_secret")
+    app_secret_file: Path | None = None
+    # Encrypts provider API keys at rest. Generated in secrets/ when unset.
+    settings_encryption_key: str | None = None
+    settings_key_file: Path | None = None
 
     firecrawl_api_key: str | None = None
 
@@ -101,16 +116,49 @@ class Settings(BaseSettings):
             raise ValueError("DOCUMENT_TASK_HEARTBEAT_SECONDS must be less than half the lease")
         return self
 
+    def data_dir(self, *parts: str) -> Path:
+        return resolve_backend_path(self.data_root).joinpath(*parts)
+
+    def _located(self, explicit: Path | None, *parts: str, legacy: str) -> Path:
+        if explicit is not None:
+            return resolve_backend_path(explicit)
+        current = self.data_dir(*parts)
+        # Before `python -m app.modules.documents.migrate_storage`, keep using the
+        # pre-DATA_ROOT location under backend/data.
+        previous = LEGACY_DATA_DIR / legacy
+        return previous if not current.exists() and previous.exists() else current
+
+    @property
+    def uploads_dir(self) -> Path:
+        if self.document_storage_dir is not None:
+            return resolve_backend_path(self.document_storage_dir)
+        return self.data_dir("uploads")
+
+    @property
+    def model_cache_path(self) -> Path:
+        return self._located(self.model_cache_dir, "model-cache", legacy="model_cache")
+
+    @property
+    def app_secret_path(self) -> Path:
+        return self._located(self.app_secret_file, "secrets", "app_secret", legacy="app_secret")
+
+    @property
+    def settings_file_path(self) -> Path:
+        return self._located(
+            self.runtime_settings_path, "secrets", "settings.json", legacy="settings.json"
+        )
+
+    @property
+    def settings_key_path(self) -> Path:
+        return self._located(
+            self.settings_key_file, "secrets", "settings.key", legacy="settings.key"
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
 
 
-DATA_DIR = BACKEND_ROOT / "data"
-SETTINGS_PATH = BACKEND_ROOT / get_settings().runtime_settings_path
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def resolve_backend_path(path: Path) -> Path:
-    return path if path.is_absolute() else BACKEND_ROOT / path
+SETTINGS_PATH = get_settings().settings_file_path
+get_settings().data_dir().mkdir(parents=True, exist_ok=True)

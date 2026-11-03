@@ -9,7 +9,7 @@ import secrets
 import time
 from pathlib import Path
 
-from app.core.config import get_settings, resolve_backend_path
+from app.core.config import get_settings
 from app.modules.auth.invites import hash_invite_code
 from app.modules.auth.repository import user_repository
 
@@ -22,7 +22,7 @@ def application_secret_key() -> bytes:
     if settings.app_secret:
         return settings.app_secret.encode("utf-8")
 
-    secret_path: Path = resolve_backend_path(settings.app_secret_file)
+    secret_path: Path = settings.app_secret_path
     secret_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         descriptor = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

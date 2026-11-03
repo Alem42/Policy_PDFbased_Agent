@@ -169,7 +169,7 @@ class DocumentRepository:
     def known_file_paths(self) -> set[str]:
         with get_connection() as connection:
             rows = connection.execute("SELECT file_path FROM documents").fetchall()
-        return {row["file_path"] for row in rows}
+        return {row["file_path"].replace("\\", "/") for row in rows}
 
     def all_document_ids(self) -> list[str]:
         with get_connection() as connection:

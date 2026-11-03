@@ -129,7 +129,7 @@ def fake_runtime(response=None, poll=True):
 
 
 def test_unload_terminates_child_and_closes_pipe(monkeypatch):
-    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", False)
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_idle_seconds", 0)
     runtime, connection, process = fake_runtime()
     assert runtime.call("embed", idle_seconds=0) == [[1]]
     process.terminate.assert_called_once()
@@ -147,7 +147,7 @@ def test_timeout_discards_gpu_worker():
 
 
 def test_old_idle_timer_cannot_unload_new_request(monkeypatch):
-    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", False)
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_idle_seconds", 300)
     runtime, _, process = fake_runtime()
     runtime.call("embed", idle_seconds=300)
     old = runtime._generation
@@ -169,18 +169,18 @@ def test_status_does_not_wait_for_a_busy_gpu_worker():
         assert results[0]["busy"] is True
 
 
-def test_keep_loaded_ignores_idle_release(monkeypatch):
-    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", True)
+def test_deployment_idle_setting_replaces_the_per_model_value(monkeypatch):
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_idle_seconds", 1800)
     runtime, _, process = fake_runtime()
-    runtime.call("embed", idle_seconds=0)
-    assert runtime._timer is None
+    runtime.call("embed", idle_seconds=0)  # Manage page value: release immediately
+    assert runtime._timer is not None and runtime._timer.interval == 1800
     process.terminate.assert_not_called()
     runtime.unload()
     process.terminate.assert_called_once()
 
 
 def test_preload_loads_each_model_without_inference(monkeypatch):
-    monkeypatch.setattr(runtime_module.get_settings(), "local_models_keep_loaded", True)
+    monkeypatch.setattr(runtime_module.get_settings(), "local_models_idle_seconds", 1800)
     runtime, connection, _ = fake_runtime({"ok": True, "result": [], "status": {}})
     runtime.preload([("embed", EMBEDDING_MODEL), ("rerank", RERANKER_MODEL)])
     sent = [call.args[0] for call in connection.send.call_args_list]

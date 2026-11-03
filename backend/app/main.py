@@ -12,6 +12,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from app.api.router import api_router
+from app.core.concurrency_limit import ConcurrencyLimitMiddleware, chat_turn_limit
 from app.core.config import get_settings
 from app.core.database import DatabaseUnavailableError, database
 from app.core.environment import require_project_interpreter
@@ -28,6 +29,10 @@ from app.modules.local_models.preload import preload_selected_models
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     require_project_interpreter()
+    from app.modules.settings.repository import settings_repository
+
+    # Reading once at startup encrypts any plaintext keys left by older versions.
+    settings_repository.load()
     preload = None
     await database.connect()
     try:
@@ -63,6 +68,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+app.add_middleware(
+    ConcurrencyLimitMiddleware,
+    paths={
+        f"{settings.api_v1_prefix}/chat",
+        f"{settings.api_v1_prefix}/chat/stream",
+        f"{settings.api_v1_prefix}/chat/resume",
+    },
+    limit=chat_turn_limit,
+)
 app.add_middleware(
     UploadBodyLimitMiddleware,
     upload_path=f"{settings.api_v1_prefix}/admin/documents",

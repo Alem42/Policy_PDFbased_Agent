@@ -7,6 +7,9 @@ is empty/unavailable, so the app runs before migration 006 is applied.
 
 from __future__ import annotations
 
+import json
+
+from app.core import secret_box
 from app.core.settings_store import SingleRowSettings
 from app.modules.embedding.settings import EmbeddingConfig
 
@@ -16,7 +19,9 @@ class EmbeddingSettingsRepository:
         self._store = SingleRowSettings("embedding_settings")
 
     def load(self) -> EmbeddingConfig:
-        return EmbeddingConfig(**self._store.load())
+        data = self._store.load()
+        data["api_key"] = secret_box.decrypt(data.get("api_key")) or ""
+        return EmbeddingConfig(**data)
 
     def version(self, max_age: float):
         return self._store.version(max_age)
@@ -25,7 +30,9 @@ class EmbeddingSettingsRepository:
         return self._store.loaded_version()
 
     def save(self, config: EmbeddingConfig) -> None:
-        self._store.save(config.model_dump_json())
+        data = config.model_dump(mode="json")
+        data["api_key"] = secret_box.encrypt(data.get("api_key")) or ""
+        self._store.save(json.dumps(data))
 
 
 embedding_settings_repository = EmbeddingSettingsRepository()

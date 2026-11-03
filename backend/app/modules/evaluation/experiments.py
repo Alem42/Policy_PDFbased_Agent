@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from app.core.config import get_settings, resolve_backend_path
+from app.core.config import get_settings
 from app.core.database import get_connection
 from app.modules.documents.chunker import DocumentChunker
 from app.modules.documents.repositories.content import document_content_repository
@@ -52,7 +52,7 @@ def source_fingerprint(pages):
 
 def model_revision():
     path = (
-        resolve_backend_path(get_settings().model_cache_dir)
+        get_settings().model_cache_path
         / "huggingface"
         / f"models--{EMBEDDING_MODEL.replace('/', '--')}"
         / "refs/main"

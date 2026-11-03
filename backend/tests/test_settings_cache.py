@@ -1,7 +1,7 @@
 import json
 from contextlib import contextmanager
 
-from app.core import settings_store
+from app.core import secret_box, settings_store
 from app.core.settings_store import SingleRowSettings
 from app.modules.settings import repository as settings_repository_module
 from app.modules.settings.repository import SettingsRepository
@@ -31,9 +31,9 @@ def test_runtime_settings_are_cached_and_defensively_copied(tmp_path, monkeypatc
     repository.save(RuntimeSettings(provider_api_keys={"zhipu": "saved-key"}))
 
     assert repository.load().provider_api_keys["zhipu"] == "saved-key"
-    assert json.loads(settings_path.read_text(encoding="utf-8"))["provider_api_keys"] == {
-        "zhipu": "saved-key"
-    }
+    stored = json.loads(settings_path.read_text(encoding="utf-8"))["provider_api_keys"]["zhipu"]
+    assert secret_box.is_encrypted(stored) and "saved-key" not in stored
+    assert secret_box.decrypt(stored) == "saved-key"
 
 
 def test_runtime_settings_invalidation_reloads_the_file(tmp_path, monkeypatch):
@@ -80,11 +80,9 @@ def test_legacy_runtime_fields_are_removed_on_save(tmp_path, monkeypatch):
 
     repository.save(loaded)
 
-    assert json.loads(settings_path.read_text(encoding="utf-8")) == {
-        "llm_provider": "deepseek",
-        "provider_api_keys": {"deepseek": "current-key"},
-        "web_search_provider_api_keys": {},
-    }
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert secret_box.decrypt(saved.pop("provider_api_keys")["deepseek"]) == "current-key"
+    assert saved == {"llm_provider": "deepseek", "web_search_provider_api_keys": {}}
 
 
 def test_single_row_settings_read_database_once_and_update_cache(monkeypatch):
@@ -160,3 +158,40 @@ def test_single_row_settings_invalidation_reloads_database(monkeypatch):
 
     assert store.load() == {"enabled": False}
     assert state["selects"] == 2
+
+
+def test_plaintext_keys_from_older_versions_are_encrypted_on_first_read(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "provider_api_keys": {"deepseek": "sk-plain"},
+                "web_search_provider_api_keys": {"firecrawl": "fc-plain"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_repository_module, "SETTINGS_PATH", settings_path)
+
+    loaded = SettingsRepository().load()
+
+    assert loaded.provider_api_keys == {"deepseek": "sk-plain"}
+    assert loaded.web_search_provider_api_keys == {"firecrawl": "fc-plain"}
+    on_disk = settings_path.read_text(encoding="utf-8")
+    assert "sk-plain" not in on_disk and "fc-plain" not in on_disk
+    assert SettingsRepository().load().provider_api_keys == {"deepseek": "sk-plain"}
+
+
+def test_a_replaced_settings_key_reads_as_unset_instead_of_crashing(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from app.core.config import get_settings
+
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setattr(settings_repository_module, "SETTINGS_PATH", settings_path)
+    SettingsRepository().save(RuntimeSettings(provider_api_keys={"deepseek": "sk-secret"}))
+
+    monkeypatch.setattr(get_settings(), "settings_encryption_key", Fernet.generate_key().decode())
+    secret_box.reset_cache()
+
+    assert SettingsRepository().load().provider_api_keys == {"deepseek": ""}

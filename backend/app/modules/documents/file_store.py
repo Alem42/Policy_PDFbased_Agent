@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
-from app.core.config import BACKEND_ROOT, get_settings, resolve_backend_path
+from app.core.config import BACKEND_ROOT, LEGACY_DATA_DIR, get_settings, resolve_backend_path
 from app.modules.documents.exceptions import UploadTooLargeError
 
 # Extension -> MIME type for every source format the ingestion pipeline
@@ -64,10 +64,17 @@ class DocumentFileStore:
 
     @staticmethod
     def relative_path(path: Path) -> str:
-        # A storage directory outside the backend, such as a shared mount, stays absolute.
+        """The value stored in documents.file_path: POSIX, portable across hosts.
+
+        Files under the uploads directory are stored relative to it, so moving
+        DATA_ROOT only needs a config change. Older files under backend/ keep
+        their backend-relative path; anything else stays absolute.
+        """
         resolved = path.resolve()
-        root = BACKEND_ROOT.resolve()
-        return str(resolved.relative_to(root) if resolved.is_relative_to(root) else resolved)
+        for root in (get_settings().uploads_dir.resolve(), BACKEND_ROOT.resolve()):
+            if resolved.is_relative_to(root):
+                return resolved.relative_to(root).as_posix()
+        return resolved.as_posix()
 
     def save(self, filename: str, content: bytes, document_id: str | None = None) -> Path:
         safe_name = self.safe_filename(filename)
@@ -153,8 +160,14 @@ class DocumentFileStore:
         return path
 
     @staticmethod
-    def path(relative_path: str) -> Path:
-        return BACKEND_ROOT / relative_path
+    def path(stored_path: str) -> Path:
+        # Rows written on Windows before this change use backslashes.
+        normalized = stored_path.replace("\\", "/")
+        if Path(stored_path).is_absolute() or normalized.startswith("/"):
+            return Path(stored_path)
+        if normalized.split("/", 1)[0] == "data":
+            return BACKEND_ROOT / normalized  # legacy rows, relative to backend/
+        return get_settings().uploads_dir / normalized
 
     @staticmethod
     def delete(path: Path) -> None:
@@ -193,20 +206,22 @@ class DocumentFileStore:
 
     @staticmethod
     def _document_dir() -> Path:
-        path = resolve_backend_path(get_settings().document_storage_dir)
+        path = get_settings().uploads_dir
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @staticmethod
-    def _legacy_document_dir() -> Path:
-        return resolve_backend_path(get_settings().legacy_document_storage_dir)
+    def _legacy_document_dirs() -> list[Path]:
+        return [
+            resolve_backend_path(get_settings().legacy_document_storage_dir),
+            LEGACY_DATA_DIR / "pdfs",
+        ]
 
     def _document_roots(self) -> list[Path]:
-        document_dir = self._document_dir()
-        legacy_document_dir = self._legacy_document_dir()
-        roots = [document_dir]
-        if legacy_document_dir.exists() and legacy_document_dir.resolve() != document_dir.resolve():
-            roots.append(legacy_document_dir)
+        roots = [self._document_dir()]
+        for legacy in self._legacy_document_dirs():
+            if legacy.exists() and all(legacy.resolve() != root.resolve() for root in roots):
+                roots.append(legacy)
         return roots
 
 

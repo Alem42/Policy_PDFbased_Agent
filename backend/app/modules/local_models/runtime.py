@@ -8,7 +8,7 @@ from functools import lru_cache
 from importlib.util import find_spec
 from threading import RLock, Timer
 
-from app.core.config import get_settings, resolve_backend_path
+from app.core.config import get_settings
 
 EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
@@ -34,7 +34,7 @@ def tokenizer(model: str):
         from transformers import AutoTokenizer
     except ImportError as exc:
         raise RuntimeError("Install the backend local-models extra before selecting Qwen.") from exc
-    cache = resolve_backend_path(get_settings().model_cache_dir) / "huggingface"
+    cache = get_settings().model_cache_path / "huggingface"
     return AutoTokenizer.from_pretrained(model, cache_dir=str(cache), padding_side="left")
 
 
@@ -60,7 +60,7 @@ class LocalModelRuntime:
         from app.modules.local_models.worker import worker_main
 
         parent, child = self._context.Pipe()
-        cache = str(resolve_backend_path(get_settings().model_cache_dir) / "huggingface")
+        cache = str(get_settings().model_cache_path / "huggingface")
         process = self._context.Process(target=worker_main, args=(child, cache), daemon=True)
         process.start()
         child.close()
@@ -88,9 +88,10 @@ class LocalModelRuntime:
                 self._release()
                 raise
             finally:
-                if get_settings().local_models_keep_loaded:
-                    pass  # Stay resident until unload() or process exit.
-                elif idle_seconds <= 0:
+                # The deployment-wide idle setting replaces the per-model value from
+                # Manage, so a conversation does not reload weights between questions.
+                idle_seconds = get_settings().local_models_idle_seconds
+                if idle_seconds <= 0:
                     self._release()
                 elif self._process:
                     self._timer = Timer(idle_seconds, self._expire, args=(generation,))

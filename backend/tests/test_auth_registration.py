@@ -114,7 +114,7 @@ def test_generated_app_secret_is_persisted_and_reused(tmp_path, monkeypatch):
     settings = type(
         "Settings",
         (),
-        {"app_secret": None, "app_secret_file": tmp_path / "app_secret"},
+        {"app_secret": None, "app_secret_path": tmp_path / "app_secret"},
     )()
     monkeypatch.setattr(service, "get_settings", lambda: settings)
 

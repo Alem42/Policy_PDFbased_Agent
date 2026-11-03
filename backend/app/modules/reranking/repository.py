@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+from app.core import secret_box
 from app.core.settings_store import SingleRowSettings
 from app.modules.reranking.config import RerankingConfig
 
@@ -11,7 +14,9 @@ class RerankingSettingsRepository:
         self._store = SingleRowSettings("reranking_settings")
 
     def load(self) -> RerankingConfig:
-        return RerankingConfig(**self._store.load())
+        data = self._store.load()
+        data["api_key"] = secret_box.decrypt(data.get("api_key")) or ""
+        return RerankingConfig(**data)
 
     def version(self, max_age: float):
         return self._store.version(max_age)
@@ -20,7 +25,9 @@ class RerankingSettingsRepository:
         return self._store.loaded_version()
 
     def save(self, config: RerankingConfig) -> None:
-        self._store.save(config.model_dump_json())
+        data = config.model_dump(mode="json")
+        data["api_key"] = secret_box.encrypt(data.get("api_key")) or ""
+        self._store.save(json.dumps(data))
 
 
 reranking_settings_repository = RerankingSettingsRepository()
