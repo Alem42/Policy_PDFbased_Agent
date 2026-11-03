@@ -28,3 +28,6 @@ backend/eval-results/
 
 # Disposable PostgreSQL clusters and local verification artifacts
 /tmp/
+
+# Personal study material and demo data stay outside the repository
+/output/
