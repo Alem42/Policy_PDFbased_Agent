@@ -13,7 +13,15 @@ docker compose up
 Open <http://localhost>. The health endpoint is
 <http://localhost/api/v1/health>. Port 80 must be available on the host.
 
-The first build downloads the frontend, backend and PostgreSQL/pgvector images.
+The stack runs five services: `web` (Caddy and the frontend), `backend` (the
+API), `worker` (document processing), `db` (PostgreSQL/pgvector) and `redis`
+(taxonomy cache and per-user rate limits). Only `web` publishes a port.
+Uploads are queued in PostgreSQL and processed by `worker`, so OCR and embedding
+do not slow the API. Add processing capacity with
+`docker compose up --scale worker=2`; follow it with
+`docker compose logs -f worker`.
+
+The first build downloads the frontend, backend, PostgreSQL/pgvector and Redis images.
 Subsequent starts reuse the local images and persistent volumes. Stop the stack
 with `Ctrl+C`, or use `docker compose down` when it runs detached. Do not use
 `docker compose down -v` unless you intend to delete the database.

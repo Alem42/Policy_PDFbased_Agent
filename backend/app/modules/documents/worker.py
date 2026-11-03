@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import signal
 
 from app.core.config import get_settings
 from app.core.database import database
@@ -22,10 +23,22 @@ async def run(concurrency: int, *, warmup: bool = False) -> None:
 
             await asyncio.to_thread(embedding.embed_query, "Warm up policy document retrieval.")
         await queue.start()
-        await asyncio.Event().wait()
+        await _stop_signal().wait()
     finally:
         await queue.stop()
         await database.disconnect()
+
+
+def _stop_signal() -> asyncio.Event:
+    # `docker compose stop` sends SIGTERM; drain claims instead of dying mid-task.
+    stopped = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for name in ("SIGTERM", "SIGINT"):
+        try:
+            loop.add_signal_handler(getattr(signal, name), stopped.set)
+        except (NotImplementedError, AttributeError):
+            pass  # Windows: Ctrl+C still raises KeyboardInterrupt.
+    return stopped
 
 
 def main() -> None:
