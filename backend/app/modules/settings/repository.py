@@ -5,16 +5,31 @@ from app.core.config import SETTINGS_PATH
 from app.modules.settings.schemas import RuntimeSettings
 
 
+def _stamp() -> tuple[int, int] | None:
+    try:
+        stat = SETTINGS_PATH.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 class SettingsRepository:
-    """JSON-backed runtime settings with a process-local read-through cache."""
+    """JSON-backed runtime settings with a process-local read-through cache.
+
+    The cache is dropped when the file changes, so a model or key saved through one
+    API process also reaches the worker process and other API instances.
+    """
 
     def __init__(self) -> None:
         self._cache: RuntimeSettings | None = None
+        self._stamp: tuple[int, int] | None = None
         self._lock = RLock()
 
     def load(self) -> RuntimeSettings:
         with self._lock:
-            if self._cache is None:
+            stamp = _stamp()
+            if self._cache is None or stamp != self._stamp:
+                self._stamp = stamp
                 if not SETTINGS_PATH.is_file():
                     self._cache = RuntimeSettings()
                 else:
@@ -35,6 +50,7 @@ class SettingsRepository:
             )
             temporary_path.replace(SETTINGS_PATH)
             self._cache = settings.model_copy(deep=True)
+            self._stamp = _stamp()
 
     def invalidate(self) -> None:
         """Force the next read to reload the settings file."""

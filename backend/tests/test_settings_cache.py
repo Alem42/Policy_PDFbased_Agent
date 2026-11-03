@@ -19,12 +19,14 @@ def test_runtime_settings_are_cached_and_defensively_copied(tmp_path, monkeypatc
 
     first = repository.load()
     first.provider_api_keys["zhipu"] = "mutated-outside-cache"
+    assert repository.load().provider_api_keys["zhipu"] == "first-key"
+
+    # Another process (worker or second API instance) saved new settings.
     settings_path.write_text(
         json.dumps({"provider_api_keys": {"zhipu": "changed-on-disk"}}),
         encoding="utf-8",
     )
-
-    assert repository.load().provider_api_keys["zhipu"] == "first-key"
+    assert repository.load().provider_api_keys["zhipu"] == "changed-on-disk"
 
     repository.save(RuntimeSettings(provider_api_keys={"zhipu": "saved-key"}))
 
