@@ -43,6 +43,7 @@ services:
       - ./backend/database/migrations/028_durable_document_tasks.sql:/docker-entrypoint-initdb.d/29_migration_028.sql:ro
       - ./backend/database/migrations/029_add_evaluation.sql:/docker-entrypoint-initdb.d/30_migration_029.sql:ro
       - ./backend/database/migrations/030_evidence_experiments.sql:/docker-entrypoint-initdb.d/31_migration_030.sql:ro
+      - ./backend/database/migrations/031_rechunk_task_type.sql:/docker-entrypoint-initdb.d/32_migration_031.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d testdb"]
       interval: 5s

@@ -3,6 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.modules.auth.dependencies import require_admin
@@ -22,6 +23,20 @@ async def list_tasks(_: AdminUser, limit: int = Query(50, ge=1, le=200)) -> dict
     ]
     result["workers_per_process"] = get_settings().document_task_workers
     return result
+
+
+class TaskProgressRequest(BaseModel):
+    task_ids: list[UUID] = Field(max_length=50000)
+
+
+@router.post("/progress")
+async def task_progress(payload: TaskProgressRequest, _: AdminUser) -> dict:
+    """Counts for one batch returned by rescan, re-embed or re-chunk."""
+    ids = [str(task_id) for task_id in payload.task_ids]
+    if not ids:
+        return {"total": 0, "queued": 0, "running": 0, "succeeded": 0, "failed": 0,
+                "finished": True, "errors": []}
+    return await asyncio.to_thread(document_task_repository.progress_of, ids)
 
 
 @router.post("/{task_id}/retry", status_code=202)

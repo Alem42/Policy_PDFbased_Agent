@@ -338,3 +338,52 @@ async def test_reembed_retry_preserves_chunks_and_returns_to_embedding_state(sce
             ).fetchall()
             == chunk_ids
         )
+
+
+async def test_rechunk_resplits_stored_pages_without_llm_metadata(scenario, monkeypatch):
+    from app.modules.embedding.repository import embedding_settings_repository
+
+    upload, _, _ = scenario
+    previous = embedding_settings_repository.load()
+    try:
+        embedding_settings_repository.save(EmbeddingConfig(chunk_token_budget=480))
+        row = await upload()
+        pipeline.execute_document_task(tasks.claim("worker-ingest"))
+        before = counts(row["id"])
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE document_metadata SET title = 'Edited by admin' WHERE document_id = %s",
+                (row["id"],),
+            )
+
+        def no_llm(**_):
+            raise AssertionError("rechunk must not call the metadata LLM")
+
+        monkeypatch.setattr(pipeline, "generate_document_metadata", no_llm)
+        monkeypatch.setattr(pipeline, "extract_document", no_llm)
+        embedding_settings_repository.save(EmbeddingConfig(chunk_token_budget=64))
+        task = tasks.enqueue(row["id"], "rechunk")
+        claimed = tasks.claim("worker-rechunk")
+        assert claimed["id"] == task["id"]
+        pipeline.execute_document_task(claimed)
+
+        after = counts(row["id"])
+        assert after["pages"] == before["pages"]
+        assert after["chunks"] > before["chunks"]
+        assert after["vectors"] == after["chunks"]
+        progress = tasks.progress_of([str(task["id"])])
+        assert progress["succeeded"] == 1 and progress["finished"]
+        with get_connection() as conn:
+            state = conn.execute(
+                "SELECT d.status, m.title, t.result_json->>'chunk_token_budget' AS budget "
+                "FROM documents d JOIN document_metadata m ON m.document_id = d.id "
+                "JOIN document_tasks t ON t.id = %s WHERE d.id = %s",
+                (task["id"], row["id"]),
+            ).fetchone()
+        assert (state["status"], state["title"], state["budget"]) == (
+            "ready",
+            "Edited by admin",
+            "64",
+        )
+    finally:
+        embedding_settings_repository.save(previous)

@@ -8,6 +8,12 @@ from app.core.config import get_settings
 from app.core.database import get_connection
 
 
+def _queued_status(task_type: str) -> str:
+    # Re-embedding and re-chunking keep the extracted text, so the document waits in
+    # the embedding stage rather than going back to "uploaded".
+    return "annotated" if task_type in ("reembed", "rechunk") else "uploaded"
+
+
 class LostTaskLease(RuntimeError):
     """An expired/replaced worker must discard its computed result."""
 
@@ -41,7 +47,7 @@ class DocumentTaskRepository:
         ).fetchone()
         connection.execute(
             "UPDATE documents SET status = %s, error_message = NULL WHERE id = %s",
-            ("annotated" if task_type == "reembed" else "uploaded", document_id),
+            (_queued_status(task_type), document_id),
         )
         return dict(task)
 
@@ -169,7 +175,7 @@ class DocumentTaskRepository:
             conn.execute(
                 "UPDATE documents SET status = %s, error_message = %s WHERE id = %s",
                 (
-                    ("annotated" if task["task_type"] == "reembed" else "uploaded")
+                    _queued_status(task["task_type"])
                     if retry
                     else "failed",
                     message,
@@ -211,7 +217,7 @@ class DocumentTaskRepository:
             conn.execute(
                 "UPDATE documents SET status = %s, error_message = NULL WHERE id = %s",
                 (
-                    "annotated" if task["task_type"] == "reembed" else "uploaded",
+                    _queued_status(task["task_type"]),
                     task["document_id"],
                 ),
             )
@@ -234,6 +240,32 @@ class DocumentTaskRepository:
                 (task["available_at"], task["created_at"], task["id"]),
             ).fetchone()
         return int(row["n"])
+
+    def progress_of(self, task_ids: list[str]) -> dict:
+        """Status counts for one batch of tasks (what the admin progress bar polls)."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT status, count(*) AS n FROM document_tasks WHERE id = ANY(%s::uuid[]) "
+                "GROUP BY status",
+                (task_ids,),
+            ).fetchall()
+            errors = conn.execute(
+                "SELECT left(last_error, 200) AS error, count(*) AS n FROM document_tasks "
+                "WHERE id = ANY(%s::uuid[]) AND status = 'failed' "
+                "GROUP BY 1 ORDER BY 2 DESC LIMIT 3",
+                (task_ids,),
+            ).fetchall()
+        counts = {row["status"]: row["n"] for row in rows}
+        done = counts.get("succeeded", 0) + counts.get("failed", 0)
+        return {
+            "total": len(task_ids),
+            "queued": counts.get("queued", 0),
+            "running": counts.get("running", 0),
+            "succeeded": counts.get("succeeded", 0),
+            "failed": counts.get("failed", 0),
+            "finished": done >= len(task_ids),
+            "errors": [dict(row) for row in errors],
+        }
 
     def list(self, limit: int = 50) -> dict:
         with get_connection() as conn:

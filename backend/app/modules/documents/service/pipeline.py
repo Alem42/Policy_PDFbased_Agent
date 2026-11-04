@@ -87,46 +87,8 @@ def _process_document(document_id: str, *, task: dict | None = None) -> None:
             model_name = None
         progress("annotated")
 
-        # Admin-tunable chunk size (Manage > Embedding). Clamped to a sane ceiling;
-        # if it exceeds the model's input limit, the model truncates/errs per chunk.
-        chunk_budget = min(max(embedding.active_config().chunk_token_budget, 64), 8000)
-        chunks = document_chunker.chunk(
-            pages, max_tokens=chunk_budget,
-            overlap=embedding.active_config().chunk_overlap_tokens,
-        )
-        # Contextual retrieval: prepend an LLM situating sentence to the EMBEDDING
-        # input only; stored/displayed text stays original. Header kept for transparency.
-        headers = build_contextual_headers(
-            chunks,
-            title=metadata.get("title"),
-            summary=metadata.get("summary"),
-            model=model_name,
-        ) if embedding.active_config().context_header_strategy == "llm" else [""] * len(chunks)
-        embed_inputs = [
-            f"{header}\n\n{chunk['text']}" if header else chunk["text"]
-            for header, chunk in zip(headers, chunks, strict=True)
-        ]
+        chunks, embeddings, target, details = _chunk_and_embed(pages, metadata, model_name)
         doc_language = metadata.get("language")
-        for chunk, header in zip(chunks, headers, strict=True):
-            if header:
-                chunk.setdefault("metadata_json", {})["context_header"] = header
-            chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
-        chunk_vectors = embedding.embed_documents(embed_inputs)
-        embeddings = [embedding.vector_literal(vector) for vector in chunk_vectors]
-        target = (
-            embedding.active_vector_table(),
-            embedding.active_dimension(),
-            embedding.active_model_id(),
-        )
-        details = {
-            "page_count": len(pages),
-            "chunk_count": len(chunks),
-            "metadata_model": model_name,
-            "embedding_model": target[2],
-            "chunk_token_budget": chunk_budget,
-            "chunk_overlap_tokens": embedding.active_config().chunk_overlap_tokens,
-            "context_header_strategy": embedding.active_config().context_header_strategy,
-        }
         ownership = document_task_repository.owned(task) if task else get_connection()
         with ownership as conn:
             document_content_repository.replace_pages(document_id, pages, connection=conn)
@@ -167,11 +129,99 @@ def _process_document(document_id: str, *, task: dict | None = None) -> None:
         raise
 
 
+def _chunk_and_embed(pages: list[dict], metadata: dict, model_name: str | None):
+    """Split pages with the active chunk settings and embed them with the active model."""
+    config = embedding.active_config()
+    # Admin-tunable chunk size (Manage > Embedding). Clamped to a sane ceiling;
+    # if it exceeds the model's input limit, the model truncates/errs per chunk.
+    chunk_budget = min(max(config.chunk_token_budget, 64), 8000)
+    chunks = document_chunker.chunk(
+        pages, max_tokens=chunk_budget, overlap=config.chunk_overlap_tokens
+    )
+    # Contextual retrieval: prepend an LLM situating sentence to the EMBEDDING
+    # input only; stored/displayed text stays original. Header kept for transparency.
+    headers = build_contextual_headers(
+        chunks,
+        title=metadata.get("title"),
+        summary=metadata.get("summary"),
+        model=model_name,
+    ) if config.context_header_strategy == "llm" else [""] * len(chunks)
+    embed_inputs = [
+        f"{header}\n\n{chunk['text']}" if header else chunk["text"]
+        for header, chunk in zip(headers, chunks, strict=True)
+    ]
+    doc_language = metadata.get("language")
+    for chunk, header in zip(chunks, headers, strict=True):
+        if header:
+            chunk.setdefault("metadata_json", {})["context_header"] = header
+        chunk["language"] = detect_language(chunk["text"]) or doc_language  # per-chunk lang
+    chunk_vectors = embedding.embed_documents(embed_inputs)
+    embeddings = [embedding.vector_literal(vector) for vector in chunk_vectors]
+    target = (
+        embedding.active_vector_table(),
+        embedding.active_dimension(),
+        embedding.active_model_id(),
+    )
+    details = {
+        "page_count": len(pages),
+        "chunk_count": len(chunks),
+        "metadata_model": model_name,
+        "embedding_model": target[2],
+        "chunk_token_budget": chunk_budget,
+        "chunk_overlap_tokens": config.chunk_overlap_tokens,
+        "context_header_strategy": config.context_header_strategy,
+    }
+    return chunks, embeddings, target, details
+
+
+def rechunk_document(task: dict) -> None:
+    """Re-split stored page text and re-embed it: no OCR and no metadata LLM call."""
+    document_id = str(task["document_id"])
+    with get_connection() as conn:
+        pages = conn.execute(
+            "SELECT page_number AS page, text FROM document_pages "
+            "WHERE document_id = %s ORDER BY page_number",
+            (document_id,),
+        ).fetchall()
+        meta = conn.execute(
+            "SELECT title, summary, language, generated_by_model FROM document_metadata "
+            "WHERE document_id = %s",
+            (document_id,),
+        ).fetchone()
+    if not any((page["text"] or "").strip() for page in pages):
+        # Nothing stored to re-split (e.g. imported before pages were kept): full ingest.
+        process_document(document_id, task=task)
+        return
+    document_task_repository.progress(task, "annotated")
+    metadata = dict(meta) if meta else {}
+    chunks, embeddings, target, details = _chunk_and_embed(
+        [dict(page) for page in pages], metadata, metadata.get("generated_by_model")
+    )
+    details["rechunk"] = True
+    with document_task_repository.owned(task) as conn:
+        embedding_repository.replace_document_chunks(
+            document_id,
+            chunks,
+            embeddings,
+            language=metadata.get("language"),
+            connection=conn,
+            target=target,
+        )
+        document_repository.set_status(document_id, "ready", connection=conn)
+        document_task_repository.succeed(task, details, connection=conn)
+
+
 def execute_document_task(task: dict) -> None:
     """Only registered durable task types can execute; no serialized Python callbacks."""
     document_id = str(task["document_id"])
     if task["task_type"] == "ingest":
-        process_document(document_id, task=task)
+        # Pin the embedding settings for the whole attempt, so a change saved mid-way
+        # cannot mix chunk sizes or vector tables within one document.
+        with embedding.snapshot():
+            process_document(document_id, task=task)
+    elif task["task_type"] == "rechunk":
+        with embedding.snapshot():
+            rechunk_document(task)
     elif task["task_type"] == "reembed":
         document_task_repository.progress(task, "annotated")
         with embedding.snapshot():
@@ -506,6 +556,12 @@ def prepare_full_rescan() -> list[str]:
     sync_existing_documents()
     document_ids = document_repository.all_document_ids()
     return document_ids
+
+
+def prepare_rechunk() -> list[str]:
+    """Ready documents, whose stored pages are re-split with the current settings."""
+    rows = document_repository.list_records(include_restricted=True)
+    return [str(row["id"]) for row in rows if row.get("status") == "ready"]
 
 
 def prepare_reembed() -> tuple[list[str], str]:

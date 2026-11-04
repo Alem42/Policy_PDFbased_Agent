@@ -159,7 +159,7 @@ export default function App() {
 
   return (
     <Container
-      maxWidth="lg"
+      maxWidth="xl"
       sx={
         isChatView
           ? { height: "100vh", display: "flex", flexDirection: "column", pb: 0 }

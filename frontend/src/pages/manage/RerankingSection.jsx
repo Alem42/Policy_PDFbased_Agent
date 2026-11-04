@@ -314,11 +314,10 @@ export default function RerankingSection({
           </Field>
         </SubCard>
 
-        {isQwen && <Field label="Idle unload (seconds)" hint="0 releases GPU after every call; 120 keeps it warm between nearby requests.">
-          <TextField type="number" size="small" value={form.local_idle_seconds ?? 120}
-            onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
-            slotProps={{ htmlInput: { min: 0, max: 3600 } }} sx={{ width: 220 }} />
-        </Field>}
+        {isQwen && <Typography variant="caption" sx={{ color: "text.secondary" }}>
+            Local models load at startup and unload after LOCAL_MODELS_IDLE_SECONDS without use
+            (server setting, default 30 minutes).
+          </Typography>}
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           <Button variant="contained" disabled={busy} type="submit">

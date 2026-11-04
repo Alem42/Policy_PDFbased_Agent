@@ -21,6 +21,7 @@ import {
   getEvaluationRun, cancelEvaluationRun, reviewEvaluationCase, unloadLocalModels,
   saveEvidenceValidation, applyEvaluationConfiguration,
 } from "../../api";
+import LibraryTaskProgress, { rememberLibraryBatch } from "../../components/LibraryTaskProgress";
 
 const ACCENT = "#214f42";
 const BORDER = "#e2e5df";
@@ -68,7 +69,7 @@ function Fold({ title, children, defaultExpanded = false }) {
   return (
     <Accordion disableGutters defaultExpanded={defaultExpanded} elevation={0}
       sx={{ minWidth: 0, border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={summarySx}>
         <Typography variant="body2" sx={{ fontWeight: 700 }}>{title}</Typography>
       </AccordionSummary>
       <AccordionDetails sx={{ ...stack, gap: 1.5 }}>{children}</AccordionDetails>
@@ -80,6 +81,7 @@ const fieldRow = { display: "flex", gap: 2, flexWrap: "wrap", alignItems: "cente
 // Grid tracks default to the min-content width, so one long answer or citation
 // would stretch every card past the page; minmax(0, 1fr) lets content wrap instead.
 const stack = { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 };
+const summarySx = { "& .MuiAccordionSummary-content": { minWidth: 0, overflow: "hidden" } };
 const wrapText = { overflowWrap: "anywhere", wordBreak: "break-word" };
 
 function CaseReview({ runId, result, review, onSaved, onError }) {
@@ -114,11 +116,11 @@ function CaseResult({ run, item, onSaved, onError }) {
   return (
     <Accordion disableGutters elevation={0} TransitionProps={{ unmountOnExit: true }}
       sx={{ minWidth: 0, border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={summarySx}>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center", minWidth: 0, width: "100%" }}>
           <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>{item.id}</Typography>
           <Typography variant="body2" noWrap sx={{ flex: 1, color: "text.secondary" }}>{item.question}</Typography>
-          {chip}
+          <Box sx={{ flexShrink: 0 }}>{chip}</Box>
         </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ ...stack, ...wrapText, gap: 1 }}>
@@ -349,16 +351,18 @@ export default function EvaluationSection({ onDocumentsChanged }) {
                 const created = await startEvaluation({ ...form, suite: "extended", kind: "validated", case_ids: [], reuse_run_id: run.id });
                 setRun(await getEvaluationRun(created.id));
               })}>Run unfinished questions</Button>}
-              {artifacts.selected_parameters && run.status === "completed" && <Tooltip title="Saves the selected parameters and queues every document for a full rebuild. Wait for Library to finish before step 3.">
+              {artifacts.selected_parameters && run.status === "completed" && <Tooltip title="Saves the selected parameters and re-chunks every document from its stored text (no OCR, no LLM calls). Wait for it to finish before step 3.">
                 <span><Button disabled={busy} variant="contained" onClick={() => action(async () => {
                   const applied = await applyEvaluationConfiguration(run.id);
                   setForm(applied.evaluation_settings);
-                  setNotice(`Configuration applied. ${applied.queued} documents queued for rebuild.`);
+                  rememberLibraryBatch("rechunk", applied.task_ids || []);
+                  setNotice(`Configuration applied. Re-chunking ${applied.queued} documents (no LLM calls).`);
                   setGuard((await getEvaluation()).validation_settings); onDocumentsChanged?.();
                 })}>Apply configuration & rebuild Library</Button></span>
               </Tooltip>}
             </Box>
 
+            <LibraryTaskProgress />
             {artifacts.selected_parameters && <Alert severity="success">Selected: {JSON.stringify(artifacts.selected_parameters.parameters)} · complete evidence {format(artifacts.selected_parameters.calibration.complete_evidence_rate)} calibration / {format(artifacts.selected_parameters.validation.complete_evidence_rate)} validation
               <Help text="Score replay excludes the LLM answerability and claim checks; step 3 tests the complete live pipeline." /></Alert>}
             {artifacts.controls_summary && <Alert severity={artifacts.controls_summary.guard_correct === artifacts.controls_summary.controls ? "success" : "warning"}>Mutation controls: guard {artifacts.controls_summary.guard_correct}/{artifacts.controls_summary.controls} · judge {artifacts.controls_summary.judge_correct}/{artifacts.controls_summary.controls}</Alert>}

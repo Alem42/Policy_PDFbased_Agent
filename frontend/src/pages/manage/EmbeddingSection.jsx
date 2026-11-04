@@ -23,9 +23,11 @@ import {
   saveEmbeddingSettings,
   testEmbeddingConnection,
   reembedLibrary,
+  rechunkLibrary,
   rescanDocuments,
   getSettings,
 } from "../../api";
+import LibraryTaskProgress, { rememberLibraryBatch } from "../../components/LibraryTaskProgress";
 import CatalogModelPicker from "./CatalogModelPicker";
 
 const ACCENT = "#214f42";
@@ -203,16 +205,15 @@ export default function EmbeddingSection({
         severity: "warning",
         label: "Active embedding model",
         message:
-          `Switches to “${targetModel}”. Its vectors live in a separate table — if this model ` +
-          "has no vectors yet, run “Re-embed library” to populate it. Other models' vectors are " +
-          "kept, so switching to an already-embedded model is instant (no re-scan).",
+          `Switches to “${targetModel}”. Every ready document is re-embedded automatically after ` +
+          "saving (no re-extraction or LLM metadata). With an API model this uses embedding tokens.",
       });
     } else if (form.dimensions !== initial.dimensions) {
       c.push({
         key: "dim",
         severity: "warning",
         label: "Vector dimension",
-        message: "A different dimension uses a different vector table — run Re-embed library.",
+        message: "A different dimension uses a different vector table; the library is re-embedded automatically.",
       });
     }
     if (form.chunk_token_budget !== initial.chunk_token_budget || form.chunk_overlap_tokens !== initial.chunk_overlap_tokens) {
@@ -221,17 +222,17 @@ export default function EmbeddingSection({
         severity: "warning",
         label: "Chunk token budget",
         message:
-          "Changes how documents are split. Applies to NEW documents only — run “Rescan all " +
-          "documents” to re-chunk existing ones (heavy: re-extract + re-chunk + re-embed). Keep it " +
-          "within the model's input limit (bge ≈512, embedding-3 ≤3072).",
+          "Changes how documents are split. After saving, every ready document is re-chunked from " +
+          "its stored text and re-embedded automatically (no OCR, no LLM metadata). Keep it within " +
+          "the model's input limit (bge ≈512, embedding-3 ≤3072).",
       });
     }
     if (form.token_counting !== initial.token_counting) {
       c.push({
         key: "tok",
-        severity: "info",
+        severity: "warning",
         label: "Token counting",
-        message: "How chunk size is measured. Affects newly processed documents only.",
+        message: "How chunk size is measured. Existing documents are re-chunked automatically.",
       });
     }
     if (form.batch_size !== initial.batch_size) {
@@ -268,13 +269,26 @@ export default function EmbeddingSection({
     setNotice("");
     setError("");
     try {
+      const keys = new Set(pendingChanges.map((change) => change.key));
       const result = await saveEmbeddingSettings(form);
       const saved = normaliseSettings(result);
       setForm(saved);
       setInitial(saved);
       setStatus(result.status || null);
       setConnected(true);
-      setNotice("Embedding settings saved. Re-embed the library for the change to take effect.");
+      // Chunk changes need new chunks (which are embedded too); a model change only
+      // needs new vectors for the existing chunks. Other fields apply immediately.
+      if (keys.has("chunk") || keys.has("tok")) {
+        const batch = await rechunkLibrary();
+        rememberLibraryBatch("rechunk", batch.task_ids || []);
+        setNotice(`Settings saved. Re-chunking ${batch.documents} document(s)${batch.skipped_active ? `; ${batch.skipped_active} busy and skipped` : ""}.`);
+      } else if (keys.has("model") || keys.has("dim")) {
+        const batch = await reembedLibrary();
+        rememberLibraryBatch("reembed", batch.task_ids || []);
+        setNotice(`Settings saved. Re-embedding ${batch.documents} document(s) into “${batch.model}”${batch.skipped_active ? `; ${batch.skipped_active} busy and skipped` : ""}.`);
+      } else {
+        setNotice("Embedding settings saved. They apply to new questions immediately.");
+      }
       onConfigurationChanged?.();
       // Tell the header (and any listener) to refresh the active-model display.
       window.dispatchEvent(new Event("embedding-config-changed"));
@@ -306,6 +320,7 @@ export default function EmbeddingSection({
     setError("");
     try {
       const result = await rescanDocuments();
+      rememberLibraryBatch("rescan", result.task_ids || []);
       setNotice(
         `Rescan started: ${result.queued ?? 0} document(s) queued. ` +
           (result.skipped_active ? `${result.skipped_active} skipped because another task is still running for them. ` : "") +
@@ -313,6 +328,32 @@ export default function EmbeddingSection({
       );
     } catch (rescanError) {
       setError(rescanError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRechunk() {
+    if (
+      !window.confirm(
+        "Re-chunk the library? Every ready document is split again from its stored text with the " +
+          "current chunk settings and re-embedded. No OCR and no LLM metadata calls.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    setError("");
+    try {
+      const result = await rechunkLibrary();
+      rememberLibraryBatch("rechunk", result.task_ids || []);
+      setNotice(
+        `Re-chunk started for ${result.documents ?? 0} document(s).` +
+          (result.skipped_active ? ` ${result.skipped_active} skipped because another task is still running for them.` : ""),
+      );
+    } catch (rechunkError) {
+      setError(rechunkError.message);
     } finally {
       setBusy(false);
     }
@@ -352,6 +393,7 @@ export default function EmbeddingSection({
     setError("");
     try {
       const result = await reembedLibrary();
+      rememberLibraryBatch("reembed", result.task_ids || []);
       setNotice(
         `Re-embed started for ${result.documents ?? 0} document(s) into ` +
           `"${result.model ?? "the active model"}". ` +
@@ -427,7 +469,11 @@ export default function EmbeddingSection({
                 setForm((prev) => ({
                   ...prev,
                   provider,
-                  evidence_distance_threshold: EVIDENCE_DEFAULTS[provider],
+                  // Keep a calibrated threshold; only follow the default if it was untouched.
+                  evidence_distance_threshold:
+                    prev.evidence_distance_threshold === EVIDENCE_DEFAULTS[prev.provider]
+                      ? EVIDENCE_DEFAULTS[provider]
+                      : prev.evidence_distance_threshold,
                 }));
               }}
               size="small"
@@ -542,16 +588,15 @@ export default function EmbeddingSection({
               />
             </Field>
           </Box>
-          <Field label="Chunk overlap (tokens)" hint="Trailing context shared with the next chunk; capped at half the chunk budget. Changing it requires Rescan all documents.">
+          <Field label="Chunk overlap (tokens)" hint="Trailing context shared with the next chunk; capped at half the chunk budget. Saving a change re-chunks the library automatically.">
             <TextField type="number" size="small" value={form.chunk_overlap_tokens}
               onChange={(e) => set("chunk_overlap_tokens", Number(e.target.value))}
               slotProps={{ htmlInput: { min: 0, max: 4096 } }} sx={{ width: 200 }} />
           </Field>
-          {!isApi && <Field label="Qwen idle unload (seconds)" hint="Weights stay on disk. Release the GPU worker after idle time; 0 unloads after every call.">
-            <TextField type="number" size="small" value={form.local_idle_seconds}
-              onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
-              slotProps={{ htmlInput: { min: 0, max: 3600 } }} sx={{ width: 200 }} />
-          </Field>}
+          {!isApi && <Typography variant="caption" sx={{ color: "text.secondary" }}>
+            Local models load at startup and unload after LOCAL_MODELS_IDLE_SECONDS without use
+            (server setting, default 30 minutes).
+          </Typography>}
           <Field label="Token counting" hint="Local models have an exact tokenizer; API models fall back to a tiktoken approximation.">
             <TextField
               select
@@ -621,6 +666,9 @@ export default function EmbeddingSection({
           <Button variant="outlined" disabled={busy} onClick={load}>
             Reload
           </Button>
+          <Button variant="outlined" color="warning" disabled={busy} onClick={handleRechunk}>
+            Re-chunk library
+          </Button>
           <Button variant="outlined" color="warning" disabled={busy} onClick={handleReembed}>
             Re-embed library
           </Button>
@@ -628,6 +676,7 @@ export default function EmbeddingSection({
             Rescan all documents
           </Button>
         </Box>
+        <LibraryTaskProgress />
       </Box>
 
       {/* Review changes before saving — one line per changed setting. */}
@@ -636,7 +685,7 @@ export default function EmbeddingSection({
         <DialogContent>
           {pendingChanges.some((c) => c.severity === "warning") && (
             <Alert severity="warning" sx={{ mb: 2 }}>
-              Some changes need a re-embed or full re-scan to take effect on existing documents.
+              Saving starts the re-chunk or re-embed these changes need; progress appears below the buttons.
             </Alert>
           )}
           <Box sx={{ display: "grid", gap: 1.5 }}>

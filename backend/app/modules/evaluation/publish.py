@@ -2,7 +2,7 @@ import asyncio
 
 from app.core.database import get_connection
 from app.modules.documents.processing_queue import document_processing_queue
-from app.modules.documents.service import prepare_full_rescan
+from app.modules.documents.service import prepare_rechunk
 from app.modules.embedding import service as embedding
 from app.modules.evaluation import lab_repository, repository
 from app.modules.evidence_validation import service as validation
@@ -64,15 +64,19 @@ async def publish(identifier):
                 "default_top_k": params["top_k"],
             }
         )
-        return prepare_full_rescan()
+        # Re-split stored text; a full rescan would call the metadata LLM per document.
+        return prepare_rechunk()
 
     identifiers = await asyncio.to_thread(configure)
+    task_ids = []
     for document_id in identifiers:
-        await document_processing_queue.enqueue(document_id)
+        state = await document_processing_queue.enqueue(document_id, "rechunk")
+        task_ids.append(str(state.task["id"]))
     # Keep the existing evaluation generation model, but default Top-K to the measured choice.
     config = service_settings_with_top_k(params["top_k"])
     return {
-        "queued": len(identifiers),
+        "queued": len(task_ids),
+        "task_ids": task_ids,
         "parameters": params,
         "chunking": {"budget": index["budget"], "overlap": index["overlap"]},
         "evaluation_settings": config,

@@ -59,6 +59,8 @@ import DocumentDrawer from "../components/DocumentDrawer";
 import { chatSessionPath, ROUTES } from "../routes";
 
 // Splits text on citation markers [1], [1-3], [1, 2] and wraps in clickable <sup>
+const SIDEBAR_MIN = 220;
+const SIDEBAR_MAX = 560;
 const CITATION_RE = /(\[\d+(?:[-,]\s*\d+)*\])/;
 
 function renderWithCitations(children, citations, onOpen, lowEvidence = false) {
@@ -601,6 +603,15 @@ export default function ChatPage({
   // the auto-scroll effect below, then reset.
   const skipAutoScrollRef = useRef(false);
   const [sourcesHeightPct, setSourcesHeightPct] = useState(45);
+  // Width of the Sources / Recent Chats column, dragged on the divider and kept per browser.
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("chatSidebarWidth"));
+      return saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX ? saved : 300;
+    } catch {
+      return 300;
+    }
+  });
 
   useEffect(() => {
     return () => dragCleanupRef.current?.();
@@ -622,6 +633,34 @@ export default function ChatPage({
       dragCleanupRef.current = null;
     };
     document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    dragCleanupRef.current = handleUp;
+  }
+
+  function handleColumnResizerMouseDown(event) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let latest = startWidth;
+    const handleMove = (moveEvent) => {
+      latest = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + moveEvent.clientX - startX));
+      setSidebarWidth(latest);
+    };
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      dragCleanupRef.current = null;
+      try {
+        localStorage.setItem("chatSidebarWidth", String(latest));
+      } catch {
+        // Storage can be unavailable (private mode); the width just isn't remembered.
+      }
+    };
+    document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -1308,13 +1347,13 @@ export default function ChatPage({
 
   return (
     <Box component="section" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", gap: { xs: 2, md: 0 }, flexDirection: { xs: "column", md: "row" }, alignItems: "stretch" }}>
 
         {/* Left panel: Sources (top) + History (bottom), height split is user-resizable */}
         <Box
           ref={sidebarRef}
           sx={{
-            width: { xs: "100%", md: 280 },
+            width: { xs: "100%", md: sidebarWidth },
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
@@ -1534,6 +1573,28 @@ export default function ChatPage({
             })}
           </Box>
           </Card>
+        </Box>
+
+        {/* ── Draggable handle — resizes the left column vs. the conversation ── */}
+        <Box
+          onMouseDown={handleColumnResizerMouseDown}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the sources column"
+          sx={{
+            display: { xs: "none", md: "flex" },
+            flexShrink: 0,
+            width: 16,
+            cursor: "col-resize",
+            alignItems: "center",
+            justifyContent: "center",
+            "&:hover .resize-handle-grip": { bgcolor: "#9db3a7" },
+          }}
+        >
+          <Box
+            className="resize-handle-grip"
+            sx={{ width: 4, height: 40, borderRadius: 999, bgcolor: "#c8d0cb", transition: "background-color 0.15s" }}
+          />
         </Box>
 
         {/* Chat Panel */}

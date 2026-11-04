@@ -37,6 +37,7 @@ from app.modules.documents.service import (
 from app.modules.documents.service import (
     get_document_detail,
     prepare_full_rescan,
+    prepare_rechunk,
     prepare_reembed,
     save_upload,
 )
@@ -212,20 +213,20 @@ async def update_web_governance(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-async def _enqueue_each(document_ids: list[str], task_type: str) -> tuple[int, int]:
+async def _enqueue_each(document_ids: list[str], task_type: str) -> tuple[list[str], int]:
     """Queue every document; one that already has a different active task is skipped.
 
     Raising on the first such document used to fail the whole request (409) after
     some documents were already queued.
     """
-    queued = busy = 0
+    task_ids, busy = [], 0
     for document_id in document_ids:
         try:
-            await document_processing_queue.enqueue(document_id, task_type)
-            queued += 1
+            state = await document_processing_queue.enqueue(document_id, task_type)
+            task_ids.append(str(state.task["id"]))
         except ActiveDocumentTask:
             busy += 1
-    return queued, busy
+    return task_ids, busy
 
 
 @router.post("/rescan", status_code=status.HTTP_202_ACCEPTED)
@@ -239,14 +240,34 @@ async def rescan_documents(_: AdminUser) -> dict:
     try:
         logger.info("Full library rescan requested; queueing every document")
         document_ids = await asyncio.to_thread(prepare_full_rescan)
-        queued, busy = await _enqueue_each(document_ids, "ingest")
-        return {"rescanned": True, "queued": queued, "skipped_active": busy}
+        task_ids, busy = await _enqueue_each(document_ids, "ingest")
+        return {
+            "rescanned": True,
+            "queued": len(task_ids),
+            "skipped_active": busy,
+            "task_ids": task_ids,
+        }
     except ActiveDocumentTask as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/rechunk", status_code=status.HTTP_202_ACCEPTED)
+async def rechunk_documents(_: AdminUser) -> dict:
+    """Re-split every ready document with the current chunk settings and re-embed it.
+
+    Uses the page text stored at ingest, so there is no OCR and no metadata LLM call.
+    Needed after changing chunk size, overlap, header strategy or token counting.
+    """
+    try:
+        document_ids = await asyncio.to_thread(prepare_rechunk)
+        task_ids, busy = await _enqueue_each(document_ids, "rechunk")
+        return {"documents": len(task_ids), "skipped_active": busy, "task_ids": task_ids}
+    except DatabaseUnavailableError:
+        raise
 
 
 @router.post("/reembed", status_code=status.HTTP_202_ACCEPTED)
@@ -262,8 +283,14 @@ async def reembed_documents(_: AdminUser) -> dict:
     try:
         logger.info("Library re-embed requested; queueing per-document jobs")
         document_ids, model = await asyncio.to_thread(prepare_reembed)
-        queued, busy = await _enqueue_each(document_ids, "reembed")
-        return {"documents": queued, "model": model, "queued": True, "skipped_active": busy}
+        task_ids, busy = await _enqueue_each(document_ids, "reembed")
+        return {
+            "documents": len(task_ids),
+            "model": model,
+            "queued": True,
+            "skipped_active": busy,
+            "task_ids": task_ids,
+        }
     except ActiveDocumentTask as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:

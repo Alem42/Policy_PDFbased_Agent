@@ -193,6 +193,22 @@ export function reembedLibrary() {
   });
 }
 
+// Re-split stored page text with the current chunk settings and re-embed it.
+// No OCR and no metadata LLM call; needed after chunk size / overlap changes.
+export function rechunkLibrary() {
+  return request("/admin/documents/rechunk", {
+    method: "POST",
+  });
+}
+
+// Status counts for one batch of document tasks (the library progress bar).
+export function getTaskProgress(taskIds) {
+  return request("/admin/document-tasks/progress", {
+    method: "POST",
+    body: JSON.stringify({ task_ids: taskIds }),
+  });
+}
+
 // Reprocess a single document (re-extract, re-chunk, re-metadata, re-embed).
 export function rescanFile(documentId) {
   return request(`/admin/documents/${encodeURIComponent(documentId)}/rescan`, {
