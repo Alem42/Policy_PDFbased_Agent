@@ -119,7 +119,7 @@ export default function AdminInvitesSection() {
             <TextField
               value={newCode}
               size="small"
-              InputProps={{ readOnly: true }}
+              slotProps={{ input: { readOnly: true } }}
               sx={{ minWidth: { xs: "100%", sm: 390 } }}
             />
             <Button variant="outlined" onClick={handleCopy}>Copy</Button>

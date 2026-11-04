@@ -505,7 +505,7 @@ export default function EmbeddingSection({
                 value={form.dimensions}
                 onChange={(e) => set("dimensions", Number(e.target.value))}
                 type="number"
-                inputProps={{ min: 64, max: 4096 }}
+                slotProps={{ htmlInput: { min: 64, max: 4096 } }}
                 size="small"
                 disabled={form.auto_detect_dimensions}
                 sx={{ maxWidth: 200 }}
@@ -522,7 +522,7 @@ export default function EmbeddingSection({
                 value={form.batch_size}
                 onChange={(e) => set("batch_size", Number(e.target.value))}
                 type="number"
-                inputProps={{ min: 1, max: 256 }}
+                slotProps={{ htmlInput: { min: 1, max: 256 } }}
                 size="small"
                 sx={{ width: 160 }}
               />
@@ -532,7 +532,7 @@ export default function EmbeddingSection({
                 value={form.chunk_token_budget}
                 onChange={(e) => set("chunk_token_budget", Number(e.target.value))}
                 type="number"
-                inputProps={{ min: 64, max: 8192 }}
+                slotProps={{ htmlInput: { min: 64, max: 8192 } }}
                 size="small"
                 sx={{ width: 200 }}
               />
@@ -541,12 +541,12 @@ export default function EmbeddingSection({
           <Field label="Chunk overlap (tokens)" hint="Trailing context shared with the next chunk; capped at half the chunk budget. Changing it requires Rescan all documents.">
             <TextField type="number" size="small" value={form.chunk_overlap_tokens}
               onChange={(e) => set("chunk_overlap_tokens", Number(e.target.value))}
-              inputProps={{ min: 0, max: 4096 }} sx={{ width: 200 }} />
+              slotProps={{ htmlInput: { min: 0, max: 4096 } }} sx={{ width: 200 }} />
           </Field>
           {!isApi && <Field label="Qwen idle unload (seconds)" hint="Weights stay on disk. Release the GPU worker after idle time; 0 unloads after every call.">
             <TextField type="number" size="small" value={form.local_idle_seconds}
               onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
-              inputProps={{ min: 0, max: 3600 }} sx={{ width: 200 }} />
+              slotProps={{ htmlInput: { min: 0, max: 3600 } }} sx={{ width: 200 }} />
           </Field>}
           <Field label="Token counting" hint="Local models have an exact tokenizer; API models fall back to a tiktoken approximation.">
             <TextField
@@ -590,7 +590,7 @@ export default function EmbeddingSection({
                 value={form.evidence_distance_threshold}
                 onChange={(e) => set("evidence_distance_threshold", Number(e.target.value))}
                 type="number"
-                inputProps={{ step: 0.01, min: 0.1, max: 1.0 }}
+                slotProps={{ htmlInput: { step: 0.01, min: 0.1, max: 1.0 } }}
                 size="small"
                 sx={{ width: 220 }}
               />

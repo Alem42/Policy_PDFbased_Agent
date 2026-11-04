@@ -24,6 +24,7 @@ import {
   addCatalogEntry,
   addCatalogProvider,
 } from "../../api";
+import { secretInputProps } from "../../utils/secretInput";
 
 const CAPABILITIES = [
   "chat",
@@ -399,8 +400,7 @@ export default function LlmProvidersSection({
                     }))
                   }
                   placeholder="Leave blank to keep the current key"
-                  type="password"
-                  autoComplete="off"
+                  {...secretInputProps}
                   size="small"
                   fullWidth
                 />

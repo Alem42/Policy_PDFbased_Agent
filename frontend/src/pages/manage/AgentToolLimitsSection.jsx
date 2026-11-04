@@ -176,7 +176,7 @@ export default function AgentToolLimitsSection({ configurationVersion = 0, onCon
                 value={form[key]}
                 onChange={(e) => set(key, e.target.value)}
                 type="number"
-                inputProps={{ min: 1, max: 50 }}
+                slotProps={{ htmlInput: { min: 1, max: 50 } }}
                 size="small"
                 sx={{ width: 160 }}
               />

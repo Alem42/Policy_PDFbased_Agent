@@ -46,7 +46,7 @@ function PasswordField({ label, value, onChange, autoComplete, visible, onToggle
         fullWidth
         size="small"
         required
-        InputProps={{
+        slotProps={{ input: {
           endAdornment: (
             <InputAdornment position="end">
               <IconButton onClick={onToggle} edge="end" aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}>
@@ -54,7 +54,7 @@ function PasswordField({ label, value, onChange, autoComplete, visible, onToggle
               </IconButton>
             </InputAdornment>
           ),
-        }}
+        } }}
       />
     </Box>
   );
@@ -243,7 +243,7 @@ export default function AuthPage({ onAuthenticated, onNavigate }) {
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   autoComplete="username"
-                  inputProps={{ minLength: 3, maxLength: 80 }}
+                  slotProps={{ htmlInput: { minLength: 3, maxLength: 80 } }}
                   fullWidth
                   size="small"
                   required

@@ -4,9 +4,7 @@ FastAPI backend for the Policy in Action Library. It provides authentication,
 PDF ingestion, evidence-aware web search, permanent URL import,
 retrieval-augmented chat, document catalogue APIs, and PostgreSQL/pgvector persistence.
 
-Qwen3 local embedding/reranking and the Manage **Evaluation & scoring** section are
-documented in [the implementation and evaluation guide](docs/QWEN_LOCAL_MODELS_AND_EVALUATION.zh-CN.md).
-Qwen requires the optional `local-models` extra. Use `python -m scripts.run_backend`
+Qwen3 local embedding/reranking requires the optional `local-models` extra. Use `python -m scripts.run_backend`
 (from `backend`) to select the psycopg-compatible Windows event loop. When run
 with system Python, this launcher automatically selects an existing project
 `.venv` (repository root first, then `backend`); an activated environment is
@@ -49,7 +47,7 @@ backend/
 |       |-- chat/        # RAG answer generation and LangGraph workflow
 |       `-- system/      # Health and application metadata endpoints
 |-- database/init.sql    # PostgreSQL/pgvector schema dump
-|-- docs/                # API contracts and Git workflow
+|-- docs/                # API contracts and retrieval/web-import design notes
 `-- tests/
 ```
 
@@ -249,9 +247,6 @@ worker thread, and cleans failed or duplicate staged files. This is one multipar
 request per file; browser chunk uploads and resumable uploads are not implemented.
 To allow 100 MiB, set `UPLOAD_MAX_BYTES=104857600` and restart the backend.
 
-See [the Chinese implementation and learning guide](docs/CONNECTION_POOL_AND_UPLOAD_GUIDE.md)
-for database communication, pool sizing, asyncio, the complete upload journey,
-verification evidence, and interview demonstrations.
 
 ### Durable document processing
 
@@ -296,9 +291,6 @@ The verifier starts and stops only its own API/worker subprocesses. It creates
 synthetic policy PDFs, kills a worker after real extraction, checks recovery,
 performs concurrent uploads and reads, restores temporarily unavailable storage,
 and saves its report under `tmp/durable-demo/`. Remote chat models are not invoked.
-See [the Chinese task, idempotency and concurrency guide](docs/DURABLE_DOCUMENT_TASKS_GUIDE.md)
-for the implementation boundaries, test results, interview demos, and a code-linked
-review of the first-stage connection pool work.
 
 ## Authentication
 
@@ -392,8 +384,4 @@ processes can run with `python scripts/run_native_api.py --port 8000` and port 8
 Docker is not required. Use a shared database, Redis prefix, signing secret and file
 storage path across processes. See [.env.example](.env.example) for limits and timeouts.
 
-The [beginner guide](docs/REDIS_FROM_ZERO_AND_INTERVIEW.zh-CN.md) explains the implementation,
-native startup, actual measurements and interview answers. The
-[acceptance record](docs/REDIS_IMPLEMENTATION_AND_ACCEPTANCE.zh-CN.md) links real HTTP/PDF,
-two-instance concurrency and Redis outage/recovery reports. Run
-`python scripts/verify_redis_journey.py --help` for the reproducible verifier.
+Run `python scripts/verify_redis_journey.py --help` for the reproducible verifier.

@@ -220,7 +220,7 @@ export default function HistoryPage({ onNavigate }) {
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleRename()}
-            inputProps={{ maxLength: 200 }}
+            slotProps={{ htmlInput: { maxLength: 200 } }}
             sx={{ mt: 1 }}
           />
         </DialogContent>

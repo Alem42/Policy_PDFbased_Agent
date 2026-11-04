@@ -14,6 +14,7 @@ import CloudDownloadOutlinedIcon from "@mui/icons-material/CloudDownloadOutlined
 import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import { getSettings, importWebDocument, saveSettings } from "../../api";
+import { secretInputProps } from "../../utils/secretInput";
 
 const ACCENT = "#214f42";
 const PROVIDERS = [
@@ -248,7 +249,7 @@ export default function WebSearchSection({
                 placeholder="For example: Australian AI policy guidance"
                 size="small"
                 fullWidth
-                inputProps={{ maxLength: 200 }}
+                slotProps={{ htmlInput: { maxLength: 200 } }}
                 disabled={!canEdit || importBusy}
               />
             </Field>
@@ -352,9 +353,8 @@ export default function WebSearchSection({
                   value={keyInput}
                   onChange={(event) => setKeyInput(event.target.value)}
                   placeholder={savedKey ? "Leave blank to keep the saved key" : "Enter access key"}
-                  type="password"
-                  autoComplete="new-password"
-                  inputProps={{ "aria-label": "General Access Key" }}
+                  {...secretInputProps}
+                  slotProps={{ htmlInput: { ...secretInputProps.slotProps.htmlInput, "aria-label": "General Access Key" } }}
                   size="small"
                   fullWidth
                   disabled={!canEdit || settingsBusy}

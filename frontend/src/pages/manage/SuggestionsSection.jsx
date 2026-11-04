@@ -149,7 +149,7 @@ export default function SuggestionsSection({ configurationVersion = 0, onConfigu
               value={form.max_suggestions}
               onChange={(e) => set("max_suggestions", e.target.value)}
               type="number"
-              inputProps={{ min: 1, max: 8 }}
+              slotProps={{ htmlInput: { min: 1, max: 8 } }}
               size="small"
               sx={{ width: 160 }}
             />

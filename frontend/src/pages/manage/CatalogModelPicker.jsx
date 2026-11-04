@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, Typography, TextField, MenuItem, Alert, Link } from "@mui/material";
 import { getModelCatalog } from "../../api";
+import { secretInputProps } from "../../utils/secretInput";
 
 // Pick a provider -> model from the model catalog, filtered to one capability
 // (embedding / rerank). Keys are NOT entered here — they live on the LLM & API
@@ -126,8 +127,7 @@ export default function CatalogModelPicker({
             onChange={(e) =>
               onPick({ provider, model, base_url: manualBaseUrl, api_key: e.target.value })
             }
-            type="password"
-            autoComplete="off"
+            {...secretInputProps}
             placeholder="Paste API key (leave blank to keep the saved key)"
             size="small"
             fullWidth

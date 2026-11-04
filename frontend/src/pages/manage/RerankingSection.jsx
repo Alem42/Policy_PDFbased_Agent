@@ -304,9 +304,9 @@ export default function RerankingSection({
               value={form.min_score}
               onChange={(e) => set("min_score", e.target.value)}
               type="number"
-              inputProps={isApi || isQwen
+              slotProps={{ htmlInput: isApi || isQwen
                 ? { step: 0.01, min: 0, max: 1 }
-                : { step: 0.1, min: -10, max: 10 }}
+                : { step: 0.1, min: -10, max: 10 } }}
               placeholder={String(RERANKER_DEFAULTS[form.provider])}
               size="small"
               sx={{ width: 220 }}
@@ -317,7 +317,7 @@ export default function RerankingSection({
         {isQwen && <Field label="Idle unload (seconds)" hint="0 releases GPU after every call; 120 keeps it warm between nearby requests.">
           <TextField type="number" size="small" value={form.local_idle_seconds ?? 120}
             onChange={(e) => set("local_idle_seconds", Number(e.target.value))}
-            inputProps={{ min: 0, max: 3600 }} sx={{ width: 220 }} />
+            slotProps={{ htmlInput: { min: 0, max: 3600 } }} sx={{ width: 220 }} />
         </Field>}
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
