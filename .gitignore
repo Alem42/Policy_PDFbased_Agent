@@ -9,6 +9,8 @@ venv/
 # Backend local configuration and runtime data
 backend/.env
 backend/data/
+# Runtime data (uploads, secrets, model cache, logs, corpora) next to backend/ and frontend/
+/data/
 .env
 .env.production
 

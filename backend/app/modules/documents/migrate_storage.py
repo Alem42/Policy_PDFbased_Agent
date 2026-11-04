@@ -1,9 +1,9 @@
-"""Copy backend/data into a DATA_ROOT outside the code checkout.
+"""Copy backend/data (or a previous DATA_ROOT) into a new DATA_ROOT.
 
 Stop the API and workers, then from backend/ run:
 
-    python -m app.modules.documents.migrate_storage --data-root E:/PolicyData           # plan only
-    python -m app.modules.documents.migrate_storage --data-root E:/PolicyData --apply   # copy
+    python -m app.modules.documents.migrate_storage --data-root ../data   # plan only
+    python -m app.modules.documents.migrate_storage --data-root ../data --apply   # copy
 
 Every file is copied, never moved, and each upload is checked against its stored
 SHA-256 before any database row changes. Rows are rewritten in one transaction
@@ -78,7 +78,7 @@ def write_env(data_root: Path) -> None:
         text = re.sub(r"^DATA_ROOT=.*$", line, text, flags=re.M)
     else:
         text = (
-            text.rstrip("\n") + f"\n\n# Data and secrets live outside the code checkout.\n{line}\n"
+            text.rstrip("\n") + f"\n\n# Uploads, secrets, model cache and logs.\n{line}\n"
         )
     ENV_FILE.write_text(text, encoding="utf-8")
 
@@ -94,8 +94,8 @@ def main() -> None:
     args = parser.parse_args()
 
     data_root = args.data_root.resolve()
-    if data_root == LEGACY_DATA_DIR.resolve() or data_root.is_relative_to(BACKEND_ROOT.parent):
-        raise SystemExit("Choose a DATA_ROOT outside the code checkout.")
+    if data_root.is_relative_to(BACKEND_ROOT.resolve()):
+        raise SystemExit("Choose a DATA_ROOT outside backend/, for example the project's data/.")
     settings = get_settings()
     if not settings.database_enabled:
         raise SystemExit("Set DATABASE_ENABLED=true for the database to migrate.")

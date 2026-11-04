@@ -113,8 +113,8 @@ services:
       # Document tasks run in the worker service, keeping OCR/embedding off the API process.
       DOCUMENT_TASK_WORKERS: "0"
     volumes:
-      # uploads/, secrets/, model-cache/ and logs/ live outside the code checkout.
-      - ${POLICY_DATA_DIR:-../policy-library-data}:/app/data
+      # uploads/, secrets/, model-cache/ and logs/ live in data/ at the project root.
+      - ${POLICY_DATA_DIR:-./data}:/app/data
     restart: unless-stopped
     healthcheck:
       test:

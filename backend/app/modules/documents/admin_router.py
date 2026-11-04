@@ -212,6 +212,22 @@ async def update_web_governance(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+async def _enqueue_each(document_ids: list[str], task_type: str) -> tuple[int, int]:
+    """Queue every document; one that already has a different active task is skipped.
+
+    Raising on the first such document used to fail the whole request (409) after
+    some documents were already queued.
+    """
+    queued = busy = 0
+    for document_id in document_ids:
+        try:
+            await document_processing_queue.enqueue(document_id, task_type)
+            queued += 1
+        except ActiveDocumentTask:
+            busy += 1
+    return queued, busy
+
+
 @router.post("/rescan", status_code=status.HTTP_202_ACCEPTED)
 async def rescan_documents(_: AdminUser) -> dict:
     """Queue a full-library rescan through the shared processing queue.
@@ -223,9 +239,8 @@ async def rescan_documents(_: AdminUser) -> dict:
     try:
         logger.info("Full library rescan requested; queueing every document")
         document_ids = await asyncio.to_thread(prepare_full_rescan)
-        for document_id in document_ids:
-            await document_processing_queue.enqueue(document_id)
-        return {"rescanned": True, "queued": len(document_ids)}
+        queued, busy = await _enqueue_each(document_ids, "ingest")
+        return {"rescanned": True, "queued": queued, "skipped_active": busy}
     except ActiveDocumentTask as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:
@@ -247,9 +262,8 @@ async def reembed_documents(_: AdminUser) -> dict:
     try:
         logger.info("Library re-embed requested; queueing per-document jobs")
         document_ids, model = await asyncio.to_thread(prepare_reembed)
-        for document_id in document_ids:
-            await document_processing_queue.enqueue(document_id, "reembed")
-        return {"documents": len(document_ids), "model": model, "queued": True}
+        queued, busy = await _enqueue_each(document_ids, "reembed")
+        return {"documents": queued, "model": model, "queued": True, "skipped_active": busy}
     except ActiveDocumentTask as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DatabaseUnavailableError:

@@ -294,7 +294,9 @@ export default function EmbeddingSection({
     if (
       !window.confirm(
         "Rescan ALL documents? This fully reprocesses every document (re-extract, re-chunk, " +
-          "re-generate metadata, and re-embed the active model) and may take a while.",
+          "re-generate metadata, and re-embed the active model) and may take a while. " +
+          "Metadata generation calls the chat model API once per document, so a large " +
+          "library uses many tokens.",
       )
     ) {
       return;
@@ -306,6 +308,7 @@ export default function EmbeddingSection({
       const result = await rescanDocuments();
       setNotice(
         `Rescan started: ${result.queued ?? 0} document(s) queued. ` +
+          (result.skipped_active ? `${result.skipped_active} skipped because another task is still running for them. ` : "") +
           "Watch per-document progress in the Document Library.",
       );
     } catch (rescanError) {
@@ -352,6 +355,7 @@ export default function EmbeddingSection({
       setNotice(
         `Re-embed started for ${result.documents ?? 0} document(s) into ` +
           `"${result.model ?? "the active model"}". ` +
+          (result.skipped_active ? `${result.skipped_active} skipped because another task is still running for them. ` : "") +
           "Watch per-document progress in the Document Library.",
       );
     } catch (reembedError) {

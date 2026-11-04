@@ -41,7 +41,7 @@ function Help({ text }) {
 
 function SubCard({ title, help, action, children }) {
   return (
-    <Box sx={{ p: 2, border: `1px solid ${BORDER}`, borderRadius: 2, display: "grid", gap: 2 }}>
+    <Box sx={{ ...stack, p: 2, border: `1px solid ${BORDER}`, borderRadius: 2, gap: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <Typography variant="body2" sx={{ fontWeight: 800, color: ACCENT }}>{title}</Typography>
         {help && <Help text={help} />}
@@ -59,7 +59,7 @@ function Stat({ label, value, help }) {
       <Typography variant="caption" sx={{ color: "text.secondary" }}>
         {label}{help && <Help text={help} />}
       </Typography>
-      <Typography sx={{ fontWeight: 800, fontSize: 18 }}>{value}</Typography>
+      <Typography sx={{ fontWeight: 800, fontSize: 18, whiteSpace: "nowrap" }}>{value}</Typography>
     </Box>
   );
 }
@@ -67,16 +67,20 @@ function Stat({ label, value, help }) {
 function Fold({ title, children, defaultExpanded = false }) {
   return (
     <Accordion disableGutters defaultExpanded={defaultExpanded} elevation={0}
-      sx={{ border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
+      sx={{ minWidth: 0, border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="body2" sx={{ fontWeight: 700 }}>{title}</Typography>
       </AccordionSummary>
-      <AccordionDetails sx={{ display: "grid", gap: 1.5 }}>{children}</AccordionDetails>
+      <AccordionDetails sx={{ ...stack, gap: 1.5 }}>{children}</AccordionDetails>
     </Accordion>
   );
 }
 
 const fieldRow = { display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" };
+// Grid tracks default to the min-content width, so one long answer or citation
+// would stretch every card past the page; minmax(0, 1fr) lets content wrap instead.
+const stack = { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 };
+const wrapText = { overflowWrap: "anywhere", wordBreak: "break-word" };
 
 function CaseReview({ runId, result, review, onSaved, onError }) {
   const [score, setScore] = useState(review?.score ?? "");
@@ -109,7 +113,7 @@ function CaseResult({ run, item, onSaved, onError }) {
       label={`${result.actual_allow ? "Allowed" : "Blocked"} · ${result.gate_correct ? "expected" : "unexpected"}`} />);
   return (
     <Accordion disableGutters elevation={0} TransitionProps={{ unmountOnExit: true }}
-      sx={{ border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
+      sx={{ minWidth: 0, border: `1px solid ${BORDER}`, borderRadius: "8px !important", "&:before": { display: "none" } }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center", minWidth: 0, width: "100%" }}>
           <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>{item.id}</Typography>
@@ -117,18 +121,18 @@ function CaseResult({ run, item, onSaved, onError }) {
           {chip}
         </Box>
       </AccordionSummary>
-      <AccordionDetails sx={{ display: "grid", gap: 1 }}>
+      <AccordionDetails sx={{ ...stack, ...wrapText, gap: 1 }}>
         <Typography variant="body2">Expected: {item.expected_allow ? "allow" : "block"} · {item.category} · {item.split}</Typography>
         {(item.evidence || []).map((e, i) => <Typography key={i} variant="body2" sx={{ color: "text.secondary" }}>
           Gold anchor: {e.source_id}, page {e.page}: {e.quote}</Typography>)}
         {result && <>
           <Typography variant="body2">Recall@K {format(result.evidence_recall_at_k)} · Citation integrity {format(result.citation_integrity)} · TTFT {result.ttft_ms ?? "N/A"} ms · Total {result.total_ms ?? "N/A"} ms</Typography>
           {(result.evidence_reason || result.error) && <Typography variant="body2" sx={{ color: "text.secondary" }}>{result.evidence_reason || result.error}</Typography>}
-          <Box sx={{ whiteSpace: "pre-wrap", p: 1.5, bgcolor: "#f7f8f5", borderRadius: 1 }}>{result.answer}</Box>
+          <Box sx={{ whiteSpace: "pre-wrap", ...wrapText, p: 1.5, bgcolor: "#f7f8f5", borderRadius: 1 }}>{result.answer}</Box>
           {result.judge && <Alert severity={result.judge.score >= 90 && !result.judge.uncertain ? "success" : "warning"}>Model judge {result.judge.score}/100 · {result.judge.reason}</Alert>}
           {(result.citations || []).map((cit, i) => <Typography key={i} variant="body2">[{i + 1}] {cit.title}, page {cit.page}: {cit.quote}</Typography>)}
           {(result.validation_report || result.generation_validation) && <details><summary>Evidence contract and answer validation</summary>
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{JSON.stringify({ retrieval: result.validation_report, generation: result.generation_validation }, null, 2)}</pre></details>}
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify({ retrieval: result.validation_report, generation: result.generation_validation }, null, 2)}</pre></details>}
           {result.status === "completed" && <CaseReview runId={run.id} result={result}
             review={run.reviews?.find((r) => r.case_id === item.id)} onSaved={onSaved} onError={onError} />}
         </>}
@@ -206,7 +210,7 @@ export default function EvaluationSection({ onDocumentsChanged }) {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
 
-      <Box sx={{ display: "grid", gap: 2 }}>
+      <Box sx={{ ...stack, gap: 2 }}>
         <SubCard title="Test corpus" help="Twelve official policy PDFs with gold answers. Imported files carry a “Test document” badge in Library and must finish indexing before a run.">
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             <Chip label={`Documents ${corpusCount ?? "…"} / 12`} color={corpusCount === 12 ? "success" : "default"} variant="outlined" />
@@ -374,11 +378,11 @@ export default function EvaluationSection({ onDocumentsChanged }) {
             </Fold>}
 
             <Fold title="Frozen settings and source snapshot">
-              <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>{JSON.stringify({ request: run.config, snapshot: run.snapshot, split_metrics: artifacts.by_split }, null, 2)}</pre>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, margin: 0 }}>{JSON.stringify({ request: run.config, snapshot: run.snapshot, split_metrics: artifacts.by_split }, null, 2)}</pre>
             </Fold>
 
             <Typography variant="body2" sx={{ fontWeight: 800, mt: 1 }}>Questions</Typography>
-            <Box sx={{ display: "grid", gap: 1 }}>
+            <Box sx={{ ...stack, gap: 1 }}>
               {run.cases.map((item) => <CaseResult key={`${run.id}-${item.id}`} run={run} item={item} onError={setError}
                 onSaved={() => { getEvaluationRun(run.id).then(setRun).catch((err) => setError(err.message)); setNotice("Human review saved."); }} />)}
             </Box>
