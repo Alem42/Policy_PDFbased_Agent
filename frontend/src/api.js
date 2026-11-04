@@ -205,6 +205,7 @@ export function rechunkLibrary() {
 export function getTaskProgress(taskIds) {
   return request("/admin/document-tasks/progress", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task_ids: taskIds }),
   });
 }
@@ -427,6 +428,23 @@ export function renameChatSession(sessionId, title) {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
+  });
+}
+
+// Paid API usage ledger (admin): totals, per-bucket series and breakdowns.
+export function getApiUsage(range = "7d", tz = "UTC") {
+  return request(`/admin/usage?range=${encodeURIComponent(range)}&tz=${encodeURIComponent(tz)}`);
+}
+
+export function getApiBudget() {
+  return request("/admin/usage/budget");
+}
+
+export function saveApiBudget(budget) {
+  return request("/admin/usage/budget", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(budget),
   });
 }
 

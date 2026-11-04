@@ -8,6 +8,7 @@ from app.modules.settings.service import (
     get_llm_provider,
     get_provider_api_key,
 )
+from app.modules.usage.recorder import UsageCallback
 
 
 def resolve_generation_target(model: str | None) -> tuple[str, str, dict]:
@@ -45,6 +46,9 @@ def create_chat_client(
         "model": model,
         "temperature": temperature,
         "extra_body": config["extra_body"],
+        # Streamed answers report token usage only when asked for it.
+        "stream_usage": True,
+        "callbacks": [UsageCallback(provider, model)],
     }
     if max_tokens is not None:
         options["max_tokens"] = max_tokens

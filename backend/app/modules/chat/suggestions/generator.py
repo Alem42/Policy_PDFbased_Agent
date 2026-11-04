@@ -27,6 +27,7 @@ from app.modules.chat.suggestions.config import SuggestionConfig
 from app.modules.chat.suggestions.profile import personalization_hint
 from app.modules.retrieval.contracts import QuestionValidationRequest
 from app.modules.retrieval.service import retrieval_service
+from app.modules.usage.context import usage_scope
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,8 @@ def _propose_candidates(
         temperature=cfg.temperature,
         max_tokens=output_budget,
     )
-    response = client.invoke([SystemMessage(content=system), HumanMessage(content=human)])
+    with usage_scope(operation="suggestions"):
+        response = client.invoke([SystemMessage(content=system), HumanMessage(content=human)])
     return _parse_candidates(str(response.content))
 
 

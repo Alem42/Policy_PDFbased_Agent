@@ -12,6 +12,8 @@ import time
 
 import httpx
 
+from app.modules.usage import budget, recorder
+
 
 def _rerank_url(base_url: str) -> str:
     """Normalise any base to the single /rerank endpoint.
@@ -37,6 +39,7 @@ def rerank_api(
     """Return a relevance score per document, aligned to the INPUT order."""
     if not base_url or not api_key or not model:
         raise ValueError("API reranker is missing base_url, api_key, or model.")
+    budget.ensure_within_budget()
     response = httpx.post(
         _rerank_url(base_url),
         headers={"Authorization": f"Bearer {api_key}"},
@@ -44,7 +47,15 @@ def rerank_api(
         timeout=30.0,
     )
     response.raise_for_status()
-    results = response.json()["results"]
+    body = response.json()
+    usage = body.get("usage") or {}
+    recorder.record(
+        recorder.provider_for_url(base_url),
+        model,
+        "rerank",
+        usage.get("prompt_tokens") or usage.get("total_tokens") or 0,
+    )
+    results = body["results"]
     scores = [0.0] * len(documents)
     for item in results:
         index = int(item.get("index", 0))

@@ -172,12 +172,15 @@ def _llm_disputes_named_instrument(name: str, evidence_text: str) -> bool:
             f"Answer YES only if you are confident it is about something else "
             f"entirely; answer NO if it might be relevant or you are unsure."
         )
-        response = client.invoke(
-            [
-                {"role": "system", "content": _LLM_VETO_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ]
-        )
+        from app.modules.usage.context import usage_scope
+
+        with usage_scope(operation="evidence_gate"):
+            response = client.invoke(
+                [
+                    {"role": "system", "content": _LLM_VETO_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ]
+            )
         return str(response.content).strip().upper().startswith("Y")
     except Exception:
         logger.exception("Named-instrument LLM veto call failed; falling back to not disputing it")

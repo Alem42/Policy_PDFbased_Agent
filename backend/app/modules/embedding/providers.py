@@ -23,6 +23,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.modules.embedding.settings import EmbeddingConfig
+from app.modules.usage import budget, recorder
 
 
 # model may return many types of values, so we convert to list[float]
@@ -183,6 +184,7 @@ class OpenAICompatibleProvider(EmbeddingProvider):
         self.model_id = config.api_model
         self.dimension = config.dimensions
         self._base_url = config.api_base_url.rstrip("/")
+        self._provider = config.api_provider or recorder.provider_for_url(self._base_url)
         self._api_key = config.api_key
         self._batch_size = config.batch_size
         # Only send `dimensions` when the model supports variable dims (Zhipu embedding-3).
@@ -194,6 +196,7 @@ class OpenAICompatibleProvider(EmbeddingProvider):
         payload: dict = {"model": self.model_id, "input": inputs}
         if self._send_dimensions:
             payload["dimensions"] = self.dimension
+        budget.ensure_within_budget()
         response = httpx.post(
             _embeddings_url(self._base_url),
             headers={"Authorization": f"Bearer {self._api_key}"},
@@ -201,7 +204,9 @@ class OpenAICompatibleProvider(EmbeddingProvider):
             timeout=30.0,
         )
         response.raise_for_status()
-        data = response.json()["data"]
+        body = response.json()
+        _record_embedding(self._provider, self.model_id, body)
+        data = body["data"]
         return [item["embedding"] for item in sorted(data, key=lambda d: d.get("index", 0))]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -230,6 +235,13 @@ class OpenAICompatibleProvider(EmbeddingProvider):
 
 
 # test connection probe (used by the admin UI) to verify connectivity and report the real dimension
+def _record_embedding(provider: str, model: str, body: dict) -> None:
+    usage = body.get("usage") or {}
+    recorder.record(
+        provider, model, "embedding", usage.get("prompt_tokens") or usage.get("total_tokens") or 0
+    )
+
+
 def probe(config: EmbeddingConfig) -> dict:
     """Embed one probe string to verify connectivity and report the real dimension.
 
@@ -248,6 +260,7 @@ def probe(config: EmbeddingConfig) -> dict:
         payload: dict = {"model": config.api_model, "input": ["connection test"]}
         if not config.auto_detect_dimensions:
             payload["dimensions"] = config.dimensions
+        budget.ensure_within_budget()
         response = httpx.post(
             _embeddings_url(config.api_base_url),
             headers={"Authorization": f"Bearer {config.api_key}"},
@@ -256,6 +269,11 @@ def probe(config: EmbeddingConfig) -> dict:
         )
         response.raise_for_status()
         body = response.json()
+        _record_embedding(
+            config.api_provider or recorder.provider_for_url(config.api_base_url),
+            config.api_model,
+            body,
+        )
         dim = len(body["data"][0]["embedding"])
     return {
         "model": config.active_model_id(),

@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/api": "http://127.0.0.1:8000",
+      // VITE_API_PROXY points the dev server at another backend, e.g. a second instance.
+      "/api": process.env.VITE_API_PROXY || "http://127.0.0.1:8000",
     },
   },
 });

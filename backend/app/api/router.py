@@ -17,6 +17,7 @@ from app.modules.evaluation.router import router as evaluation_admin_router
 from app.modules.reranking.router import router as reranking_admin_router
 from app.modules.settings.router import router as settings_router
 from app.modules.system.router import router as system_router
+from app.modules.usage.router import router as usage_router
 
 api_router = APIRouter()
 
@@ -37,3 +38,4 @@ api_router.include_router(agent_tool_limits_router)
 api_router.include_router(catalog_admin_router)
 api_router.include_router(taxonomy_router)
 api_router.include_router(settings_router)
+api_router.include_router(usage_router)

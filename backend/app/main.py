@@ -24,6 +24,8 @@ from app.modules.documents.processing_queue import document_processing_queue
 from app.modules.documents.schema import validate_document_task_schema
 from app.modules.evaluation.service import evaluation_worker
 from app.modules.local_models.preload import preload_selected_models
+from app.modules.usage.budget import ApiBudgetExceeded
+from app.modules.usage.middleware import UsageScopeMiddleware
 
 
 @asynccontextmanager
@@ -68,6 +70,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+app.add_middleware(UsageScopeMiddleware, prefix=settings.api_v1_prefix)
 app.add_middleware(
     ConcurrencyLimitMiddleware,
     paths={
@@ -83,6 +86,11 @@ app.add_middleware(
     max_file_bytes=settings.upload_max_bytes,
     overhead_bytes=settings.upload_request_overhead_bytes,
 )
+
+
+@app.exception_handler(ApiBudgetExceeded)
+async def api_budget_exceeded(_: Request, exc: ApiBudgetExceeded) -> JSONResponse:
+    return JSONResponse(status_code=429, content={"detail": str(exc)})
 
 
 @app.exception_handler(DatabaseUnavailableError)

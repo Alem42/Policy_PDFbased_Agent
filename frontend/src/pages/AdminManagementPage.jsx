@@ -10,6 +10,7 @@ import WebSearchSection from "./manage/WebSearchSection";
 import SuggestionsSection from "./manage/SuggestionsSection";
 import AgentToolLimitsSection from "./manage/AgentToolLimitsSection";
 import AdminInvitesSection from "./manage/AdminInvitesSection";
+import UsageSection from "./manage/UsageSection";
 
 const ACCENT = "#214f42";
 const ORDER_KEY = "manage.sectionOrder"; // persists the admin's preferred order
@@ -21,6 +22,12 @@ const SECTIONS = [
     label: "Evaluation & scoring",
     desc: "Import official test documents, run document-analysis baselines and review answer quality.",
     Component: EvaluationSection,
+  },
+  {
+    id: "usage",
+    label: "API usage & budget",
+    desc: "See what every paid DeepSeek and Zhipu request cost, by day, model, feature and user, and set a spending limit.",
+    Component: UsageSection,
   },
   {
     id: "admin-invites",

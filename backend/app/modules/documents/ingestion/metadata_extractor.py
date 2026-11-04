@@ -15,6 +15,7 @@ from app.core.ai.chat_models import (
 from app.modules.documents.ingestion.language_detect import detect_language
 from app.modules.documents.ingestion.policy_matcher import match_policy_areas
 from app.modules.documents.taxonomy_service import get_leaf_labels, get_taxonomy_tree
+from app.modules.usage.context import bind, usage_scope
 
 # Excerpt budget split across the document. Head is weighted heaviest because
 # policy docs front-load the important metadata (title, country, main themes);
@@ -206,8 +207,10 @@ def generate_document_metadata(
         ]
     )
     chain = prompt | llm | StrOutputParser()
+    with usage_scope(operation="metadata"):
+        invoke = bind(chain.invoke)
     future = _LLM_POOL.submit(
-        chain.invoke,
+        invoke,
         {
             "excerpt": excerpt,
             "filename": filename,

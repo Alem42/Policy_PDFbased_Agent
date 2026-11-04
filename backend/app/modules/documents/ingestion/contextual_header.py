@@ -24,6 +24,7 @@ from app.core.ai.chat_models import (
     create_chat_client,
     resolve_generation_target,
 )
+from app.modules.usage.context import bind, usage_scope
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,9 @@ def build_contextual_headers(
 
     pool = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
     try:
-        futures = [pool.submit(_one, chunk) for chunk in chunks]
+        with usage_scope(operation="contextual_header"):
+            one = bind(_one)
+        futures = [pool.submit(one, chunk) for chunk in chunks]
         done, pending = wait(futures, timeout=_STAGE_TIMEOUT_SECONDS)
         if pending:
             logger.warning(

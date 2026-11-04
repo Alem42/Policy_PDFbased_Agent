@@ -30,6 +30,7 @@ from app.modules.retrieval.evidence import (
 )
 from app.modules.retrieval.formatting import format_context
 from app.modules.retrieval.metadata_filters import FilterApplication, metadata_filter_service
+from app.modules.usage.context import bind
 
 logger = logging.getLogger(__name__)
 
@@ -339,7 +340,7 @@ class RetrievalService:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {
                     index: executor.submit(
-                        self._passes_reranker_gate,
+                        bind(self._passes_reranker_gate),
                         question,
                         chunks,
                         request.top_k,

@@ -5,11 +5,13 @@ API reference: https://api-docs.deepseek.com/guides/search/
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 import httpx
 
 from app.modules.settings.service import get_web_search_provider_api_key
+from app.modules.usage import budget, recorder
 from app.modules.web_search.contracts import WebSearchProviderError, WebSearchResult
 
 BASE_URL = "https://api.deepseek.com/v1/tools"
@@ -43,6 +45,7 @@ class DeepSeekSearchProvider:
                 "No DeepSeek API key is configured. Save a General Access Key in Web search "
                 "or configure the DeepSeek key in the model settings."
             )
+        budget.ensure_within_budget()
         try:
             async with httpx.AsyncClient(
                 timeout=30,
@@ -53,6 +56,7 @@ class DeepSeekSearchProvider:
                 response = await client.post(f"{BASE_URL}/{operation}", json=payload)
                 response.raise_for_status()
                 data = response.json()
+            await asyncio.to_thread(recorder.record, "deepseek", operation, "web_search")
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object")
             return data

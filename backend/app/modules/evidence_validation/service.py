@@ -17,6 +17,7 @@ from app.core.database import get_connection
 from app.core.settings_store import SingleRowSettings
 from app.core.text_normalization import normalized
 from app.modules.evidence_validation.config import EvidenceValidationConfig
+from app.modules.usage.context import usage_scope
 
 store = SingleRowSettings("evidence_validation_settings")
 PROMPT_VERSION = "evidence-contract-2.6-validated-protocol"
@@ -94,6 +95,11 @@ class Claims(Strict):
 
 
 def json_call(model, system, payload, schema, *, timeout=90, max_tokens=6000):
+    with usage_scope(operation="evidence_validation"):
+        return _json_call(model, system, payload, schema, timeout=timeout, max_tokens=max_tokens)
+
+
+def _json_call(model, system, payload, schema, *, timeout, max_tokens):
     provider, name, _ = resolve_generation_target(model)
     client = create_chat_client(
         provider, name, temperature=0, max_tokens=max_tokens, timeout=timeout, max_retries=0

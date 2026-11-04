@@ -12,6 +12,7 @@ from app.modules.evaluation import corpus, repository, runner
 from app.modules.evaluation.config import EvaluationConfig
 from app.modules.evaluation.metrics import aggregate
 from app.modules.settings.service import get_provider_api_key
+from app.modules.usage.context import usage_scope
 
 logger = logging.getLogger(__name__)
 settings_store = SingleRowSettings("evaluation_settings")
@@ -106,6 +107,12 @@ class EvaluationWorker:
                 return
 
     async def _execute(self, run):
+        requester = run.get("requested_by")
+        with usage_scope(area="evaluation", operation=run.get("config", {}).get("kind", "baseline"),
+                         user_id=str(requester) if requester else None):
+            await self._execute_run(run)
+
+    async def _execute_run(self, run):
         pulse = asyncio.create_task(self._heartbeat(run))
         try:
             config = run.get("config", {})

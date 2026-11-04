@@ -40,6 +40,7 @@ from app.modules.documents.repositories.processing_jobs import processing_job_re
 from app.modules.documents.repositories.tasks import LostTaskLease, document_task_repository
 from app.modules.documents.upload_registration import register_staged_upload
 from app.modules.embedding import service as embedding
+from app.modules.usage.context import usage_scope
 
 from . import library
 
@@ -213,6 +214,13 @@ def rechunk_document(task: dict) -> None:
 
 def execute_document_task(task: dict) -> None:
     """Only registered durable task types can execute; no serialized Python callbacks."""
+    with usage_scope(
+        area="documents", operation=task["task_type"], document_id=str(task["document_id"])
+    ):
+        _execute_document_task(task)
+
+
+def _execute_document_task(task: dict) -> None:
     document_id = str(task["document_id"])
     if task["task_type"] == "ingest":
         # Pin the embedding settings for the whole attempt, so a change saved mid-way
