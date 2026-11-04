@@ -58,6 +58,16 @@ def ensure_vector_table(connection, table: str, dim: int) -> None:
     """
     if table == LEGACY_VECTOR_TABLE:
         return
+    wants_index = dim <= HNSW_HALFVEC_DIM_LIMIT
+    if _table_exists(connection, table) and (
+        not wants_index or _table_exists(connection, f"{table}_hnsw")
+    ):
+        # Even a no-op CREATE INDEX IF NOT EXISTS takes a SHARE lock held until
+        # commit; two workers holding it then deadlock on their vector INSERTs.
+        return
+    connection.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"vector-table:{table}",)
+    )
     connection.execute(
         f'''
         CREATE TABLE IF NOT EXISTS "{table}" (
@@ -67,7 +77,7 @@ def ensure_vector_table(connection, table: str, dim: int) -> None:
         )
         '''
     )
-    if dim <= HNSW_HALFVEC_DIM_LIMIT:
+    if wants_index:
         connection.execute(
             f'CREATE INDEX IF NOT EXISTS "{table}_hnsw" '
             f'ON "{table}" USING hnsw (embedding {_hnsw_ops(dim)})'
